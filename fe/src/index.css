@@ -1,0 +1,33 @@
+@import "pretendard/dist/web/static/pretendard.css";
+@import "tailwindcss";
+
+:root {
+  font-family: 'Pretendard', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+@layer base {
+  :root {
+    --bg: #111013;
+    --bg-subtle: #1A1820;
+    --bg-muted: #221F2B;
+    --border: #2E2E2E;
+    --border-strong: #3D3D3D;
+    --text: #F1F5F9;
+    --text-muted: #94A3B8;
+    --text-disabled: #475569;
+    --accent: #A78BFA;
+    --accent-hover: #8B5CF6;
+    --accent-subtle: #1E1530;
+    --accent-text: #DDD6FE;
+    --radius: 12px;
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+  }
+}
