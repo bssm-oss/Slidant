@@ -69,41 +69,42 @@ export const useEditorStore = create<EditorState>((set, _get) => ({
     const agentNames = ['ContentAgent', 'DesignAgent', 'LayoutAgent']
     const agentName = agentNames[Math.floor(Math.random() * agentNames.length)]
 
-    // 상태 running으로
     set((s) => ({
       overallStatus: 'running',
       agents: s.agents.map((a) =>
-        a.name === agentName ? { ...a, status: 'running' } : a,
+        a.name === agentName
+          ? { ...a, status: 'running', currentTask: command, taskProgress: 0 }
+          : a,
       ),
       agentLogs: [
-        {
-          id: `log-${Date.now()}`,
-          agentId: agentName.toLowerCase(),
-          agentName,
-          message: `"${command}" 작업 시작...`,
-          timestamp: new Date().toISOString(),
-          type: 'info',
-        },
+        { id: `log-${Date.now()}`, agentId: agentName.toLowerCase(), agentName, message: `"${command}" 작업 시작...`, timestamp: new Date().toISOString(), type: 'info' },
         ...s.agentLogs,
       ],
     }))
 
-    // 2초 후 완료
+    // 진행률 시뮬레이션
+    let progress = 0
+    const interval = setInterval(() => {
+      progress += Math.floor(Math.random() * 25) + 10
+      if (progress >= 90) { clearInterval(interval); return }
+      set((s) => ({
+        agents: s.agents.map((a) =>
+          a.name === agentName ? { ...a, taskProgress: Math.min(progress, 90) } : a,
+        ),
+      }))
+    }, 400)
+
     setTimeout(() => {
+      clearInterval(interval)
       set((s) => ({
         overallStatus: 'idle',
         agents: s.agents.map((a) =>
-          a.name === agentName ? { ...a, status: 'done' } : a,
+          a.name === agentName
+            ? { ...a, status: 'done', currentTask: undefined, taskProgress: 100 }
+            : a,
         ),
         agentLogs: [
-          {
-            id: `log-${Date.now()}`,
-            agentId: agentName.toLowerCase(),
-            agentName,
-            message: `"${command}" 작업 완료`,
-            timestamp: new Date().toISOString(),
-            type: 'success',
-          },
+          { id: `log-${Date.now()}`, agentId: agentName.toLowerCase(), agentName, message: `"${command}" 작업 완료`, timestamp: new Date().toISOString(), type: 'success' },
           ...s.agentLogs,
         ],
         activeRightTab: 'agent',

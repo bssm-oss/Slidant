@@ -1,6 +1,8 @@
 import { useEditorStore } from '../store/editorStore'
+import { useNavigate, useParams } from 'react-router-dom'
 import { cn } from '@/shared/lib/utils'
 import { AgentStatusBadge } from '@/shared/components/ui'
+import { Maximize2 } from 'lucide-react'
 
 const logColors: Record<string, string> = {
   success: 'bg-[var(--mint-subtle)] text-[var(--mint-text)]',
@@ -72,9 +74,12 @@ function PropertiesTab() {
 
 export default function RightPanel() {
   const { activeRightTab, setActiveRightTab } = useEditorStore()
+  const navigate = useNavigate()
+  const { id } = useParams<{ id: string }>()
+
   return (
-    <div className="w-72 border-l border-[var(--border)] bg-white flex flex-col shrink-0 overflow-hidden">
-      <div className="flex border-b border-[var(--border)] shrink-0">
+    <div className="w-96 border-l border-[var(--border)] bg-white flex flex-col shrink-0 overflow-hidden">
+      <div className="flex items-center border-b border-[var(--border)] shrink-0">
         {(['agent', 'properties'] as const).map((tab) => (
           <button key={tab} onClick={() => setActiveRightTab(tab)}
             className={cn(
@@ -86,6 +91,13 @@ export default function RightPanel() {
             {tab === 'agent' ? 'Agent' : '속성'}
           </button>
         ))}
+        <button
+          onClick={() => navigate(`/edit/${id}/agent`)}
+          className="px-3 py-2.5 text-[var(--text-disabled)] hover:text-[var(--accent)] transition-colors cursor-pointer shrink-0"
+          title="전체 화면으로 보기"
+        >
+          <Maximize2 size={14} />
+        </button>
       </div>
       <div className="flex-1 overflow-y-auto">
         {activeRightTab === 'agent' ? <AgentTab /> : <PropertiesTab />}

@@ -36,6 +36,8 @@ export interface Agent {
   role: AgentRole
   status: AgentStatus
   description?: string
+  currentTask?: string
+  taskProgress?: number  // 0-100
 }
 
 export interface AgentLog {
