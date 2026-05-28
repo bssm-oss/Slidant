@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useEditorStore } from '../store/editorStore'
+import { useToastStore } from '@/shared/components/ui/Toast'
 import { cn } from '@/shared/lib/utils'
-import { Sparkles } from 'lucide-react'
+import { Sparkles, Loader2 } from 'lucide-react'
 
 const suggestions = [
   { id: 'design',  label: '슬라이드 디자인 개선', color: 'text-purple-500', bg: 'hover:bg-purple-50' },
@@ -11,8 +12,11 @@ const suggestions = [
 ]
 
 export default function CommandPalette() {
-  const { isCommandPaletteOpen, setCommandPaletteOpen } = useEditorStore()
+  const { isCommandPaletteOpen, setCommandPaletteOpen, runAgentSimulation, setActiveRightTab } = useEditorStore()
+  const toast = useToastStore((s) => s.push)
   const inputRef = useRef<HTMLInputElement>(null)
+  const [input, setInput] = useState('')
+  const [running, setRunning] = useState(false)
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -23,7 +27,26 @@ export default function CommandPalette() {
     return () => window.removeEventListener('keydown', handler)
   }, [isCommandPaletteOpen, setCommandPaletteOpen])
 
-  useEffect(() => { if (isCommandPaletteOpen) inputRef.current?.focus() }, [isCommandPaletteOpen])
+  useEffect(() => {
+    if (isCommandPaletteOpen) { inputRef.current?.focus(); setInput(''); setRunning(false) }
+  }, [isCommandPaletteOpen])
+
+  const handleRun = (label: string) => {
+    const command = input.trim() || label
+    setRunning(true)
+    setTimeout(() => {
+      setCommandPaletteOpen(false)
+      setRunning(false)
+      setActiveRightTab('agent')
+      runAgentSimulation(command)
+      toast(`Agent 작업 시작: ${command}`, 'info')
+    }, 600)
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (input.trim()) handleRun(input.trim())
+  }
 
   if (!isCommandPaletteOpen) return null
 
@@ -33,19 +56,29 @@ export default function CommandPalette() {
       <div className={cn(
         'fixed top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50',
         'w-[480px] rounded-[16px] border border-[var(--border)] bg-white',
-        'shadow-[0_16px_48px_rgba(124,58,237,0.15),0_0_0_1px_rgba(124,58,237,0.08)]',
+        'shadow-[0_16px_48px_rgba(124,58,237,0.15)]',
         'overflow-hidden',
       )}>
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--border)]">
-          <Sparkles size={16} className="text-[var(--accent)] shrink-0" />
-          <input ref={inputRef} placeholder="Agent에게 요청..."
-            className="flex-1 bg-transparent text-sm text-[var(--text)] placeholder:text-[var(--text-disabled)] outline-none" />
+        <form onSubmit={handleSubmit} className="flex items-center gap-3 px-4 py-3 border-b border-[var(--border)]">
+          {running
+            ? <Loader2 size={16} className="text-[var(--accent)] shrink-0 animate-spin" />
+            : <Sparkles size={16} className="text-[var(--accent)] shrink-0" />
+          }
+          <input
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Agent에게 요청..."
+            disabled={running}
+            className="flex-1 bg-transparent text-sm text-[var(--text)] placeholder:text-[var(--text-disabled)] outline-none"
+          />
           <kbd className="text-xs text-[var(--text-disabled)] bg-[var(--bg-muted)] px-1.5 py-0.5 rounded-[4px] font-mono">ESC</kbd>
-        </div>
+        </form>
         <div className="py-1.5">
           {suggestions.map((s) => (
-            <button key={s.id} onClick={() => setCommandPaletteOpen(false)}
-              className={cn('w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[var(--text-muted)] transition-colors cursor-pointer text-left', s.bg)}>
+            <button key={s.id} disabled={running}
+              onClick={() => handleRun(s.label)}
+              className={cn('w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[var(--text-muted)] transition-colors cursor-pointer text-left disabled:opacity-50', s.bg)}>
               <Sparkles size={13} className={s.color} />
               {s.label}
             </button>

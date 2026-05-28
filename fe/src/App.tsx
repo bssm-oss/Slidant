@@ -5,6 +5,7 @@ import EditPage from '@/pages/EditPage'
 import DrivePage from '@/pages/DrivePage'
 import LoginPage from '@/pages/LoginPage'
 import SignupPage from '@/pages/SignupPage'
+import ToastContainer from '@/shared/components/ui/Toast'
 
 const queryClient = new QueryClient()
 
@@ -20,6 +21,7 @@ export default function App() {
           <Route path="/signup" element={<SignupPage />} />
         </Routes>
       </BrowserRouter>
+      <ToastContainer />
       <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>
   )
