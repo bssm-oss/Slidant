@@ -1,33 +1,67 @@
 @import "pretendard/dist/web/static/pretendard.css";
 @import "tailwindcss";
 
-:root {
-  font-family: 'Pretendard', sans-serif;
-}
-
 * {
   box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 @layer base {
   :root {
-    --bg: #111013;
-    --bg-subtle: #1A1820;
-    --bg-muted: #221F2B;
-    --border: #2E2E2E;
-    --border-strong: #3D3D3D;
-    --text: #F1F5F9;
-    --text-muted: #94A3B8;
-    --text-disabled: #475569;
-    --accent: #A78BFA;
-    --accent-hover: #8B5CF6;
-    --accent-subtle: #1E1530;
-    --accent-text: #DDD6FE;
+    /* 배경 */
+    --bg:        #F8F7FF;
+    --bg-subtle: #FFFFFF;
+    --bg-muted:  #F1EFF9;
+
+    /* 테두리 */
+    --border:       #E5E2F0;
+    --border-strong: #C9C4DC;
+
+    /* 텍스트 */
+    --text:          #1A1523;
+    --text-muted:    #6B6580;
+    --text-disabled: #A89FC0;
+
+    /* 메인 accent — Violet */
+    --accent:        #7C3AED;
+    --accent-hover:  #6D28D9;
+    --accent-subtle: #EDE9FE;
+    --accent-text:   #5B21B6;
+
+    /* 포인트 컬러들 */
+    --pink:        #EC4899;
+    --pink-subtle: #FDF2F8;
+    --pink-text:   #BE185D;
+
+    --sky:        #0EA5E9;
+    --sky-subtle: #F0F9FF;
+    --sky-text:   #0369A1;
+
+    --mint:        #10B981;
+    --mint-subtle: #ECFDF5;
+    --mint-text:   #065F46;
+
+    --orange:        #F97316;
+    --orange-subtle: #FFF7ED;
+    --orange-text:   #C2410C;
+
+    --yellow:        #EAB308;
+    --yellow-subtle: #FEFCE8;
+    --yellow-text:   #854D0E;
+
+    /* 상태 */
+    --success: #10B981;
+    --warning: #F59E0B;
+    --error:   #EF4444;
+
     --radius: 12px;
   }
 
   body {
     background-color: var(--bg);
     color: var(--text);
+    font-family: 'Pretendard', sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
 }
