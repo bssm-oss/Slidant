@@ -28,17 +28,17 @@ export default function PresentationCard({ presentation, index = 0 }: { presenta
       )}>
       {/* 컬러 프리뷰 */}
       <div className={cn('aspect-video bg-gradient-to-br flex items-center justify-center relative', gradient)}>
-        <span className="text-white/80 text-4xl font-bold opacity-20 select-none">
+        <span className="text-white/80 text-6xl font-bold opacity-20 select-none">
           {presentation.title.charAt(0)}
         </span>
-        <div className="absolute bottom-2 right-2 bg-white/20 backdrop-blur-sm rounded-[4px] px-1.5 py-0.5">
-          <span className="text-white text-xs font-medium">{presentation.slides.length}장</span>
+        <div className="absolute bottom-2.5 right-2.5 bg-white/20 backdrop-blur-sm rounded-[6px] px-2 py-1">
+          <span className="text-white text-sm font-semibold">{presentation.slides.length}장</span>
         </div>
       </div>
       {/* 카드 정보 */}
-      <div className="p-3">
-        <p className="text-sm font-semibold text-[var(--text)] truncate">{presentation.title}</p>
-        <p className="text-xs text-[var(--text-disabled)] mt-1">{formatDate(presentation.updatedAt)}</p>
+      <div className="p-4">
+        <p className="text-base font-semibold text-[var(--text)] truncate">{presentation.title}</p>
+        <p className="text-sm text-[var(--text-disabled)] mt-1">{formatDate(presentation.updatedAt)}</p>
       </div>
     </button>
   )

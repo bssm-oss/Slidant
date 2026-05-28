@@ -41,46 +41,44 @@ export default function PresentationTable({ presentations }: { presentations: Pr
 
   return (
     <div className="rounded-[var(--radius)] border border-[var(--border)] overflow-hidden bg-white">
-      <div className="grid grid-cols-[1fr_120px_100px_40px] gap-4 px-4 py-2.5 bg-[var(--bg-muted)] border-b border-[var(--border)]">
+      <div className="grid grid-cols-[1fr_160px_120px_48px] gap-4 px-6 py-3 bg-[var(--bg-muted)] border-b border-[var(--border)]">
         {['제목','수정일','슬라이드',''].map((h, i) => (
-          <span key={i} className="text-xs font-semibold text-[var(--text-muted)]">{h}</span>
+          <span key={i} className="text-sm font-semibold text-[var(--text-muted)]">{h}</span>
         ))}
       </div>
       {presentations.map((ppt, i) => (
         <div key={ppt.id}
-          className={cn('grid grid-cols-[1fr_120px_100px_40px] gap-4 px-4 py-3 items-center hover:bg-[var(--bg-muted)] transition-colors group relative',
+          className={cn('grid grid-cols-[1fr_160px_120px_48px] gap-4 px-6 py-4 items-center hover:bg-[var(--bg-muted)] transition-colors group relative',
             i !== presentations.length - 1 && 'border-b border-[var(--border)]')}>
-          {/* 제목 */}
           {renamingId === ppt.id ? (
             <input autoFocus value={renameValue} onChange={(e) => setRenameValue(e.target.value)}
               onBlur={() => submitRename(ppt.id)}
               onKeyDown={(e) => { if (e.key === 'Enter') submitRename(ppt.id); if (e.key === 'Escape') setRenamingId(null) }}
-              className="text-sm font-semibold text-[var(--text)] border-b border-[var(--accent)] outline-none bg-transparent px-0.5" />
+              className="text-base font-semibold text-[var(--text)] border-b border-[var(--accent)] outline-none bg-transparent px-0.5" />
           ) : (
             <span onClick={() => navigate(`/edit/${ppt.id}`)}
-              className="text-sm font-medium text-[var(--text)] truncate group-hover:text-[var(--accent)] transition-colors cursor-pointer">
+              className="text-base font-medium text-[var(--text)] truncate group-hover:text-[var(--accent)] transition-colors cursor-pointer">
               {ppt.title}
             </span>
           )}
-          <span className="text-xs text-[var(--text-muted)]">{formatDate(ppt.updatedAt)}</span>
-          <span className="text-xs text-[var(--text-muted)]">{ppt.slides.length}장</span>
-          {/* 더보기 메뉴 */}
+          <span className="text-sm text-[var(--text-muted)]">{formatDate(ppt.updatedAt)}</span>
+          <span className="text-sm text-[var(--text-muted)]">{ppt.slides.length}장</span>
           <div className="relative">
             <button onClick={(e) => { e.stopPropagation(); setMenuOpenId(menuOpenId === ppt.id ? null : ppt.id) }}
-              className="w-7 h-7 flex items-center justify-center rounded-[6px] text-[var(--text-disabled)] hover:bg-[var(--border)] hover:text-[var(--text)] transition-colors cursor-pointer">
-              <MoreHorizontal size={14} />
+              className="w-8 h-8 flex items-center justify-center rounded-[6px] text-[var(--text-disabled)] hover:bg-[var(--border)] hover:text-[var(--text)] transition-colors cursor-pointer">
+              <MoreHorizontal size={16} />
             </button>
             {menuOpenId === ppt.id && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setMenuOpenId(null)} />
-                <div className="absolute right-0 top-8 z-20 w-36 bg-white border border-[var(--border)] rounded-[10px] shadow-[0_4px_16px_rgba(0,0,0,0.12)] overflow-hidden">
+                <div className="absolute right-0 top-9 z-20 w-40 bg-white border border-[var(--border)] rounded-[10px] shadow-[0_4px_16px_rgba(0,0,0,0.12)] overflow-hidden">
                   <button onClick={() => startRename(ppt)}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[var(--text)] hover:bg-[var(--bg-muted)] transition-colors cursor-pointer">
-                    <Pencil size={12} className="text-[var(--text-muted)]" />이름 변경
+                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-[var(--text)] hover:bg-[var(--bg-muted)] transition-colors cursor-pointer">
+                    <Pencil size={13} className="text-[var(--text-muted)]" />이름 변경
                   </button>
                   <button onClick={() => handleDelete(ppt.id)}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-red-500 hover:bg-red-50 transition-colors cursor-pointer">
-                    <Trash2 size={12} />삭제
+                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition-colors cursor-pointer">
+                    <Trash2 size={13} />삭제
                   </button>
                 </div>
               </>
