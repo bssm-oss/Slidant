@@ -58,7 +58,7 @@ async def run_agent_endpoint(body: AgentRunRequest, current_user: CurrentUser, d
         project_id=body.project_id,
         agent_definition_id=agent_def.id,
         status="running",
-        started_at=datetime.now(timezone.utc),
+        started_at=datetime.utcnow(),
     )
     db.add(agent_run)
     await db.flush()
@@ -102,12 +102,12 @@ async def run_agent_endpoint(body: AgentRunRequest, current_user: CurrentUser, d
                     if field == "properties" and len(path_parts) > 2:
                         prop_key = path_parts[2]
                         comp_obj.properties = {**comp_obj.properties, prop_key: op.get("value")}
-                    comp_obj.updated_at = datetime.now(timezone.utc)
+                    comp_obj.updated_at = datetime.utcnow()
             except (ValueError, Exception):
                 continue
 
         agent_run.status = "done"
-        agent_run.finished_at = datetime.now(timezone.utc)
+        agent_run.finished_at = datetime.utcnow()
 
         # LlmLog 기록 (토큰 정보는 실제 응답에서 추출 — 지금은 placeholder)
         llm_log = LlmLog(
@@ -130,7 +130,7 @@ async def run_agent_endpoint(body: AgentRunRequest, current_user: CurrentUser, d
 
     except Exception as e:
         agent_run.status = "error"
-        agent_run.finished_at = datetime.now(timezone.utc)
+        agent_run.finished_at = datetime.utcnow()
         await db.commit()
         await _broadcast(str(body.project_id), {
             "type": "agent_error",

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import Column
@@ -14,7 +14,7 @@ class Version(SQLModel, table=True):
     git_commit_hash: str | None = Field(default=None, max_length=40)
     message: str = Field(default="", max_length=500)
     snapshot: dict = Field(default_factory=dict, sa_column=Column(JSONB))
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class ComponentPatch(SQLModel, table=True):
@@ -24,4 +24,4 @@ class ComponentPatch(SQLModel, table=True):
     version_id: UUID = Field(foreign_key="versions.id", index=True)
     component_id: UUID = Field(foreign_key="components.id", index=True)
     patch_ops: list = Field(default_factory=list, sa_column=Column(JSONB))
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=datetime.utcnow)

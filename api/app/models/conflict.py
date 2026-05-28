@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import Column
@@ -18,5 +18,5 @@ class Conflict(SQLModel, table=True):
     patch_a: list = Field(default_factory=list, sa_column=Column(JSONB))
     patch_b: list = Field(default_factory=list, sa_column=Column(JSONB))
     resolved_by_user_id: UUID | None = Field(default=None, foreign_key="users.id")
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
     resolved_at: datetime | None = None

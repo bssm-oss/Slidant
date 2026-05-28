@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: slidant-postgres
+    environment:
+      POSTGRES_USER: slidant
+      POSTGRES_PASSWORD: slidant
+      POSTGRES_DB: slidant
+    ports:
+      - "5432:5432"
+    volumes:
+      - slidant_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: slidant-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+volumes:
+  slidant_postgres_data:

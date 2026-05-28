@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlmodel import Field, SQLModel
@@ -10,5 +10,5 @@ class Project(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     owner_id: UUID = Field(foreign_key="users.id", index=True)
     title: str = Field(max_length=500)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)

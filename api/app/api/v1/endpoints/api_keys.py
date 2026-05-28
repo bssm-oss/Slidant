@@ -32,7 +32,7 @@ async def register_api_key(body: ApiKeyCreate, current_user: CurrentUser, db: DB
         )
     )
     for old in existing.scalars().all():
-        old.deleted_at = datetime.now(timezone.utc)
+        old.deleted_at = datetime.utcnow()
 
     api_key = ApiKey(
         user_id=current_user.id,
@@ -50,7 +50,7 @@ async def delete_api_key(key_id: UUID, current_user: CurrentUser, db: DB):
     api_key = await db.get(ApiKey, key_id)
     if not api_key or api_key.user_id != current_user.id or api_key.deleted_at:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API key not found")
-    api_key.deleted_at = datetime.now(timezone.utc)
+    api_key.deleted_at = datetime.utcnow()
     await db.commit()
 
 

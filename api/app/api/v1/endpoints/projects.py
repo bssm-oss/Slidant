@@ -55,7 +55,7 @@ async def update_project(project_id: UUID, body: ProjectUpdate, current_user: Cu
     if not project or project.owner_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     project.title = body.title
-    project.updated_at = datetime.now(timezone.utc)
+    project.updated_at = datetime.utcnow()
     await db.commit()
     await db.refresh(project)
     return project
@@ -166,7 +166,7 @@ async def update_component(
         comp.properties = body.properties
     if body.order is not None:
         comp.order = body.order
-    comp.updated_at = datetime.now(timezone.utc)
+    comp.updated_at = datetime.utcnow()
     await db.commit()
     await db.refresh(comp)
     return comp
@@ -205,7 +205,7 @@ async def apply_json_patch(
         elif operation == "remove":
             await db.delete(comp)
 
-        comp.updated_at = datetime.now(timezone.utc)
+        comp.updated_at = datetime.utcnow()
 
     await db.commit()
     result2 = await db.execute(

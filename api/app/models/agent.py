@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import Column
@@ -15,7 +15,7 @@ class AgentDefinition(SQLModel, table=True):
     role: str = Field(max_length=50)  # content | design | layout | custom
     config: dict = Field(default_factory=dict, sa_column=Column(JSONB))
     is_system: bool = False
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class AgentRun(SQLModel, table=True):
@@ -41,4 +41,4 @@ class LlmLog(SQLModel, table=True):
     tokens_input: int = 0
     tokens_output: int = 0
     cache_hit: bool = False
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
