@@ -1,0 +1,28 @@
+.contexty
+
+# Dependencies
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+
+# Build
+dist/
+build/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Editor
+.DS_Store
+.idea/
+.vscode/
+
+# Python
+*.egg-info/
+.pytest_cache/
+
+# Logs
+*.log
