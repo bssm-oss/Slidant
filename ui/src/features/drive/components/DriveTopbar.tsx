@@ -7,8 +7,8 @@ export default function DriveTopbar() {
   const navigate = useNavigate()
   const { setSearch, createPresentation } = useDriveStore()
 
-  const handleCreate = () => {
-    const id = createPresentation()
+  const handleCreate = async () => {
+    const id = await createPresentation()
     navigate(`/edit/${id}`)
   }
 

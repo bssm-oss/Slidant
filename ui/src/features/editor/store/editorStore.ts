@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 import type { Presentation, Slide, Agent, AgentLog, AgentStatus } from '@/shared/types'
-import { getMockPresentation } from '@/shared/mock/presentations'
 import { mockAgents, mockAgentLogs } from '@/shared/mock/agents'
 
 interface EditorState {
@@ -14,7 +13,7 @@ interface EditorState {
   activeRightTab: 'agent' | 'properties'
   isTitleEditing: boolean
 
-  loadPresentation: (id: string) => void
+  loadPresentation: (id: string) => Promise<void>
   setCurrentSlide: (index: number) => void
   selectComponent: (id: string | null) => void
   setCommandPaletteOpen: (open: boolean) => void
@@ -36,7 +35,17 @@ export const useEditorStore = create<EditorState>((set, _get) => ({
   activeRightTab: 'agent',
   isTitleEditing: false,
 
-  loadPresentation: (id) => set({ presentation: getMockPresentation(id) ?? null }),
+  loadPresentation: async (id) => {
+    try {
+      const { fetchProjectWithSlides } = await import('@/shared/lib/projectApi')
+      const ppt = await fetchProjectWithSlides(id)
+      set({ presentation: ppt })
+    } catch {
+      // fallback to mock during development
+      const { getMockPresentation } = await import('@/shared/mock/presentations')
+      set({ presentation: getMockPresentation(id) ?? null })
+    }
+  },
 
   setCurrentSlide: (index) => set({ currentSlideIndex: index, selectedComponentId: null }),
 

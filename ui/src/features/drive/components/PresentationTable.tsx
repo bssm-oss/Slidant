@@ -25,17 +25,25 @@ export default function PresentationTable({ presentations }: { presentations: Pr
     setMenuOpenId(null)
   }
 
-  const submitRename = (id: string) => {
+  const submitRename = async (id: string) => {
     if (renameValue.trim()) {
-      renamePresentation(id, renameValue.trim())
-      toast('이름이 변경되었습니다', 'success')
+      try {
+        await renamePresentation(id, renameValue.trim())
+        toast('이름이 변경되었습니다', 'success')
+      } catch (err: any) {
+        toast(err.message ?? '이름 변경 실패', 'error')
+      }
     }
     setRenamingId(null)
   }
 
-  const handleDelete = (id: string) => {
-    deletePresentation(id)
-    toast('삭제되었습니다', 'success')
+  const handleDelete = async (id: string) => {
+    try {
+      await deletePresentation(id)
+      toast('삭제되었습니다', 'success')
+    } catch (err: any) {
+      toast(err.message ?? '삭제 실패', 'error')
+    }
     setMenuOpenId(null)
   }
 

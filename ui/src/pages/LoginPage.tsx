@@ -5,11 +5,28 @@ import { Button, Input } from '@/shared/components/ui'
 import AuthCard from '@/features/auth/components/AuthCard'
 import GoogleButton from '@/features/auth/components/GoogleButton'
 import Divider from '@/features/auth/components/Divider'
+import { login } from '@/shared/lib/auth'
+import { useToastStore } from '@/shared/components/ui/Toast'
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const toast = useToastStore((s) => s.push)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    try {
+      await login({ email, password })
+      navigate('/drive')
+    } catch (err: any) {
+      toast(err.message ?? '로그인 실패', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
     <AppShell>
@@ -23,7 +40,7 @@ export default function LoginPage() {
         </div>
 
         <AuthCard title="로그인" subtitle="계속하려면 로그인하세요">
-          <form onSubmit={(e) => { e.preventDefault(); navigate('/drive') }} className="flex flex-col gap-3">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-semibold text-[var(--text-muted)]">이메일</label>
               <Input type="email" placeholder="name@example.com" value={email} onChange={e => setEmail(e.target.value)} required />
@@ -35,10 +52,12 @@ export default function LoginPage() {
               </div>
               <Input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required />
             </div>
-            <Button type="submit" variant="primary" className="w-full mt-1">로그인</Button>
+            <Button type="submit" variant="primary" className="w-full mt-1" disabled={loading}>
+              {loading ? '로그인 중...' : '로그인'}
+            </Button>
           </form>
           <Divider />
-          <GoogleButton label="Google로 계속" onClick={() => navigate('/drive')} />
+          <GoogleButton label="Google로 계속" onClick={() => toast('Google 로그인 준비 중', 'info')} />
           <p className="text-xs text-center text-[var(--text-muted)]">
             계정이 없으신가요?{' '}
             <Link to="/signup" className="text-[var(--accent)] hover:text-[var(--accent-hover)] font-semibold transition-colors">회원가입</Link>
