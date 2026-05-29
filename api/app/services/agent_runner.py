@@ -88,6 +88,25 @@ def build_agent_graph(role: str, llm: ChatAnthropic) -> StateGraph:
     return graph.compile()
 
 
+def _mock_patches(role: str, command: str, components: list[dict]) -> list[dict]:
+    """크레딧 없을 때 사용하는 Mock 응답"""
+    patches = []
+    for comp in components:
+        if comp.get("type") == "text" and role in ("content", "custom"):
+            patches.append({
+                "op": "replace",
+                "path": f"/{comp['id']}/properties/content",
+                "value": f"[{role.upper()}] {comp.get('properties', {}).get('content', '')} (명령: {command})",
+            })
+        elif role == "design":
+            patches.append({
+                "op": "replace",
+                "path": f"/{comp['id']}/properties/weight",
+                "value": "bold",
+            })
+    return patches
+
+
 async def run_agent(
     *,
     role: str,
@@ -98,17 +117,30 @@ async def run_agent(
     """
     Returns: (patch_ops, agent_response_text)
     """
+    from app.core.config import settings
+
+    slide_context = build_slide_context(components)
+
+    # Mock 모드: MOCK_AGENT=true 또는 크레딧 부족 시 fallback
+    if getattr(settings, "MOCK_AGENT", False):
+        return _mock_patches(role, command, components), slide_context
+
     api_key = decrypt_api_key(encrypted_api_key)
     llm = _make_llm(api_key)
     graph = build_agent_graph(role, llm)
-    slide_context = build_slide_context(components)
 
-    result = await graph.ainvoke({
-        "messages": [],
-        "command": command,
-        "slide_context": slide_context,
-        "agent_name": role,
-        "result_patches": [],
-    })
-
-    return result.get("result_patches", []), slide_context
+    try:
+        result = await graph.ainvoke({
+            "messages": [],
+            "command": command,
+            "slide_context": slide_context,
+            "agent_name": role,
+            "result_patches": [],
+        })
+        return result.get("result_patches", []), slide_context
+    except Exception as e:
+        err_str = str(e)
+        # 크레딧 부족 → mock으로 fallback
+        if "credit balance" in err_str or "insufficient" in err_str.lower():
+            return _mock_patches(role, command, components), slide_context
+        raise

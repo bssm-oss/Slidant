@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     FERNET_KEY: str = ""
 
     APP_ENV: str = "development"
+    MOCK_AGENT: bool = False
 
     @property
     def is_production(self) -> bool:
