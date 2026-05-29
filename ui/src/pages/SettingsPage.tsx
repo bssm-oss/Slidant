@@ -19,6 +19,7 @@ export default function SettingsPage() {
   const [apiKeys, setApiKeys] = useState<ApiKeyInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [inputKey, setInputKey] = useState('')
+  const [provider, setProvider] = useState<'openrouter' | 'anthropic'>('openrouter')
   const [registering, setRegistering] = useState(false)
 
   const load = async () => {
@@ -41,7 +42,7 @@ export default function SettingsPage() {
     if (!inputKey.trim()) return
     setRegistering(true)
     try {
-      await api.post('/user/api-keys', { api_key: inputKey.trim(), provider: 'anthropic' })
+      await api.post('/user/api-keys', { api_key: inputKey.trim(), provider })
       setInputKey('')
       toast('API Key 등록 완료', 'success')
       load()
@@ -137,20 +138,47 @@ export default function SettingsPage() {
             {/* 새 Key 등록 */}
             <div className="flex flex-col gap-2">
               <label className="text-xs font-semibold text-[var(--text-muted)]">API Key 등록</label>
+
+              {/* Provider 선택 */}
+              <div className="flex gap-2">
+                {(['openrouter', 'anthropic'] as const).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setProvider(p)}
+                    className={`flex-1 py-2 text-xs font-semibold rounded-[8px] border transition-all cursor-pointer ${
+                      provider === p
+                        ? 'bg-[var(--accent-subtle)] text-[var(--accent-text)] border-purple-200'
+                        : 'bg-white text-[var(--text-muted)] border-[var(--border)] hover:border-[var(--border-strong)]'
+                    }`}
+                  >
+                    {p === 'openrouter' ? '🆓 OpenRouter' : 'Anthropic'}
+                  </button>
+                ))}
+              </div>
+
+              {provider === 'openrouter' && (
+                <div className="px-3 py-2 rounded-[8px] bg-[var(--mint-subtle)] border border-emerald-200 text-xs text-[var(--mint-text)]">
+                  OpenRouter는 무료 모델 제공 (Llama 3.3 70B 등).{' '}
+                  <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="underline font-semibold">
+                    openrouter.ai/keys →
+                  </a>
+                </div>
+              )}
+
               <div className="flex gap-2">
                 <input
                   type="password"
                   value={inputKey}
                   onChange={(e) => setInputKey(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleRegister()}
-                  placeholder="sk-ant-api03-..."
+                  placeholder={provider === 'openrouter' ? 'sk-or-v1-...' : 'sk-ant-api03-...'}
                   className="flex-1 h-10 px-3 text-sm border border-[var(--border)] rounded-[var(--radius)] outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/15 bg-white font-mono"
                 />
                 <Button variant="primary" size="md" onClick={handleRegister} disabled={registering || !inputKey.trim()}>
                   {registering ? '등록 중...' : '등록'}
                 </Button>
               </div>
-              <p className="text-xs text-[var(--text-disabled)]">기존 Key가 있으면 자동으로 교체됩니다</p>
+              <p className="text-xs text-[var(--text-disabled)]">기존 {provider} Key가 있으면 자동으로 교체됩니다</p>
             </div>
           </section>
         </div>

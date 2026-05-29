@@ -17,13 +17,19 @@ _ws_connections: dict[str, list[WebSocket]] = {}
 
 @router.post("/run", response_model=AgentRunResponse, status_code=status.HTTP_202_ACCEPTED)
 async def run_agent_endpoint(body: AgentRunRequest, current_user: CurrentUser, uow: UoW):
-    # API Key 조회
-    api_key = await uow.api_keys.get_active(current_user.id, "anthropic")
+    # API Key 조회 — openrouter 우선, 없으면 anthropic
+    api_key = await uow.api_keys.get_active(current_user.id, "openrouter")
+    provider = "openrouter"
     if not api_key:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Anthropic API key not registered",
-        )
+        api_key = await uow.api_keys.get_active(current_user.id, "anthropic")
+        provider = "anthropic"
+    if not api_key:
+        from app.core.config import settings
+        if not settings.MOCK_AGENT:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="API key not registered. Register OpenRouter or Anthropic key in Settings.",
+            )
 
     # AgentDefinition 조회 or 시스템 기본 사용
     agent_def = await uow.agent_definitions.get_system_by_role(body.agent_role)
@@ -67,7 +73,8 @@ async def run_agent_endpoint(body: AgentRunRequest, current_user: CurrentUser, u
             role=body.agent_role,
             command=body.command,
             components=components,
-            encrypted_api_key=api_key.encrypted_key,
+            encrypted_api_key=api_key.encrypted_key if api_key else "",
+            provider=provider,
         )
 
         # 패치 적용

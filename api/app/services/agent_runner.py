@@ -5,10 +5,14 @@ from uuid import UUID
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
 from app.core.security import decrypt_api_key
+
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+OPENROUTER_DEFAULT_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
 
 
 class AgentState(TypedDict):
@@ -55,9 +59,16 @@ def build_slide_context(components: list[dict]) -> str:
     return f'<slide>{"".join(parts)}</slide>'
 
 
-def _make_llm(api_key_plaintext: str, model: str = "claude-sonnet-4-6") -> ChatAnthropic:
+def _make_llm(api_key_plaintext: str, provider: str = "anthropic"):
+    if provider == "openrouter":
+        return ChatOpenAI(
+            base_url=OPENROUTER_BASE_URL,
+            api_key=api_key_plaintext,
+            model=OPENROUTER_DEFAULT_MODEL,
+            max_tokens=2048,
+        )
     return ChatAnthropic(
-        model=model,
+        model="claude-sonnet-4-6",
         api_key=api_key_plaintext,
         max_tokens=2048,
     )
@@ -113,6 +124,7 @@ async def run_agent(
     command: str,
     components: list[dict],
     encrypted_api_key: str,
+    provider: str = "anthropic",
 ) -> tuple[list[dict], str]:
     """
     Returns: (patch_ops, agent_response_text)
@@ -126,7 +138,7 @@ async def run_agent(
         return _mock_patches(role, command, components), slide_context
 
     api_key = decrypt_api_key(encrypted_api_key)
-    llm = _make_llm(api_key)
+    llm = _make_llm(api_key, provider)
     graph = build_agent_graph(role, llm)
 
     try:
