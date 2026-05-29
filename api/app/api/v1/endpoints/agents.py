@@ -1,14 +1,11 @@
 import json as json_lib
-from datetime import datetime, timezone
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, status
-from sqlalchemy import select
 
-from app.core.deps import CurrentUser, DB
+from app.core.deps import CurrentUser, UoW
 from app.models.agent import AgentDefinition, AgentRun, LlmLog
-from app.models.api_key import ApiKey
-from app.models.component import Component
 from app.schemas.agent import AgentRunRequest, AgentRunResponse
 from app.services.agent_runner import run_agent
 
@@ -19,16 +16,9 @@ _ws_connections: dict[str, list[WebSocket]] = {}
 
 
 @router.post("/run", response_model=AgentRunResponse, status_code=status.HTTP_202_ACCEPTED)
-async def run_agent_endpoint(body: AgentRunRequest, current_user: CurrentUser, db: DB):
+async def run_agent_endpoint(body: AgentRunRequest, current_user: CurrentUser, uow: UoW):
     # API Key 조회
-    result = await db.execute(
-        select(ApiKey).where(
-            ApiKey.user_id == current_user.id,
-            ApiKey.provider == "anthropic",
-            ApiKey.deleted_at.is_(None),
-        )
-    )
-    api_key = result.scalar_one_or_none()
+    api_key = await uow.api_keys.get_active(current_user.id, "anthropic")
     if not api_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -36,13 +26,7 @@ async def run_agent_endpoint(body: AgentRunRequest, current_user: CurrentUser, d
         )
 
     # AgentDefinition 조회 or 시스템 기본 사용
-    agent_def_result = await db.execute(
-        select(AgentDefinition).where(
-            AgentDefinition.role == body.agent_role,
-            AgentDefinition.is_system == True,  # noqa
-        )
-    )
-    agent_def = agent_def_result.scalar_one_or_none()
+    agent_def = await uow.agent_definitions.get_system_by_role(body.agent_role)
     if not agent_def:
         # 없으면 즉석 생성
         agent_def = AgentDefinition(
@@ -50,8 +34,8 @@ async def run_agent_endpoint(body: AgentRunRequest, current_user: CurrentUser, d
             role=body.agent_role,
             is_system=True,
         )
-        db.add(agent_def)
-        await db.flush()
+        uow.agent_definitions.add(agent_def)
+        await uow.flush()
 
     # AgentRun 생성
     agent_run = AgentRun(
@@ -60,8 +44,8 @@ async def run_agent_endpoint(body: AgentRunRequest, current_user: CurrentUser, d
         status="running",
         started_at=datetime.utcnow(),
     )
-    db.add(agent_run)
-    await db.flush()
+    uow.agent_runs.add(agent_run)
+    await uow.flush()
 
     # WebSocket 구독자에게 시작 알림
     await _broadcast(str(body.project_id), {
@@ -71,11 +55,8 @@ async def run_agent_endpoint(body: AgentRunRequest, current_user: CurrentUser, d
         "command": body.command,
     })
 
-    # 컴포넌트 조회 — 리스트로 변환하여 scalars() 소진 방지
-    comp_result = await db.execute(
-        select(Component).where(Component.slide_id == body.slide_id).order_by(Component.order)
-    )
-    components_orm = list(comp_result.scalars().all())
+    # 컴포넌트 조회
+    components_orm = await uow.components.list_by_slide(body.slide_id)
     components = [
         {"id": str(c.id), "type": c.type, "properties": c.properties, "order": c.order}
         for c in components_orm
@@ -97,7 +78,7 @@ async def run_agent_endpoint(body: AgentRunRequest, current_user: CurrentUser, d
             comp_id_str, field = path_parts[0], path_parts[1]
             try:
                 comp_uuid = UUID(comp_id_str)
-                comp_obj = await db.get(Component, comp_uuid)
+                comp_obj = await uow.components.get(comp_uuid)
                 if comp_obj and comp_obj.slide_id == body.slide_id:
                     if field == "properties" and len(path_parts) > 2:
                         prop_key = path_parts[2]
@@ -119,8 +100,8 @@ async def run_agent_endpoint(body: AgentRunRequest, current_user: CurrentUser, d
             tokens_output=0,
             cache_hit=False,
         )
-        db.add(llm_log)
-        await db.commit()
+        uow.llm_logs.add(llm_log)
+        await uow.flush()
 
         await _broadcast(str(body.project_id), {
             "type": "agent_done",
@@ -131,7 +112,7 @@ async def run_agent_endpoint(body: AgentRunRequest, current_user: CurrentUser, d
     except Exception as e:
         agent_run.status = "error"
         agent_run.finished_at = datetime.utcnow()
-        await db.commit()
+        await uow.flush()
         await _broadcast(str(body.project_id), {
             "type": "agent_error",
             "agent_run_id": str(agent_run.id),
@@ -139,19 +120,13 @@ async def run_agent_endpoint(body: AgentRunRequest, current_user: CurrentUser, d
         })
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
-    await db.refresh(agent_run)
+    await uow.refresh(agent_run)
     return agent_run
 
 
 @router.get("/logs/{project_id}", response_model=list[dict])
-async def get_agent_logs(project_id: UUID, current_user: CurrentUser, db: DB):
-    result = await db.execute(
-        select(AgentRun)
-        .where(AgentRun.project_id == project_id)
-        .order_by(AgentRun.started_at.desc())
-        .limit(50)
-    )
-    runs = result.scalars().all()
+async def get_agent_logs(project_id: UUID, current_user: CurrentUser, uow: UoW):
+    runs = await uow.agent_runs.list_by_project(project_id)
     return [
         {
             "id": str(r.id),
