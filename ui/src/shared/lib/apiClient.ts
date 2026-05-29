@@ -23,6 +23,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     },
   })
   if (!res.ok) {
+    if (res.status === 401) {
+      localStorage.removeItem('access_token')
+      window.location.href = '/login'
+      throw new Error('세션이 만료되었습니다. 다시 로그인하세요.')
+    }
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     throw new Error(err.detail ?? 'Request failed')
   }

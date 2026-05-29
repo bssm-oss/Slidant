@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import DashboardLayout from '@/shared/components/layout/DashboardLayout'
 import { Badge, Button, Card, Spinner } from '@/shared/components/ui'
 import { useToastStore } from '@/shared/components/ui/Toast'
 import { cn } from '@/shared/lib/utils'
 import { Bot, Plus, Settings2, Trash2, Zap } from 'lucide-react'
 import { fetchAgents, createAgent, deleteAgent, type AgentDefinition } from '@/shared/lib/agentApi'
+import { isLoggedIn } from '@/shared/lib/auth'
 
 type AgentRole = 'content' | 'design' | 'layout' | 'custom'
 
@@ -59,6 +61,7 @@ function AgentCard({ agent, onDelete }: { agent: AgentDefinition; onDelete?: () 
 
 export default function AgentsPage() {
   const toast = useToastStore((s) => s.push)
+  const navigate = useNavigate()
   const [systemAgents, setSystemAgents] = useState<AgentDefinition[]>([])
   const [customAgents, setCustomAgents] = useState<AgentDefinition[]>([])
   const [loading, setLoading] = useState(true)
@@ -80,7 +83,10 @@ export default function AgentsPage() {
     }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    if (!isLoggedIn()) { navigate('/login'); return }
+    load()
+  }, [])
 
   const handleCreate = async () => {
     if (!newName.trim()) return
