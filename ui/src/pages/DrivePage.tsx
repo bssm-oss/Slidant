@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { AppShell } from '@/shared/components/layout'
+import DashboardLayout from '@/shared/components/layout/DashboardLayout'
 import DriveTopbar from '@/features/drive/components/DriveTopbar'
 import PresentationCard from '@/features/drive/components/PresentationCard'
 import PresentationTable from '@/features/drive/components/PresentationTable'
@@ -20,8 +20,8 @@ export default function DrivePage() {
   }, [])
 
   return (
-    <AppShell>
-      <div className="flex flex-col h-screen overflow-hidden">
+    <DashboardLayout>
+      <div className="flex flex-col h-full overflow-hidden">
         <DriveTopbar />
         <div className="flex-1 overflow-y-auto">
           {loading ? (
@@ -59,6 +59,6 @@ export default function DrivePage() {
           )}
         </div>
       </div>
-    </AppShell>
+    </DashboardLayout>
   )
 }

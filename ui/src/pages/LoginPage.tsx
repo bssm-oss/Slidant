@@ -11,8 +11,8 @@ import { useToastStore } from '@/shared/components/ui/Toast'
 export default function LoginPage() {
   const navigate = useNavigate()
   const toast = useToastStore((s) => s.push)
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [email, setEmail] = useState('dev@slidant.com')
+  const [password, setPassword] = useState('pass1234')
   const [loading, setLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {

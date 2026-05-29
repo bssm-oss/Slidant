@@ -6,6 +6,7 @@ import DrivePage from '@/pages/DrivePage'
 import LoginPage from '@/pages/LoginPage'
 import SignupPage from '@/pages/SignupPage'
 import AgentFullPage from '@/pages/AgentFullPage'
+import AgentsPage from '@/pages/AgentsPage'
 import ToastContainer from '@/shared/components/ui/Toast'
 
 const queryClient = new QueryClient()
@@ -17,6 +18,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/drive" replace />} />
           <Route path="/drive" element={<DrivePage />} />
+          <Route path="/agents" element={<AgentsPage />} />
           <Route path="/edit/:id" element={<EditPage />} />
           <Route path="/edit/:id/agent" element={<AgentFullPage />} />
           <Route path="/login" element={<LoginPage />} />
