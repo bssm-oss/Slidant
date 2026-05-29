@@ -5,7 +5,7 @@ import { AgentStatusBadge, Button } from '@/shared/components/ui'
 import { Save, Share2, History } from 'lucide-react'
 
 export default function EditorTopbar() {
-  const { presentation, overallStatus, setCommandPaletteOpen, updateTitle, isTitleEditing, setTitleEditing } = useEditorStore()
+  const { presentation, overallStatus, setCommandPaletteOpen, saveTitle, isTitleEditing, setTitleEditing } = useEditorStore()
   const toast = useToastStore((s) => s.push)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -14,9 +14,16 @@ export default function EditorTopbar() {
     setTimeout(() => inputRef.current?.select(), 0)
   }
 
-  const handleTitleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+  const handleTitleBlur = async (e: React.FocusEvent<HTMLInputElement>) => {
     const val = e.target.value.trim()
-    if (val) updateTitle(val)
+    if (val) {
+      try {
+        await saveTitle(val)
+        toast('저장됨', 'success')
+      } catch {
+        toast('제목 저장 실패', 'error')
+      }
+    }
     setTitleEditing(false)
   }
 

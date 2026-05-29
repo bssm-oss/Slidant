@@ -31,13 +31,17 @@ function formatTime(ts: string) {
 export default function AgentFullPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { agents, agentLogs, overallStatus, loadPresentation, presentation, runAgentSimulation } = useEditorStore()
+  const { agents, agentLogs, overallStatus, loadPresentation, loadAgentLogs, connectWs, presentation, runAgent: executeAgent } = useEditorStore()
   const toast = useToastStore((s) => s.push)
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
 
   useEffect(() => {
-    if (id) loadPresentation(id)
-  }, [id, loadPresentation])
+    if (!id) return
+    loadPresentation(id)
+    loadAgentLogs(id)
+    const unsub = connectWs(id)
+    return unsub
+  }, [id])
 
   // 선택된 에이전트 상태 실시간 동기화
   useEffect(() => {
@@ -47,9 +51,13 @@ export default function AgentFullPage() {
     }
   }, [agents])
 
-  const handleQuickRun = (label: string) => {
-    runAgentSimulation(label)
-    toast(`Agent 작업 시작: ${label}`, 'info')
+  const handleQuickRun = async (label: string) => {
+    try {
+      await executeAgent(label)
+      toast(`Agent 작업 시작: ${label}`, 'info')
+    } catch (e: any) {
+      toast(e.message ?? '실행 실패', 'error')
+    }
   }
 
   return (

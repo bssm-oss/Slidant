@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { useEditorStore } from '@/features/editor/store/editorStore'
+import { wsClient } from '@/shared/lib/wsClient'
 import { AppShell } from '@/shared/components/layout'
 import EditorTopbar from '@/features/editor/components/EditorTopbar'
 import LayerSidebar from '@/features/editor/components/LayerSidebar'
@@ -11,11 +12,18 @@ import CommandPalette from '@/features/editor/components/CommandPalette'
 
 export default function EditPage() {
   const { id } = useParams<{ id: string }>()
-  const loadPresentation = useEditorStore((s) => s.loadPresentation)
+  const { loadPresentation, loadAgentLogs, connectWs } = useEditorStore()
 
   useEffect(() => {
-    loadPresentation(id ?? 'ppt-1')
-  }, [id, loadPresentation])
+    if (!id) return
+    loadPresentation(id)
+    loadAgentLogs(id)
+    const unsubscribe = connectWs(id)
+    return () => {
+      unsubscribe()
+      wsClient.disconnect()
+    }
+  }, [id])
 
   return (
     <AppShell>

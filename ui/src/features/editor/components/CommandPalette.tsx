@@ -12,7 +12,7 @@ const suggestions = [
 ]
 
 export default function CommandPalette() {
-  const { isCommandPaletteOpen, setCommandPaletteOpen, runAgentSimulation, setActiveRightTab } = useEditorStore()
+  const { isCommandPaletteOpen, setCommandPaletteOpen, runAgent: executeAgent } = useEditorStore()
   const toast = useToastStore((s) => s.push)
   const inputRef = useRef<HTMLInputElement>(null)
   const [input, setInput] = useState('')
@@ -31,16 +31,18 @@ export default function CommandPalette() {
     if (isCommandPaletteOpen) { inputRef.current?.focus(); setInput(''); setRunning(false) }
   }, [isCommandPaletteOpen])
 
-  const handleRun = (label: string) => {
+  const handleRun = async (label: string) => {
     const command = input.trim() || label
     setRunning(true)
-    setTimeout(() => {
-      setCommandPaletteOpen(false)
-      setRunning(false)
-      setActiveRightTab('agent')
-      runAgentSimulation(command)
+    try {
+      await executeAgent(command)
       toast(`Agent 작업 시작: ${command}`, 'info')
-    }, 600)
+    } catch (e: any) {
+      toast(e.message ?? 'Agent 실행 실패', 'error')
+    } finally {
+      setRunning(false)
+      setCommandPaletteOpen(false)
+    }
   }
 
   const handleSubmit = (e: React.FormEvent) => {
