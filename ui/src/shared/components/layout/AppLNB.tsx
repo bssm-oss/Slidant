@@ -1,12 +1,13 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { cn } from '@/shared/lib/utils'
-import { FolderOpen, Bot, LogOut, Plus } from 'lucide-react'
+import { FolderOpen, Bot, Settings, LogOut, Plus } from 'lucide-react'
 import { logout } from '@/shared/lib/auth'
 import { useDriveStore } from '@/features/drive/store/driveStore'
 
 const navItems = [
-  { to: '/drive',  icon: FolderOpen, label: '내 드라이브' },
-  { to: '/agents', icon: Bot,        label: '에이전트 관리' },
+  { to: '/drive',    icon: FolderOpen, label: '내 드라이브' },
+  { to: '/agents',   icon: Bot,        label: '에이전트 관리' },
+  { to: '/settings', icon: Settings,   label: '설정' },
 ]
 
 export default function AppLNB() {
