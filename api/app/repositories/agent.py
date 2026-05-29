@@ -18,6 +18,21 @@ class AgentDefinitionRepository(BaseRepository[AgentDefinition]):
         )
         return result.scalar_one_or_none()
 
+    async def list_system(self) -> list[AgentDefinition]:
+        result = await self.session.execute(
+            select(AgentDefinition).where(AgentDefinition.is_system.is_(True))
+        )
+        return list(result.scalars().all())
+
+    async def list_by_user(self, user_id: UUID) -> list[AgentDefinition]:
+        result = await self.session.execute(
+            select(AgentDefinition).where(
+                AgentDefinition.user_id == user_id,
+                AgentDefinition.is_system.is_(False),
+            )
+        )
+        return list(result.scalars().all())
+
 
 class AgentRunRepository(BaseRepository[AgentRun]):
     model = AgentRun
