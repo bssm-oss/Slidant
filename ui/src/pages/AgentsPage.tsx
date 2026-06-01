@@ -75,7 +75,7 @@ export default function AgentsPage() {
     try {
       const data = await fetchAgents()
       setSystemAgents(data.system)
-      setCustomAgents(data.custom)
+      setCustomAgents(data.library ?? [])
     } catch (e: any) {
       toast(e.message ?? '불러오기 실패', 'error')
     } finally {

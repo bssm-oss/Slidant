@@ -1,3 +1,35 @@
+/** 스트리밍 중인 JSON 텍스트에서 ops 배열의 완성된 객체만 추출 */
+function extractCompleteOps(text: string): any[] {
+  const opsIdx = text.indexOf('"ops"')
+  if (opsIdx === -1) return []
+  const arrStart = text.indexOf('[', opsIdx)
+  if (arrStart === -1) return []
+
+  const content = text.slice(arrStart + 1)
+  const ops: any[] = []
+  let depth = 0
+  let objStart = -1
+  let inString = false
+  let escape = false
+
+  for (let i = 0; i < content.length; i++) {
+    const ch = content[i]
+    if (escape) { escape = false; continue }
+    if (ch === '\\') { escape = true; continue }
+    if (ch === '"') { inString = !inString; continue }
+    if (inString) continue
+    if (ch === '{') { if (depth === 0) objStart = i; depth++ }
+    else if (ch === '}') {
+      depth--
+      if (depth === 0 && objStart !== -1) {
+        try { ops.push(JSON.parse(content.slice(objStart, i + 1))) } catch {}
+        objStart = -1
+      }
+    }
+  }
+  return ops
+}
+
 import { create } from 'zustand'
 import type { Presentation, Slide, Agent, AgentLog, AgentStatus, ChatMessage } from '@/shared/types'
 import { api } from '@/shared/lib/apiClient'
@@ -64,9 +96,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         status: 'idle' as AgentStatus,
         description: (a.config?.description as string) ?? '',
       })
+      // RightPanel에는 system(기본 3개) + 이 PPT 전용만 표시. library는 AgentManagerPanel 전용.
       const allAgents: Agent[] = [
         ...data.system.map(toAgent('sys')),
-        ...(data.library ?? []).map(toAgent('lib')),
         ...(data.project ?? []).map(toAgent('proj')),
       ]
       set({ agents: allAgents })
@@ -142,32 +174,70 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
       if (type === 'agent_token') {
         const accumulated = (msg.accumulated as string) ?? ''
-        // 스트리밍 중인 에이전트의 마지막 optimistic 메시지 업데이트
+
+        // 스트림 중 완성된 op 추출 → 슬라이드 preview 적용
+        const streamOps = extractCompleteOps(accumulated)
+
         set((s) => {
           const streamingAgent = s.agents.find((a) => a.status === 'running')
           if (!streamingAgent) return s
+
+          // 채팅 말풍선 실시간 업데이트
           const streamId = `streaming-${streamingAgent.definitionId}`
           const existing = s.chatMessages.find((m) => m.id === streamId)
-          if (existing) {
-            return {
-              chatMessages: s.chatMessages.map((m) =>
-                m.id === streamId ? { ...m, content: accumulated } : m
-              ),
-            }
+          const newMessages = existing
+            ? s.chatMessages.map((m) => m.id === streamId ? { ...m, content: accumulated } : m)
+            : [
+                ...s.chatMessages,
+                {
+                  id: streamId,
+                  role: 'agent' as const,
+                  content: accumulated,
+                  agentName: streamingAgent.name,
+                  agentDefinitionId: streamingAgent.definitionId,
+                  timestamp: new Date().toISOString(),
+                  type: 'info' as const,
+                },
+              ]
+
+          // 슬라이드 preview: add op → 임시 컴포넌트 렌더링
+          if (streamOps.length === 0 || !s.presentation) {
+            return { chatMessages: newMessages }
           }
+
+          const slideIndex = s.currentSlideIndex
+          const slide = s.presentation.slides[slideIndex]
+          if (!slide) return { chatMessages: newMessages }
+
+          // 이미 preview 적용된 수를 추적 (streaming- id prefix로 구분)
+          const previewCount = slide.components.filter((c) => c.id.startsWith('preview-')).length
+          const newOps = streamOps.slice(previewCount)
+
+          if (newOps.length === 0) return { chatMessages: newMessages }
+
+          const newComponents = newOps
+            .filter((op) => op.op === 'add' && op.path === '/-' && op.value?.properties)
+            .map((op, i) => {
+              const props = op.value.properties ?? {}
+              return {
+                id: `preview-${previewCount + i}-${Date.now()}`,
+                type: op.value.type ?? 'text',
+                position: props.position ?? { x: 0, y: 0 },
+                size: props.size ?? { w: 400, h: 60 },
+                props,
+                zIndex: previewCount + i + 100,
+              }
+            })
+
+          const newSlides = s.presentation.slides.map((sl, idx) =>
+            idx === slideIndex
+              ? { ...sl, components: [...sl.components.filter((c) => !c.id.startsWith('preview-')), ...slide.components.filter((c) => !c.id.startsWith('preview-')).slice(0), ...newComponents] }
+              : sl
+          )
+
           return {
-            chatMessages: [
-              ...s.chatMessages,
-              {
-                id: streamId,
-                role: 'agent' as const,
-                content: accumulated,
-                agentName: streamingAgent.name,
-                agentDefinitionId: streamingAgent.definitionId,
-                timestamp: new Date().toISOString(),
-                type: 'info' as const,
-              },
-            ],
+            chatMessages: newMessages,
+            presentation: { ...s.presentation, slides: newSlides },
           }
         })
       }
@@ -200,7 +270,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
       if (type === 'agent_done') {
         const { agents } = get()
-        const agentRunId = msg.agent_run_id as string
         // agent_run_id로 어떤 에이전트인지 특정 (agent_name 사용)
         const doneAgentName = (msg.agent_name as string) ?? ''
         const doneAgent = agents.find((a) => a.name === doneAgentName || a.status === 'running')
@@ -222,7 +291,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
             if (recentlyModified.has(id)) newConflicts.add(id)
           })
 
+          // preview 컴포넌트 제거 (loadPresentation이 실제 데이터로 교체)
+          const cleanedSlides = s.presentation?.slides.map((sl) => ({
+            ...sl,
+            components: sl.components.filter((c) => !c.id.startsWith('preview-')),
+          }))
+
           return {
+            presentation: cleanedSlides && s.presentation ? { ...s.presentation, slides: cleanedSlides } : s.presentation,
             runningAgentIds: newRunningIds,
             overallStatus: newRunningIds.size > 0 ? 'running' : 'idle',
             conflictComponentIds: newConflicts,
