@@ -31,7 +31,7 @@ function formatTime(ts: string) {
 export default function AgentFullPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { agents, agentLogs, overallStatus, loadPresentation, loadAgentLogs, connectWs, presentation, runAgent: executeAgent } = useEditorStore()
+  const { agents, agentLogs, overallStatus, loadPresentation, loadAgentLogs, loadAgents, connectWs, presentation, sendMessage } = useEditorStore()
   const toast = useToastStore((s) => s.push)
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
 
@@ -39,6 +39,7 @@ export default function AgentFullPage() {
     if (!id) return
     loadPresentation(id)
     loadAgentLogs(id)
+    loadAgents()
     const unsub = connectWs(id)
     return unsub
   }, [id])
@@ -53,7 +54,7 @@ export default function AgentFullPage() {
 
   const handleQuickRun = async (label: string) => {
     try {
-      await executeAgent(label)
+      await sendMessage(label)
       toast(`Agent 작업 시작: ${label}`, 'info')
     } catch (e: any) {
       toast(e.message ?? '실행 실패', 'error')

@@ -32,12 +32,23 @@ export type AgentStatus = 'idle' | 'running' | 'done' | 'error' | 'conflict'
 
 export interface Agent {
   id: string
+  definitionId?: string   // DB AgentDefinition.id
   name: string
-  role: AgentRole
+  role: string
   status: AgentStatus
   description?: string
   currentTask?: string
-  taskProgress?: number  // 0-100
+  taskProgress?: number
+}
+
+export interface ChatMessage {
+  id: string
+  role: 'user' | 'agent'
+  content: string
+  agentName?: string
+  agentDefinitionId?: string
+  timestamp: string
+  type: 'info' | 'success' | 'error'
 }
 
 export interface AgentLog {

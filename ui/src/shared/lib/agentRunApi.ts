@@ -5,6 +5,7 @@ export interface AgentRunRequest {
   slide_id: string
   command: string
   agent_role: string
+  agent_definition_id?: string
 }
 
 export interface AgentRunResponse {
@@ -22,8 +23,25 @@ export interface AgentLogEntry {
   finished_at: string | null
 }
 
+export interface ChatMessageEntry {
+  id: string
+  role: 'user' | 'agent'
+  content: string
+  agent_run_id: string | null
+  agent_definition_id: string | null
+  agent_name: string | null
+  affected_component_ids: string[]
+  slide_id: string | null
+  created_at: string
+}
+
 export const runAgent = (body: AgentRunRequest) =>
   api.post<AgentRunResponse>('/agent/run', body)
 
 export const fetchAgentLogs = (projectId: string) =>
   api.get<AgentLogEntry[]>(`/agent/logs/${projectId}`)
+
+export const fetchChatHistory = (projectId: string, agentId?: string) =>
+  api.get<ChatMessageEntry[]>(
+    `/agent/chat/${projectId}${agentId ? `?agent_id=${agentId}` : ''}`
+  )

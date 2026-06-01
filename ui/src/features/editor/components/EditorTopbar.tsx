@@ -2,10 +2,10 @@ import { useRef } from 'react'
 import { useEditorStore } from '../store/editorStore'
 import { useToastStore } from '@/shared/components/ui/Toast'
 import { AgentStatusBadge, Button } from '@/shared/components/ui'
-import { Save, Share2, History } from 'lucide-react'
+import { Save, Share2, History, Undo2 } from 'lucide-react'
 
 export default function EditorTopbar() {
-  const { presentation, overallStatus, setCommandPaletteOpen, saveTitle, isTitleEditing, setTitleEditing } = useEditorStore()
+  const { presentation, overallStatus, saveTitle, isTitleEditing, setTitleEditing } = useEditorStore()
   const toast = useToastStore((s) => s.push)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -17,24 +17,17 @@ export default function EditorTopbar() {
   const handleTitleBlur = async (e: React.FocusEvent<HTMLInputElement>) => {
     const val = e.target.value.trim()
     if (val) {
-      try {
-        await saveTitle(val)
-        toast('저장됨', 'success')
-      } catch {
-        toast('제목 저장 실패', 'error')
-      }
+      try { await saveTitle(val); toast('저장됨', 'success') }
+      catch { toast('제목 저장 실패', 'error') }
     }
     setTitleEditing(false)
   }
 
-  const handleSave = () => {
-    toast('저장되었습니다', 'success')
-  }
-
   return (
-    <div className="h-12 flex items-center justify-between px-4 border-b border-[var(--border)] bg-white shrink-0">
-      <div className="flex items-center gap-3">
-        <div className="w-7 h-7 rounded-[8px] bg-gradient-to-br from-[var(--accent)] to-[var(--pink)] flex items-center justify-center shadow-sm">
+    <div className="flex items-center justify-between px-4 border-b border-[var(--border)] bg-white shrink-0" style={{ height: 56 }}>
+      {/* 좌측: 로고 + 제목 */}
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="w-7 h-7 rounded-[8px] bg-gradient-to-br from-[var(--accent)] to-[var(--pink)] flex items-center justify-center shadow-sm shrink-0">
           <span className="text-white text-xs font-bold">S</span>
         </div>
         {isTitleEditing ? (
@@ -43,13 +36,13 @@ export default function EditorTopbar() {
             defaultValue={presentation?.title ?? ''}
             onBlur={handleTitleBlur}
             onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-            className="text-sm font-semibold text-[var(--text)] bg-transparent border-b border-[var(--accent)] outline-none px-0.5"
+            className="text-sm font-semibold text-[var(--text)] bg-transparent border-b border-[var(--accent)] outline-none px-0.5 w-48"
             autoFocus
           />
         ) : (
           <span
             onClick={handleTitleClick}
-            className="text-sm font-semibold text-[var(--text)] cursor-text hover:text-[var(--accent)] transition-colors"
+            className="text-sm font-semibold text-[var(--text)] cursor-text hover:text-[var(--accent)] transition-colors truncate max-w-48"
           >
             {presentation?.title ?? '제목 없음'}
           </span>
@@ -57,19 +50,22 @@ export default function EditorTopbar() {
         <AgentStatusBadge status={overallStatus} />
       </div>
 
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="sm" onClick={() => setCommandPaletteOpen(true)}>
-          <kbd className="text-[10px] text-[var(--text-disabled)] bg-[var(--bg-muted)] px-1.5 py-0.5 rounded-[4px] font-mono">⌘K</kbd>
-          Agent 요청
+      {/* 우측: 액션 */}
+      <div className="flex items-center gap-1.5 shrink-0">
+        <Button variant="ghost" size="sm" onClick={() => toast('버전 히스토리 준비 중', 'info')} title="히스토리" className="w-9 px-0 justify-center">
+          <History size={16} />
         </Button>
-        <Button variant="ghost" size="sm" onClick={() => toast('버전 히스토리 준비 중', 'info')}>
-          <History size={14} />
+        <Button variant="ghost" size="sm" onClick={() => toast('실행 취소 준비 중', 'info')} title="실행 취소" className="w-9 px-0 justify-center">
+          <Undo2 size={16} />
         </Button>
+        <div className="w-px h-5 bg-[var(--border)] mx-1" />
         <Button variant="ghost" size="sm" onClick={() => toast('공유 링크가 복사되었습니다', 'success')}>
-          <Share2 size={14} />
+          <Share2 size={15} />
+          공유
         </Button>
-        <Button variant="primary" size="sm" onClick={handleSave}>
-          <Save size={14} />저장
+        <Button variant="primary" size="sm" onClick={() => toast('저장되었습니다', 'success')}>
+          <Save size={15} />
+          저장
         </Button>
       </div>
     </div>

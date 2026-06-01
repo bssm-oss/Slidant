@@ -18,9 +18,9 @@ const variantStyles = {
 }
 
 const sizeStyles = {
-  sm: 'h-7 px-3 text-xs rounded-[8px]',
-  md: 'h-9 px-4 text-sm rounded-[var(--radius)]',
-  lg: 'h-11 px-6 text-base rounded-[14px]',
+  sm: 'h-8 px-3.5 text-xs gap-1.5 rounded-[8px]',
+  md: 'h-10 px-4 text-sm rounded-[var(--radius)]',
+  lg: 'h-12 px-6 text-base rounded-[14px]',
 }
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(
