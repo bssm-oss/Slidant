@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useEditorStore } from '../store/editorStore'
 import { cn } from '@/shared/lib/utils'
-import { X, Plus, Pencil, Trash2, Copy, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, Pencil, Trash2, Copy, ChevronDown, ChevronUp } from 'lucide-react'
 import type { AgentDefinition } from '@/shared/lib/agentApi'
 import {
   fetchAgents,
@@ -10,6 +10,11 @@ import {
   deleteAgent,
   cloneAgentToProject,
 } from '@/shared/lib/agentApi'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from '@/shared/components/ui/dialog'
+import { Input } from '@/shared/components/ui'
+import { Textarea } from '@/shared/components/ui/textarea'
 
 const ROLE_OPTIONS = [
   { value: 'content', label: '콘텐츠' },
@@ -34,10 +39,11 @@ interface AgentFormState {
 const EMPTY_FORM: AgentFormState = { name: '', role: 'custom', description: '' }
 
 interface Props {
+  open: boolean
   onClose: () => void
 }
 
-export default function AgentManagerPanel({ onClose }: Props) {
+export default function AgentManagerPanel({ open, onClose }: Props) {
   const { presentation, loadAgents } = useEditorStore()
   const projectId = presentation?.id
 
@@ -128,18 +134,11 @@ export default function AgentManagerPanel({ onClose }: Props) {
   )
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div
-        className="bg-[var(--bg-subtle)] rounded-[12px] border border-[var(--border)] shadow-2xl w-[480px] max-h-[80vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)] shrink-0">
-          <span className="text-[14px] font-semibold text-[var(--text)]">에이전트 관리</span>
-          <button onClick={onClose} className="p-1 rounded hover:bg-[var(--bg-muted)] transition-colors">
-            <X size={16} className="text-[var(--text-muted)]" />
-          </button>
-        </div>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent className="w-[480px] max-h-[80vh] flex flex-col p-0 gap-0">
+        <DialogHeader>
+          <DialogTitle>에이전트 관리</DialogTitle>
+        </DialogHeader>
 
         <div className="flex-1 overflow-y-auto">
           {/* Form */}
@@ -148,11 +147,10 @@ export default function AgentManagerPanel({ onClose }: Props) {
               <p className="text-[12px] font-semibold text-[var(--text)] mb-3">
                 {editingId ? '에이전트 수정' : '새 에이전트'}
               </p>
-              <div className="flex flex-col gap-2.5">
+              <div className="flex flex-col gap-3">
                 <div>
                   <label className="text-[11px] text-[var(--text-muted)] mb-1 block">이름</label>
-                  <input
-                    className="w-full bg-[var(--bg-subtle)] border border-[var(--border)] rounded-[6px] px-3 py-1.5 text-[12px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
+                  <Input
                     value={form.name}
                     onChange={(e) => setForm((f) => f && ({ ...f, name: e.target.value }))}
                     placeholder="에이전트 이름"
@@ -163,7 +161,7 @@ export default function AgentManagerPanel({ onClose }: Props) {
                   <div>
                     <label className="text-[11px] text-[var(--text-muted)] mb-1 block">역할</label>
                     <select
-                      className="w-full bg-[var(--bg-subtle)] border border-[var(--border)] rounded-[6px] px-3 py-1.5 text-[12px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
+                      className="w-full h-9 px-3 text-[13px] bg-white text-[var(--text)] border border-[var(--border)] rounded-[8px] outline-none focus:border-[var(--accent)] transition-colors"
                       value={form.role}
                       onChange={(e) => setForm((f) => f && ({ ...f, role: e.target.value }))}
                     >
@@ -175,8 +173,7 @@ export default function AgentManagerPanel({ onClose }: Props) {
                 )}
                 <div>
                   <label className="text-[11px] text-[var(--text-muted)] mb-1 block">역할 프롬프트 (System Prompt)</label>
-                  <textarea
-                    className="w-full bg-[var(--bg-subtle)] border border-[var(--border)] rounded-[6px] px-3 py-1.5 text-[12px] text-[var(--text)] outline-none focus:border-[var(--accent)] resize-none"
+                  <Textarea
                     rows={4}
                     value={form.description}
                     onChange={(e) => setForm((f) => f && ({ ...f, description: e.target.value }))}
@@ -194,7 +191,7 @@ export default function AgentManagerPanel({ onClose }: Props) {
                 <button
                   onClick={handleSave}
                   disabled={!form.name.trim() || loading}
-                  className="px-3 py-1.5 text-[12px] font-medium bg-[var(--accent)] text-white rounded-[6px] disabled:opacity-40 hover:opacity-90 transition-opacity"
+                  className="px-3 py-1.5 text-[12px] font-medium bg-[var(--accent)] text-white rounded-[8px] disabled:opacity-40 hover:opacity-90 transition-opacity"
                 >
                   {loading ? '저장 중...' : '저장'}
                 </button>
@@ -202,15 +199,11 @@ export default function AgentManagerPanel({ onClose }: Props) {
             </div>
           )}
 
-          {/* System agents */}
           <Section title="기본 에이전트" subtitle="수정 불가">
-            {systemAgents.map((a) => (
-              <AgentRow key={a.id} agent={a} badge={roleBadge(a.role)} />
-            ))}
+            {systemAgents.map((a) => <AgentRow key={a.id} agent={a} badge={roleBadge(a.role)} />)}
             {systemAgents.length === 0 && <Empty />}
           </Section>
 
-          {/* Project agents */}
           <Section
             title="이 PPT 전용"
             expanded={expandedSection === 'project'}
@@ -225,18 +218,12 @@ export default function AgentManagerPanel({ onClose }: Props) {
             }
           >
             {projectAgents.map((a) => (
-              <AgentRow
-                key={a.id}
-                agent={a}
-                badge={roleBadge(a.role)}
-                onEdit={() => openEdit(a)}
-                onDelete={() => handleDelete(a.id)}
-              />
+              <AgentRow key={a.id} agent={a} badge={roleBadge(a.role)}
+                onEdit={() => openEdit(a)} onDelete={() => handleDelete(a.id)} />
             ))}
             {projectAgents.length === 0 && <Empty text="이 PPT 전용 에이전트 없음" />}
           </Section>
 
-          {/* Library agents */}
           <Section
             title="내 라이브러리"
             subtitle="에이전트 페이지에서 관리"
@@ -245,18 +232,13 @@ export default function AgentManagerPanel({ onClose }: Props) {
           >
             {libraryAgents.map((a) => (
               <AgentRow
-                key={a.id}
-                agent={a}
-                badge={roleBadge(a.role)}
-                onEdit={() => openEdit(a)}
-                onDelete={() => handleDelete(a.id)}
+                key={a.id} agent={a} badge={roleBadge(a.role)}
+                onEdit={() => openEdit(a)} onDelete={() => handleDelete(a.id)}
                 extraAction={
                   projectId ? (
-                    <button
-                      onClick={() => handleClone(a.id)}
+                    <button onClick={() => handleClone(a.id)}
                       className="p-1.5 rounded hover:bg-[var(--bg-muted)] text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"
-                      title="이 PPT에 복사"
-                    >
+                      title="이 PPT에 복사">
                       <Copy size={12} />
                     </button>
                   ) : null
@@ -266,8 +248,8 @@ export default function AgentManagerPanel({ onClose }: Props) {
             {libraryAgents.length === 0 && <Empty text="라이브러리 에이전트 없음" />}
           </Section>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 

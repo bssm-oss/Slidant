@@ -1,41 +1,57 @@
-import { cn } from '@/shared/lib/utils'
+import { Slot } from '@radix-ui/react-slot'
+import { cva, type VariantProps } from 'class-variance-authority'
 import { type ButtonHTMLAttributes, forwardRef } from 'react'
+import { cn } from '@/shared/lib/utils'
 
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'ghost' | 'destructive'
-  size?: 'sm' | 'md' | 'lg'
-}
+const buttonVariants = cva(
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium transition-all duration-150 cursor-pointer disabled:pointer-events-none disabled:opacity-50 shrink-0',
+  {
+    variants: {
+      variant: {
+        primary:
+          'bg-gradient-to-r from-[var(--accent)] to-[#A855F7] hover:from-[var(--accent-hover)] hover:to-[#9333EA] text-white shadow-[0_2px_8px_rgba(124,58,237,0.3)] hover:shadow-[0_4px_12px_rgba(124,58,237,0.4)]',
+        secondary:
+          'bg-white hover:bg-[var(--bg-muted)] text-[var(--text)] border border-[var(--border)] hover:border-[var(--border-strong)]',
+        ghost:
+          'hover:bg-[var(--bg-muted)] text-[var(--text-muted)] hover:text-[var(--text)]',
+        destructive:
+          'bg-red-50 hover:bg-red-100 text-red-600 border border-red-200',
+        outline:
+          'border border-[var(--border)] bg-transparent hover:bg-[var(--bg-muted)] text-[var(--text)]',
+      },
+      size: {
+        sm: 'h-8 px-3 text-xs rounded-[8px]',
+        md: 'h-9 px-4 text-sm rounded-[10px]',
+        lg: 'h-10 px-5 text-sm rounded-[12px]',
+        icon: 'h-8 w-8 rounded-[8px]',
+      },
+    },
+    defaultVariants: {
+      variant: 'primary',
+      size: 'md',
+    },
+  },
+)
 
-const variantStyles = {
-  primary:
-    'bg-gradient-to-r from-[var(--accent)] to-[#A855F7] hover:from-[var(--accent-hover)] hover:to-[#9333EA] text-white shadow-[0_2px_8px_rgba(124,58,237,0.35)] hover:shadow-[0_4px_12px_rgba(124,58,237,0.45)]',
-  secondary:
-    'bg-white hover:bg-[var(--bg-muted)] text-[var(--text)] border border-[var(--border)] hover:border-[var(--border-strong)]',
-  ghost:
-    'hover:bg-[var(--bg-muted)] text-[var(--text-muted)] hover:text-[var(--text)]',
-  destructive:
-    'bg-red-50 hover:bg-red-100 text-red-600 border border-red-200',
-}
-
-const sizeStyles = {
-  sm: 'h-8 px-3.5 text-xs gap-1.5 rounded-[8px]',
-  md: 'h-10 px-4 text-sm rounded-[var(--radius)]',
-  lg: 'h-12 px-6 text-base rounded-[14px]',
+interface ButtonProps
+  extends ButtonHTMLAttributes<HTMLButtonElement>,
+    VariantProps<typeof buttonVariants> {
+  asChild?: boolean
 }
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant = 'primary', size = 'md', ...props }, ref) => (
-    <button
-      ref={ref}
-      className={cn(
-        'inline-flex items-center justify-center gap-2 font-medium transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed',
-        variantStyles[variant],
-        sizeStyles[size],
-        className,
-      )}
-      {...props}
-    />
-  ),
+  ({ className, variant, size, asChild = false, ...props }, ref) => {
+    const Comp = asChild ? Slot : 'button'
+    return (
+      <Comp
+        ref={ref}
+        className={cn(buttonVariants({ variant, size, className }))}
+        {...props}
+      />
+    )
+  },
 )
 Button.displayName = 'Button'
+
+export { Button, buttonVariants }
 export default Button

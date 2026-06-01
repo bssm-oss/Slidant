@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { useEditorStore } from '../store/editorStore'
 import { cn } from '@/shared/lib/utils'
-import { Plus, X, Copy, ArrowUp, ArrowDown } from 'lucide-react'
+import { Plus, X, Copy, ArrowUp, ArrowDown, MoreHorizontal } from 'lucide-react'
 import type { SlideComponent, Slide } from '@/shared/types'
 import {
   DndContext,
@@ -18,6 +18,10 @@ import {
   useSortable,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
+  DropdownMenuItem, DropdownMenuSeparator,
+} from '@/shared/components/ui/dropdown-menu'
 
 function MiniComponent({ comp }: { comp: SlideComponent }) {
   const props = comp.props as Record<string, unknown>
@@ -50,12 +54,6 @@ function MiniComponent({ comp }: { comp: SlideComponent }) {
   )
 }
 
-interface ContextMenu {
-  x: number
-  y: number
-  index: number
-}
-
 interface SortableSlideItemProps {
   slide: Slide
   index: number
@@ -63,14 +61,17 @@ interface SortableSlideItemProps {
   totalSlides: number
   onSelect: (i: number) => void
   onDelete: (i: number) => void
-  onContextMenu: (e: React.MouseEvent, i: number) => void
+  onDuplicate: (i: number) => void
+  onMoveUp: (i: number) => void
+  onMoveDown: (i: number) => void
 }
 
 function SortableSlideItem({
   slide, index, isCurrent, totalSlides,
-  onSelect, onDelete, onContextMenu,
+  onSelect, onDelete, onDuplicate, onMoveUp, onMoveDown,
 }: SortableSlideItemProps) {
   const [isHovered, setIsHovered] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: slide.id })
 
   return (
@@ -79,11 +80,10 @@ function SortableSlideItem({
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
       className="relative shrink-0"
       onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseLeave={() => { if (!menuOpen) setIsHovered(false) }}
     >
       <button
         onClick={() => onSelect(index)}
-        onContextMenu={(e) => onContextMenu(e, index)}
         {...attributes}
         {...listeners}
         className={cn(
@@ -106,15 +106,46 @@ function SortableSlideItem({
         <div className="absolute bottom-0.5 right-1 text-[9px] font-medium text-[var(--text-disabled)]">{index + 1}</div>
       </button>
 
-      {isHovered && totalSlides > 1 && (
-        <button
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => { e.stopPropagation(); onDelete(index) }}
-          className="absolute top-1 right-1 w-4 h-4 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center z-10 transition-colors"
-          title="슬라이드 삭제"
-        >
-          <X size={8} className="text-white" />
-        </button>
+      {/* Hover overlay actions */}
+      {(isHovered || menuOpen) && (
+        <div className="absolute top-1 right-1 flex gap-0.5 z-10">
+          <DropdownMenu open={menuOpen} onOpenChange={(v) => { setMenuOpen(v); if (!v) setIsHovered(false) }}>
+            <DropdownMenuTrigger asChild>
+              <button
+                onPointerDown={(e) => e.stopPropagation()}
+                className="w-5 h-5 rounded bg-white/90 hover:bg-white border border-[var(--border)] flex items-center justify-center shadow-sm transition-colors"
+              >
+                <MoreHorizontal size={10} className="text-[var(--text-muted)]" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="right" align="start">
+              <DropdownMenuItem onClick={() => onDuplicate(index)}>
+                <Copy size={12} /> 복제
+              </DropdownMenuItem>
+              {index > 0 && (
+                <DropdownMenuItem onClick={() => onMoveUp(index)}>
+                  <ArrowUp size={12} /> 위로 이동
+                </DropdownMenuItem>
+              )}
+              {index < totalSlides - 1 && (
+                <DropdownMenuItem onClick={() => onMoveDown(index)}>
+                  <ArrowDown size={12} /> 아래로 이동
+                </DropdownMenuItem>
+              )}
+              {totalSlides > 1 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => onDelete(index)}
+                    className="text-red-500 focus:text-red-500 focus:bg-red-50"
+                  >
+                    <X size={12} /> 삭제
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       )}
     </div>
   )
@@ -128,29 +159,9 @@ export default function SlideListPanel() {
     setCurrentSlide, addSlide, deleteSlide, duplicateSlide, reorderSlides,
   } = useEditorStore()
 
-  const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null)
-
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   )
-
-  useEffect(() => {
-    if (!contextMenu) return
-    const close = () => setContextMenu(null)
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close() }
-    window.addEventListener('click', close)
-    window.addEventListener('keydown', onKey)
-    return () => {
-      window.removeEventListener('click', close)
-      window.removeEventListener('keydown', onKey)
-    }
-  }, [contextMenu])
-
-  const handleContextMenu = useCallback((e: React.MouseEvent, index: number) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setContextMenu({ x: e.clientX, y: e.clientY, index })
-  }, [])
 
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event
@@ -180,7 +191,9 @@ export default function SlideListPanel() {
                 totalSlides={slides.length}
                 onSelect={setCurrentSlide}
                 onDelete={deleteSlide}
-                onContextMenu={handleContextMenu}
+                onDuplicate={duplicateSlide}
+                onMoveUp={(idx) => reorderSlides(idx, idx - 1)}
+                onMoveDown={(idx) => reorderSlides(idx, idx + 1)}
               />
             ))}
           </SortableContext>
@@ -193,48 +206,6 @@ export default function SlideListPanel() {
           <Plus size={14} className="text-[var(--text-disabled)] group-hover:text-[var(--accent)] transition-colors" />
         </button>
       </div>
-
-      {contextMenu && (
-        <div
-          style={{ position: 'fixed', top: contextMenu.y, left: contextMenu.x, zIndex: 9999 }}
-          className="bg-[var(--bg-base)] border border-[var(--border)] rounded-[8px] shadow-lg py-1 min-w-[140px]"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            onClick={() => { duplicateSlide(contextMenu.index); setContextMenu(null) }}
-            className="w-full px-3 py-1.5 text-left text-[12px] text-[var(--text-base)] hover:bg-[var(--bg-muted)] flex items-center gap-2"
-          >
-            <Copy size={12} /> 복제
-          </button>
-          {contextMenu.index > 0 && (
-            <button
-              onClick={() => { reorderSlides(contextMenu.index, contextMenu.index - 1); setContextMenu(null) }}
-              className="w-full px-3 py-1.5 text-left text-[12px] text-[var(--text-base)] hover:bg-[var(--bg-muted)] flex items-center gap-2"
-            >
-              <ArrowUp size={12} /> 위로 이동
-            </button>
-          )}
-          {contextMenu.index < slides.length - 1 && (
-            <button
-              onClick={() => { reorderSlides(contextMenu.index, contextMenu.index + 1); setContextMenu(null) }}
-              className="w-full px-3 py-1.5 text-left text-[12px] text-[var(--text-base)] hover:bg-[var(--bg-muted)] flex items-center gap-2"
-            >
-              <ArrowDown size={12} /> 아래로 이동
-            </button>
-          )}
-          {slides.length > 1 && (
-            <>
-              <div className="my-1 border-t border-[var(--border)]" />
-              <button
-                onClick={() => { deleteSlide(contextMenu.index); setContextMenu(null) }}
-                className="w-full px-3 py-1.5 text-left text-[12px] text-red-500 hover:bg-[var(--bg-muted)] flex items-center gap-2"
-              >
-                <X size={12} /> 삭제
-              </button>
-            </>
-          )}
-        </div>
-      )}
     </div>
   )
 }

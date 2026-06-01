@@ -1,6 +1,32 @@
 @import "pretendard/dist/web/static/pretendard.css";
 @import "tailwindcss";
 
+/* shadcn/ui Tailwind v4 token mapping */
+@theme inline {
+  --color-background:           #FFFFFF;
+  --color-foreground:           #1A1523;
+  --color-card:                 #FFFFFF;
+  --color-card-foreground:      #1A1523;
+  --color-popover:              #FFFFFF;
+  --color-popover-foreground:   #1A1523;
+  --color-primary:              #7C3AED;
+  --color-primary-foreground:   #FFFFFF;
+  --color-secondary:            #F1EFF9;
+  --color-secondary-foreground: #1A1523;
+  --color-muted:                #F1EFF9;
+  --color-muted-foreground:     #6B6580;
+  --color-accent:               #F1EFF9;
+  --color-accent-foreground:    #1A1523;
+  --color-destructive:          #EF4444;
+  --color-destructive-foreground: #FFFFFF;
+  --color-border:               #E5E2F0;
+  --color-input:                #E5E2F0;
+  --color-ring:                 #7C3AED;
+  --radius-sm:                  6px;
+  --radius-md:                  8px;
+  --radius-lg:                  12px;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;

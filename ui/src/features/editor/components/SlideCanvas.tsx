@@ -6,6 +6,43 @@ import type { SlideComponent } from '@/shared/types'
 const SLIDE_W = 960
 const SLIDE_H = 540
 
+function ImageComponent({ props }: { props: Record<string, unknown> }) {
+  const [broken, setBroken] = useState(false)
+  const src = (props.src ?? props.url) as string | undefined
+  const bg = (props.bgColor as string) ?? '#1e3a5f'
+  const radius = (props.borderRadius as number) ?? 0
+
+  if (!src || broken) {
+    return (
+      <div style={{
+        width: '100%', height: '100%',
+        background: bg,
+        borderRadius: radius,
+        border: '1px solid rgba(255,255,255,0.15)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 13, color: 'rgba(255,255,255,0.4)', userSelect: 'none',
+      }}>
+        {props.label as string ?? '이미지'}
+      </div>
+    )
+  }
+
+  return (
+    <img
+      src={src}
+      alt={(props.alt as string) ?? ''}
+      onError={() => setBroken(true)}
+      style={{
+        width: '100%', height: '100%',
+        objectFit: (props.objectFit as React.CSSProperties['objectFit']) ?? 'cover',
+        borderRadius: radius,
+        display: 'block',
+      }}
+      draggable={false}
+    />
+  )
+}
+
 function RenderComponent({ comp, isSelected, onClick }: {
   comp: SlideComponent
   isSelected: boolean
@@ -29,23 +66,52 @@ function RenderComponent({ comp, isSelected, onClick }: {
         isSelected && 'outline outline-2 outline-[var(--accent)] outline-offset-2 rounded-[4px]',
       )}
     >
-      {comp.type === 'text' ? (
+      {comp.type === 'text' && (
         <p style={{
           fontSize: (props.fontSize as number) ?? 16,
           fontWeight: (props.fontWeight as number) ?? 400,
           color: (props.color as string) ?? '#1A1523',
           textAlign: (props.align as React.CSSProperties['textAlign']) ?? 'left',
-          lineHeight: 1.4,
+          lineHeight: (props.lineHeight as number) ?? 1.4,
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
           userSelect: 'none',
+          width: '100%',
+          height: '100%',
         }}>
           {(props.content as string) ?? ''}
         </p>
-      ) : (
-        <div
-          style={{ background: (props.bgColor as string) ?? undefined }}
-          className="w-full h-full rounded-[6px] bg-[var(--bg-muted)] flex items-center justify-center text-[var(--text-disabled)] text-sm border border-[var(--border)]"
-        >
-          {comp.type}
+      )}
+
+      {comp.type === 'shape' && (
+        <div style={{
+          width: '100%',
+          height: '100%',
+          background: (props.bgColor as string) ?? (props.color as string) ?? '#e5e7eb',
+          borderRadius: (props.borderRadius as number) ?? 0,
+          border: props.borderColor ? `${props.borderWidth ?? 1}px solid ${props.borderColor}` : undefined,
+          opacity: (props.opacity as number) ?? 1,
+        }} />
+      )}
+
+      {comp.type === 'image' && (
+        <ImageComponent props={props} />
+      )}
+
+      {(comp.type === 'chart' || comp.type === 'layout') && (
+        <div style={{
+          width: '100%',
+          height: '100%',
+          background: (props.bgColor as string) ?? 'rgba(0,0,0,0.05)',
+          borderRadius: (props.borderRadius as number) ?? 4,
+          border: '1px dashed #cbd5e1',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 12,
+          color: '#94a3b8',
+        }}>
+          {comp.type === 'chart' ? '📊 차트' : '🗂 레이아웃'}
         </div>
       )}
     </div>

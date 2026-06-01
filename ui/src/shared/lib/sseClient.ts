@@ -16,7 +16,7 @@ class SseClient {
     this.es = new EventSource(`${apiBase}/agent/events/${projectId}`)
 
     // 에이전트 이벤트 타입별 수신
-    const eventTypes = ['connected', 'ping', 'agent_started', 'agent_done', 'agent_error', 'new_slides']
+    const eventTypes = ['connected', 'ping', 'agent_started', 'agent_token', 'agent_done', 'agent_error', 'new_slides']
     eventTypes.forEach((type) => {
       this.es?.addEventListener(type, (e: MessageEvent) => {
         if (type === 'ping' || type === 'connected') return

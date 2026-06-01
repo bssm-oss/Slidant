@@ -231,7 +231,7 @@ export default function RightPanel() {
       <div className="flex-1 overflow-y-auto">
         {activeRightTab === 'agent' ? <AgentTab /> : <PropertiesTab />}
       </div>
-      {showManager && <AgentManagerPanel onClose={() => setShowManager(false)} />}
+      <AgentManagerPanel open={showManager} onClose={() => setShowManager(false)} />
     </div>
   )
 }

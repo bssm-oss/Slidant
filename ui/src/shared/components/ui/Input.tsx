@@ -6,10 +6,11 @@ const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>
     <input
       ref={ref}
       className={cn(
-        'w-full h-9 px-3 text-sm bg-white text-[var(--text)] border border-[var(--border)] rounded-[8px]',
+        'flex w-full h-9 px-3 text-[13px] bg-white text-[var(--text)] border border-[var(--border)] rounded-[8px]',
         'placeholder:text-[var(--text-disabled)]',
-        'focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/15',
-        'transition-all duration-150 disabled:opacity-50 disabled:bg-[var(--bg-muted)]',
+        'focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-subtle)]',
+        'disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-[var(--bg-muted)]',
+        'transition-colors',
         className,
       )}
       {...props}
@@ -17,4 +18,6 @@ const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>
   ),
 )
 Input.displayName = 'Input'
+
+export { Input }
 export default Input
