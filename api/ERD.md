@@ -60,8 +60,7 @@ erDiagram
 
     VERSION {
         uuid id PK
-        uuid project_id FK
-        string git_commit_hash
+        uuid slide_id FK
         string message
         json snapshot
         timestamp created_at
@@ -127,7 +126,7 @@ erDiagram
     PROJECT ||--o{ SLIDE : "contains"
     SLIDE ||--o{ COMPONENT : "contains"
     COMPONENT ||--o{ COMPONENT : "nests (parent_id)"
-    PROJECT ||--o{ VERSION : "snapshots"
+    SLIDE ||--o{ VERSION : "snapshots"
     VERSION ||--o{ COMPONENT_PATCH : "records"
     COMPONENT_PATCH }o--|| COMPONENT : "patches"
     USER ||--o{ AGENT_DEFINITION : "defines (null=system)"
@@ -158,10 +157,12 @@ erDiagram
 | `LLM_LOG` | 프롬프트/응답 로그 (캐시 히트 여부 포함) |
 | `CONFLICT` | Agent 간 동일 컴포넌트 충돌 — 병합 전까지 pending |
 
-## 버전 관리 이중 구조
+## 버전 관리 구조
 
-- **`VERSION` + `COMPONENT_PATCH`**: 컴포넌트 단위 정밀 추적 (RFC 6902 JSON Patch)
-- **`VERSION.git_commit_hash`**: 프로젝트 전체 상태 Git 스냅샷 → 롤백 단위
+- **단위**: 슬라이드(Slide) 단위 — 슬라이드별 독립 이력, 개별 롤백 가능
+- **`VERSION.snapshot`**: 해당 슬라이드의 모든 컴포넌트 상태 JSON 스냅샷
+- **`COMPONENT_PATCH`**: RFC 6902 JSON Patch — 컴포넌트 단위 정밀 diff 기록
+- Agent가 `slide_id` 단위로 실행되므로 버전 경계와 일치
 
 ## 보안 메모
 
