@@ -40,12 +40,14 @@ async def delete_project(project_id: UUID, current_user: CurrentUser, uow: UoW):
 
 @router.get("/{project_id}/slides", response_model=list[SlideResponse])
 async def list_slides(project_id: UUID, current_user: CurrentUser, uow: UoW):
-    return await project_service.list_slides(uow.projects, uow.slides, project_id, current_user.id)
+    slides = await project_service.list_slides(uow.projects, uow.slides, project_id, current_user.id)
+    return [SlideResponse.from_slide(s) for s in slides]
 
 
 @router.post("/{project_id}/slides", response_model=SlideResponse, status_code=status.HTTP_201_CREATED)
 async def create_slide(project_id: UUID, body: SlideCreate, current_user: CurrentUser, uow: UoW):
-    return await project_service.create_slide(uow.projects, uow.slides, project_id, current_user.id, body.title)
+    slide = await project_service.create_slide(uow.projects, uow.slides, project_id, current_user.id, body.title)
+    return SlideResponse.from_slide(slide)
 
 
 @router.delete("/{project_id}/slides/{slide_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -60,21 +62,21 @@ async def reorder_slides(project_id: UUID, body: SlideReorder, current_user: Cur
 
 @router.get("/{project_id}/slides/{slide_id}/components", response_model=list[ComponentResponse])
 async def list_components(project_id: UUID, slide_id: UUID, current_user: CurrentUser, uow: UoW):
-    return await project_service.list_components(uow.projects, uow.components, project_id, current_user.id, slide_id)
+    return await project_service.list_components(uow.projects, uow.slides, project_id, current_user.id, slide_id)
 
 
 @router.post("/{project_id}/slides/{slide_id}/components", response_model=ComponentResponse, status_code=status.HTTP_201_CREATED)
 async def create_component(project_id: UUID, slide_id: UUID, body: ComponentCreate, current_user: CurrentUser, uow: UoW):
     return await project_service.create_component(
-        uow.projects, uow.components, project_id, current_user.id, slide_id,
+        uow.projects, uow.slides, project_id, current_user.id, slide_id,
         body.type, body.properties, body.parent_id, body.order,
     )
 
 
 @router.patch("/{project_id}/slides/{slide_id}/components/{component_id}", response_model=ComponentResponse)
-async def update_component(project_id: UUID, slide_id: UUID, component_id: UUID, body: ComponentUpdate, current_user: CurrentUser, uow: UoW):
+async def update_component(project_id: UUID, slide_id: UUID, component_id: str, body: ComponentUpdate, current_user: CurrentUser, uow: UoW):
     return await project_service.update_component(
-        uow.projects, uow.components, project_id, current_user.id, slide_id, component_id,
+        uow.projects, uow.slides, project_id, current_user.id, slide_id, component_id,
         body.properties, body.order,
     )
 
@@ -82,12 +84,12 @@ async def update_component(project_id: UUID, slide_id: UUID, component_id: UUID,
 @router.post("/{project_id}/slides/{slide_id}/components/patch", response_model=list[ComponentResponse])
 async def apply_json_patch(project_id: UUID, slide_id: UUID, body: ComponentPatchRequest, current_user: CurrentUser, uow: UoW):
     return await project_service.apply_json_patch(
-        uow.projects, uow.components, project_id, current_user.id, slide_id, body.ops
+        uow.projects, uow.slides, project_id, current_user.id, slide_id, body.ops
     )
 
 
 @router.delete("/{project_id}/slides/{slide_id}/components/{component_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_component(project_id: UUID, slide_id: UUID, component_id: UUID, current_user: CurrentUser, uow: UoW):
+async def delete_component(project_id: UUID, slide_id: UUID, component_id: str, current_user: CurrentUser, uow: UoW):
     await project_service.delete_component(
-        uow.projects, uow.components, project_id, current_user.id, slide_id, component_id
+        uow.projects, uow.slides, project_id, current_user.id, slide_id, component_id
     )

@@ -1,6 +1,8 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
+from sqlalchemy import Column
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
 
@@ -11,5 +13,6 @@ class Slide(SQLModel, table=True):
     project_id: UUID = Field(foreign_key="projects.id", index=True)
     order: int = 0
     title: str | None = Field(default=None, max_length=500)
+    content: list = Field(default_factory=list, sa_column=Column(JSONB, nullable=False, server_default="[]"))
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
