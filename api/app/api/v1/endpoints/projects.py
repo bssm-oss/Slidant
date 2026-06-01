@@ -1,6 +1,8 @@
+from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, HTTPException, status
+from pydantic import BaseModel
 
 from app.core.deps import CurrentUser, UoW
 from app.schemas.project import (
@@ -11,6 +13,15 @@ from app.schemas.project import (
 from app.services import project_service
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+
+
+class VersionResponse(BaseModel):
+    id: UUID
+    slide_id: UUID
+    message: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 @router.get("", response_model=list[ProjectResponse])
@@ -93,3 +104,20 @@ async def delete_component(project_id: UUID, slide_id: UUID, component_id: str, 
     await project_service.delete_component(
         uow.projects, uow.slides, project_id, current_user.id, slide_id, component_id
     )
+
+
+@router.get("/{project_id}/slides/{slide_id}/versions", response_model=list[VersionResponse])
+async def list_versions(project_id: UUID, slide_id: UUID, current_user: CurrentUser, uow: UoW):
+    await project_service.get_slide(uow.projects, uow.slides, project_id, current_user.id, slide_id)
+    return await uow.versions.list_by_slide(slide_id)
+
+
+@router.post("/{project_id}/slides/{slide_id}/versions/{version_id}/restore", status_code=status.HTTP_204_NO_CONTENT)
+async def restore_version(project_id: UUID, slide_id: UUID, version_id: UUID, current_user: CurrentUser, uow: UoW):
+    slide = await project_service.get_slide(uow.projects, uow.slides, project_id, current_user.id, slide_id)
+    version = await uow.versions.get(version_id)
+    if not version or version.slide_id != slide_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Version not found")
+    from datetime import datetime
+    slide.content = version.snapshot.get("content", [])
+    slide.updated_at = datetime.utcnow()

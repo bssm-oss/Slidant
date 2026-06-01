@@ -7,6 +7,7 @@ from app.repositories.chat import ChatMessageRepository
 from app.repositories.project import ProjectRepository
 from app.repositories.slide import SlideRepository
 from app.repositories.user import UserRepository
+from app.repositories.version import VersionRepository
 
 
 class UnitOfWork:
@@ -22,6 +23,7 @@ class UnitOfWork:
     agent_runs: AgentRunRepository
     llm_logs: LlmLogRepository
     chat_messages: ChatMessageRepository
+    versions: VersionRepository
 
     async def __aenter__(self) -> "UnitOfWork":
         self.session = AsyncSessionLocal()
@@ -34,6 +36,7 @@ class UnitOfWork:
         self.agent_runs = AgentRunRepository(self.session)
         self.llm_logs = LlmLogRepository(self.session)
         self.chat_messages = ChatMessageRepository(self.session)
+        self.versions = VersionRepository(self.session)
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:

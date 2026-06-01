@@ -139,6 +139,24 @@ async def _run_agent_background_inner(
         t0 = _time.perf_counter()
 
         try:
+            # 스트리밍 토큰 → SSE agent_token 이벤트
+            token_buf: list[str] = []
+
+            def on_token(token: str) -> None:
+                token_buf.append(token)
+                # 비동기 broadcast를 동기 콜백에서 실행
+                import asyncio as _asyncio
+                try:
+                    loop = _asyncio.get_running_loop()
+                    loop.create_task(_broadcast(str(body.project_id), {
+                        "type": "agent_token",
+                        "agent_run_id": str(agent_run_id),
+                        "token": token,
+                        "accumulated": "".join(token_buf),
+                    }))
+                except RuntimeError:
+                    pass
+
             patches, _, llm_summary = await run_agent(
                 role=agent_def_role,
                 command=body.command,
@@ -147,6 +165,7 @@ async def _run_agent_background_inner(
                 provider=provider,
                 system_prompt=system_prompt,
                 all_slides=[{"id": str(s.id), "order": s.order, "title": s.title} for s in all_slides],
+                on_token=on_token,
             )
             elapsed = (_time.perf_counter() - t0) * 1000
 
@@ -162,6 +181,18 @@ async def _run_agent_background_inner(
             slide_ops = [op for op in patches if op.get("path", "").startswith("/slides/")]
             comp_ops  = [op for op in patches if not op.get("path", "").startswith("/slides/")]
             logger.info("   comp_ops=%d  slide_ops=%d", len(comp_ops), len(slide_ops))
+
+            # 패치 적용 전 슬라이드 스냅샷 저장
+            _slide_before = await uow.slides.get(body.slide_id)
+            if _slide_before and comp_ops:
+                from app.models.version import Version
+                _version = Version(
+                    slide_id=body.slide_id,
+                    message=f"{agent_def_name}: {body.command[:120]}",
+                    snapshot={"content": list(_slide_before.content or [])},
+                )
+                uow.versions.add(_version)
+                await uow.versions.session.flush()
 
             # 컴포넌트 패치 적용
             await agent_service.apply_patches(uow.slides, body.slide_id, comp_ops)

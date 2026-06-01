@@ -84,6 +84,14 @@ async def create_slide(
     return slide
 
 
+async def get_slide(
+    project_repo: ProjectRepository, slide_repo: SlideRepository,
+    project_id: UUID, owner_id: UUID, slide_id: UUID,
+) -> "Slide":
+    await _get_project_or_404(project_repo, project_id, owner_id)
+    return await _get_slide_or_404(slide_repo, slide_id, project_id)
+
+
 async def delete_slide(
     project_repo: ProjectRepository, slide_repo: SlideRepository,
     project_id: UUID, owner_id: UUID, slide_id: UUID,

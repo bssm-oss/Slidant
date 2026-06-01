@@ -1,9 +1,10 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { useEditorStore } from '../store/editorStore'
 import { useToastStore } from '@/shared/components/ui/Toast'
 import { AgentStatusBadge, Button } from '@/shared/components/ui'
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/shared/components/ui/tooltip'
 import { Save, Share2, History, Undo2 } from 'lucide-react'
+import HistoryPanel from './HistoryPanel'
 
 function IconButton({ onClick, title, children }: {
   onClick: () => void
@@ -26,6 +27,7 @@ export default function EditorTopbar() {
   const { presentation, overallStatus, saveTitle, isTitleEditing, setTitleEditing } = useEditorStore()
   const toast = useToastStore((s) => s.push)
   const inputRef = useRef<HTMLInputElement>(null)
+  const [showHistory, setShowHistory] = useState(false)
 
   const handleTitleClick = () => {
     setTitleEditing(true)
@@ -71,7 +73,7 @@ export default function EditorTopbar() {
 
         {/* 우측 */}
         <div className="flex items-center gap-1 shrink-0">
-          <IconButton onClick={() => toast('버전 히스토리 준비 중', 'info')} title="히스토리">
+          <IconButton onClick={() => setShowHistory(true)} title="버전 히스토리">
             <History size={15} />
           </IconButton>
           <IconButton onClick={() => toast('실행 취소 준비 중', 'info')} title="실행 취소">
@@ -88,6 +90,7 @@ export default function EditorTopbar() {
           </Button>
         </div>
       </div>
+      <HistoryPanel open={showHistory} onClose={() => setShowHistory(false)} />
     </TooltipProvider>
   )
 }

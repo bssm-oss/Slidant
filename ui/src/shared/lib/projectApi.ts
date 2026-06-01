@@ -49,6 +49,21 @@ export async function reorderSlides(projectId: string, slideIds: string[]): Prom
   await api.patch<void>(`/projects/${projectId}/slides/reorder`, { slide_ids: slideIds })
 }
 
+export interface SlideVersion {
+  id: string
+  slide_id: string
+  message: string
+  created_at: string
+}
+
+export async function fetchSlideVersions(projectId: string, slideId: string): Promise<SlideVersion[]> {
+  return api.get(`/projects/${projectId}/slides/${slideId}/versions`)
+}
+
+export async function restoreVersion(projectId: string, slideId: string, versionId: string): Promise<void> {
+  await api.post<void>(`/projects/${projectId}/slides/${slideId}/versions/${versionId}/restore`, {})
+}
+
 export async function fetchProjectWithSlides(id: string): Promise<Presentation> {
   const [project, slidesRaw] = await Promise.all([
     api.get<ProjectResponse>(`/projects/${id}`),
