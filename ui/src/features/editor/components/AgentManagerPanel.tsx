@@ -29,10 +29,9 @@ interface AgentFormState {
   name: string
   role: string
   description: string
-  scope: 'project' | 'library'
 }
 
-const EMPTY_FORM: AgentFormState = { name: '', role: 'custom', description: '', scope: 'project' }
+const EMPTY_FORM: AgentFormState = { name: '', role: 'custom', description: '' }
 
 interface Props {
   onClose: () => void
@@ -61,9 +60,9 @@ export default function AgentManagerPanel({ onClose }: Props) {
 
   useEffect(() => { load() }, [projectId])
 
-  const openCreate = (scope: 'project' | 'library') => {
+  const openCreate = () => {
     setEditingId(null)
-    setForm({ ...EMPTY_FORM, scope })
+    setForm({ ...EMPTY_FORM })
   }
 
   const openEdit = (agent: AgentDefinition) => {
@@ -72,7 +71,6 @@ export default function AgentManagerPanel({ onClose }: Props) {
       name: agent.name,
       role: agent.role,
       description: (agent.config.description as string) ?? (agent.config.system_prompt as string) ?? '',
-      scope: agent.project_id ? 'project' : 'library',
     })
   }
 
@@ -87,7 +85,7 @@ export default function AgentManagerPanel({ onClose }: Props) {
           name: form.name,
           role: form.role,
           description: form.description,
-          project_id: form.scope === 'project' ? projectId : null,
+          project_id: projectId,
         })
       }
       setForm(null)
@@ -132,7 +130,7 @@ export default function AgentManagerPanel({ onClose }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
       <div
-        className="bg-[var(--bg-base)] rounded-[12px] border border-[var(--border)] shadow-2xl w-[480px] max-h-[80vh] flex flex-col"
+        className="bg-[var(--bg-subtle)] rounded-[12px] border border-[var(--border)] shadow-2xl w-[480px] max-h-[80vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -154,7 +152,7 @@ export default function AgentManagerPanel({ onClose }: Props) {
                 <div>
                   <label className="text-[11px] text-[var(--text-muted)] mb-1 block">이름</label>
                   <input
-                    className="w-full bg-[var(--bg-base)] border border-[var(--border)] rounded-[6px] px-3 py-1.5 text-[12px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
+                    className="w-full bg-[var(--bg-subtle)] border border-[var(--border)] rounded-[6px] px-3 py-1.5 text-[12px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
                     value={form.name}
                     onChange={(e) => setForm((f) => f && ({ ...f, name: e.target.value }))}
                     placeholder="에이전트 이름"
@@ -165,7 +163,7 @@ export default function AgentManagerPanel({ onClose }: Props) {
                   <div>
                     <label className="text-[11px] text-[var(--text-muted)] mb-1 block">역할</label>
                     <select
-                      className="w-full bg-[var(--bg-base)] border border-[var(--border)] rounded-[6px] px-3 py-1.5 text-[12px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
+                      className="w-full bg-[var(--bg-subtle)] border border-[var(--border)] rounded-[6px] px-3 py-1.5 text-[12px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
                       value={form.role}
                       onChange={(e) => setForm((f) => f && ({ ...f, role: e.target.value }))}
                     >
@@ -178,34 +176,13 @@ export default function AgentManagerPanel({ onClose }: Props) {
                 <div>
                   <label className="text-[11px] text-[var(--text-muted)] mb-1 block">역할 프롬프트 (System Prompt)</label>
                   <textarea
-                    className="w-full bg-[var(--bg-base)] border border-[var(--border)] rounded-[6px] px-3 py-1.5 text-[12px] text-[var(--text)] outline-none focus:border-[var(--accent)] resize-none"
+                    className="w-full bg-[var(--bg-subtle)] border border-[var(--border)] rounded-[6px] px-3 py-1.5 text-[12px] text-[var(--text)] outline-none focus:border-[var(--accent)] resize-none"
                     rows={4}
                     value={form.description}
                     onChange={(e) => setForm((f) => f && ({ ...f, description: e.target.value }))}
                     placeholder="이 에이전트의 역할과 행동 방식을 설명하세요"
                   />
                 </div>
-                {!editingId && (
-                  <div>
-                    <label className="text-[11px] text-[var(--text-muted)] mb-1 block">저장 위치</label>
-                    <div className="flex gap-2">
-                      {(['project', 'library'] as const).map((s) => (
-                        <button
-                          key={s}
-                          onClick={() => setForm((f) => f && ({ ...f, scope: s }))}
-                          className={cn(
-                            'flex-1 py-1.5 rounded-[6px] text-[11px] font-medium border transition-colors',
-                            form.scope === s
-                              ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
-                              : 'bg-[var(--bg-base)] text-[var(--text-muted)] border-[var(--border)] hover:border-[var(--accent)]',
-                          )}
-                        >
-                          {s === 'project' ? '이 PPT 전용' : '내 라이브러리'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
               <div className="flex justify-end gap-2 mt-3">
                 <button
@@ -240,7 +217,7 @@ export default function AgentManagerPanel({ onClose }: Props) {
             onToggle={() => setExpandedSection((s) => s === 'project' ? null : 'project')}
             action={
               <button
-                onClick={(e) => { e.stopPropagation(); openCreate('project') }}
+                onClick={(e) => { e.stopPropagation(); openCreate() }}
                 className="flex items-center gap-1 px-2 py-1 text-[11px] text-[var(--accent)] hover:bg-[var(--accent-subtle)] rounded transition-colors"
               >
                 <Plus size={11} /> 새로 만들기
@@ -262,16 +239,9 @@ export default function AgentManagerPanel({ onClose }: Props) {
           {/* Library agents */}
           <Section
             title="내 라이브러리"
+            subtitle="에이전트 페이지에서 관리"
             expanded={expandedSection === 'library'}
             onToggle={() => setExpandedSection((s) => s === 'library' ? null : 'library')}
-            action={
-              <button
-                onClick={(e) => { e.stopPropagation(); openCreate('library') }}
-                className="flex items-center gap-1 px-2 py-1 text-[11px] text-[var(--accent)] hover:bg-[var(--accent-subtle)] rounded transition-colors"
-              >
-                <Plus size={11} /> 새로 만들기
-              </button>
-            }
           >
             {libraryAgents.map((a) => (
               <AgentRow
@@ -364,7 +334,7 @@ function AgentRow({
         {onEdit && (
           <button
             onClick={onEdit}
-            className="p-1.5 rounded hover:bg-[var(--bg-base)] text-[var(--text-disabled)] hover:text-[var(--text-muted)] transition-colors"
+            className="p-1.5 rounded hover:bg-[var(--bg-subtle)] text-[var(--text-disabled)] hover:text-[var(--text-muted)] transition-colors"
             title="수정"
           >
             <Pencil size={12} />
@@ -373,7 +343,7 @@ function AgentRow({
         {onDelete && (
           <button
             onClick={onDelete}
-            className="p-1.5 rounded hover:bg-[var(--bg-base)] text-[var(--text-disabled)] hover:text-red-500 transition-colors"
+            className="p-1.5 rounded hover:bg-[var(--bg-subtle)] text-[var(--text-disabled)] hover:text-red-500 transition-colors"
             title="삭제"
           >
             <Trash2 size={12} />
