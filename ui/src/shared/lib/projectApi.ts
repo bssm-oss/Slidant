@@ -41,31 +41,32 @@ export async function deleteProject(id: string): Promise<void> {
   return api.delete(`/projects/${id}`)
 }
 
+export async function deleteSlide(projectId: string, slideId: string): Promise<void> {
+  await api.delete<void>(`/projects/${projectId}/slides/${slideId}`)
+}
+
+export async function reorderSlides(projectId: string, slideIds: string[]): Promise<void> {
+  await api.patch<void>(`/projects/${projectId}/slides/reorder`, { slide_ids: slideIds })
+}
+
 export async function fetchProjectWithSlides(id: string): Promise<Presentation> {
   const [project, slidesRaw] = await Promise.all([
     api.get<ProjectResponse>(`/projects/${id}`),
     api.get<any[]>(`/projects/${id}/slides`),
   ])
 
-  const slides: Slide[] = await Promise.all(
-    slidesRaw.map(async (s) => {
-      const components = await api.get<any[]>(
-        `/projects/${id}/slides/${s.id}/components`,
-      )
-      return {
-        id: s.id,
-        order: s.order,
-        components: components.map((c) => ({
-          id: c.id,
-          type: c.type,
-          position: c.properties?.position ?? { x: 0, y: 0 },
-          size: c.properties?.size ?? { w: 400, h: 100 },
-          props: c.properties,
-          zIndex: c.order,
-        })),
-      }
-    }),
-  )
+  const slides: Slide[] = slidesRaw.map((s) => ({
+    id: s.id,
+    order: s.order,
+    components: (s.components ?? []).map((c: any) => ({
+      id: c.id,
+      type: c.type,
+      position: c.properties?.position ?? { x: 0, y: 0 },
+      size: c.properties?.size ?? { w: 400, h: 100 },
+      props: c.properties,
+      zIndex: c.order,
+    })),
+  }))
 
   return toPresentation(project, slides)
 }

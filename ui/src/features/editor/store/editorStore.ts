@@ -1,8 +1,8 @@
 import { create } from 'zustand'
-import type { Presentation, Slide, Agent, AgentLog, AgentStatus } from '@/shared/types'
+import type { Presentation, Slide, Agent, AgentLog, AgentStatus, ChatMessage } from '@/shared/types'
 import { api } from '@/shared/lib/apiClient'
 import { runAgent } from '@/shared/lib/agentRunApi'
-import { wsClient } from '@/shared/lib/wsClient'
+import { sseClient } from '@/shared/lib/sseClient'
 
 interface EditorState {
   presentation: Presentation | null
@@ -10,39 +10,73 @@ interface EditorState {
   selectedComponentId: string | null
   agents: Agent[]
   agentLogs: AgentLog[]
-  overallStatus: AgentStatus
-  isCommandPaletteOpen: boolean
+  chatMessages: ChatMessage[]
+  selectedAgentDefinitionId: string | null
+  runningAgentIds: Set<string>        // definitionId 기준 실행 중인 에이전트
+  conflictComponentIds: Set<string>   // 동시 수정된 컴포넌트 ID
+  overallStatus: AgentStatus          // 하위 호환용 (any running → 'running')
   activeRightTab: 'agent' | 'properties'
   isTitleEditing: boolean
 
   loadPresentation: (id: string) => Promise<void>
   loadAgentLogs: (projectId: string) => Promise<void>
+  loadAgents: () => Promise<void>
+  loadChatHistory: (projectId: string) => Promise<void>
   connectWs: (projectId: string) => () => void
   setCurrentSlide: (index: number) => void
   selectComponent: (id: string | null) => void
-  setCommandPaletteOpen: (open: boolean) => void
+  selectChatAgent: (definitionId: string | null) => void
   setActiveRightTab: (tab: 'agent' | 'properties') => void
   addSlide: () => Promise<void>
+  deleteSlide: (index?: number) => Promise<void>
+  duplicateSlide: (index?: number) => Promise<void>
+  reorderSlides: (oldIndex: number, newIndex: number) => Promise<void>
   saveTitle: (title: string) => Promise<void>
   updateTitle: (title: string) => void
   setTitleEditing: (v: boolean) => void
-  runAgent: (command: string, agentRole?: string) => Promise<void>
+  sendMessage: (command: string) => Promise<void>
+  runAgent: (command: string, agentRole?: string, agentDefinitionId?: string) => Promise<void>
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
   presentation: null,
   currentSlideIndex: 0,
   selectedComponentId: null,
-  agents: [
-    { id: 'sys-content', name: 'ContentAgent', role: 'content', status: 'idle', description: '텍스트 콘텐츠 생성 및 편집' },
-    { id: 'sys-design',  name: 'DesignAgent',  role: 'design',  status: 'idle', description: '시각 디자인 및 스타일 적용' },
-    { id: 'sys-layout',  name: 'LayoutAgent',  role: 'layout',  status: 'idle', description: '컴포넌트 배치 및 레이아웃 구성' },
-  ],
+  agents: [],
   agentLogs: [],
+  chatMessages: [],
+  selectedAgentDefinitionId: null,
+  runningAgentIds: new Set(),
+  conflictComponentIds: new Set(),
   overallStatus: 'idle',
-  isCommandPaletteOpen: false,
   activeRightTab: 'agent',
   isTitleEditing: false,
+
+  loadAgents: async () => {
+    try {
+      const { fetchAgents } = await import('@/shared/lib/agentApi')
+      const data = await fetchAgents()
+      const allAgents: Agent[] = [
+        ...data.system.map((a) => ({
+          id: `sys-${a.id}`,
+          definitionId: a.id,
+          name: a.name,
+          role: a.role,
+          status: 'idle' as AgentStatus,
+          description: (a.config?.description as string) ?? '',
+        })),
+        ...data.custom.map((a) => ({
+          id: `custom-${a.id}`,
+          definitionId: a.id,
+          name: a.name,
+          role: a.role,
+          status: 'idle' as AgentStatus,
+          description: (a.config?.description as string) ?? '',
+        })),
+      ]
+      set({ agents: allAgents })
+    } catch {}
+  },
 
   loadPresentation: async (id) => {
     try {
@@ -52,6 +86,23 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     } catch (e) {
       console.error('loadPresentation failed', e)
     }
+  },
+
+  loadChatHistory: async (projectId) => {
+    try {
+      const { fetchChatHistory } = await import('@/shared/lib/agentRunApi')
+      const msgs = await fetchChatHistory(projectId)
+      const chatMessages: ChatMessage[] = msgs.map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        agentName: m.agent_name ?? (m.role === 'agent' ? 'Agent' : undefined),
+        agentDefinitionId: m.agent_definition_id ?? undefined,
+        timestamp: m.created_at,
+        type: m.content.startsWith('오류') ? 'error' : m.role === 'agent' ? 'success' : 'info',
+      }))
+      set({ chatMessages })
+    } catch {}
   },
 
   loadAgentLogs: async (projectId) => {
@@ -71,91 +122,174 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   connectWs: (projectId) => {
-    wsClient.connect(projectId)
-    const unsubscribe = wsClient.onMessage((msg) => {
+    sseClient.connect(projectId)
+    const unsubscribe = sseClient.onMessage((msg) => {
       const type = msg.type as string
 
       if (type === 'agent_started') {
         const role = (msg.role as string) ?? 'content'
-        const agentName = `${role.charAt(0).toUpperCase()}${role.slice(1)}Agent`
-        set((s) => ({
-          overallStatus: 'running',
-          agents: s.agents.map((a) =>
-            a.name === agentName
-              ? { ...a, status: 'running', currentTask: msg.command as string, taskProgress: 0 }
-              : a,
-          ),
-          agentLogs: [
-            {
-              id: `log-${Date.now()}`,
-              agentId: role,
-              agentName,
-              message: `"${msg.command}" 작업 시작...`,
-              timestamp: new Date().toISOString(),
-              type: 'info',
-            },
-            ...s.agentLogs,
-          ],
-        }))
+        const agentName = (msg.agent_name as string) ?? `${role.charAt(0).toUpperCase()}${role.slice(1)}Agent`
+        set((s) => {
+          const runningAgent = s.agents.find((a) => a.name === agentName)
+          const newRunningIds = new Set(s.runningAgentIds)
+          if (runningAgent?.definitionId) newRunningIds.add(runningAgent.definitionId)
+          return {
+            overallStatus: 'running',
+            runningAgentIds: newRunningIds,
+            agents: s.agents.map((a) =>
+              a.name === agentName
+                ? { ...a, status: 'running', currentTask: msg.command as string, taskProgress: 0 }
+                : a,
+            ),
+          }
+        })
+      }
+
+      if (type === 'new_slides' || (type === 'agent_done' && msg.new_slides)) {
+        const newSlides = (msg.new_slides as any[]) ?? []
+        if (newSlides.length > 0) {
+          set((s) => ({
+            presentation: s.presentation ? {
+              ...s.presentation,
+              slides: [
+                ...s.presentation.slides,
+                ...newSlides.map((sl: any) => ({
+                  id: sl.id,
+                  order: sl.order,
+                  components: (sl.components ?? []).map((c: any) => ({
+                    id: c.id,
+                    type: c.type,
+                    position: c.properties?.position ?? { x: 0, y: 0 },
+                    size: c.properties?.size ?? { w: 400, h: 100 },
+                    props: c.properties,
+                    zIndex: c.order ?? 0,
+                  })),
+                })),
+              ],
+            } : null,
+          }))
+        }
       }
 
       if (type === 'agent_done') {
-        set((s) => ({
-          overallStatus: 'idle',
-          agents: s.agents.map((a) =>
-            a.status === 'running'
-              ? { ...a, status: 'done', currentTask: undefined, taskProgress: 100 }
-              : a,
-          ),
-          agentLogs: [
-            {
-              id: `log-${Date.now()}`,
-              agentId: '',
-              agentName: 'Agent',
-              message: '작업 완료',
-              timestamp: new Date().toISOString(),
-              type: 'success',
-            },
-            ...s.agentLogs,
-          ],
-          activeRightTab: 'agent',
-        }))
-        // 슬라이드 다시 불러오기 (Agent가 컴포넌트 수정했을 수 있음)
+        const { agents } = get()
+        const agentRunId = msg.agent_run_id as string
+        // agent_run_id로 어떤 에이전트인지 특정 (agent_name 사용)
+        const doneAgentName = (msg.agent_name as string) ?? ''
+        const doneAgent = agents.find((a) => a.name === doneAgentName || a.status === 'running')
+        const affectedIds: string[] = (msg.affected_component_ids as string[]) ?? []
+
+        set((s) => {
+          // 이 에이전트만 runningIds에서 제거
+          const newRunningIds = new Set(s.runningAgentIds)
+          if (doneAgent?.definitionId) newRunningIds.delete(doneAgent.definitionId)
+
+          // 충돌 감지: 이미 다른 에이전트가 수정한 컴포넌트와 겹치면 충돌
+          const newConflicts = new Set(s.conflictComponentIds)
+          const recentlyModified = new Set(
+            s.chatMessages
+              .filter((m) => m.role === 'agent' && m.agentDefinitionId !== doneAgent?.definitionId)
+              .flatMap((m) => (m as any).affectedComponentIds ?? [])
+          )
+          affectedIds.forEach((id) => {
+            if (recentlyModified.has(id)) newConflicts.add(id)
+          })
+
+          return {
+            runningAgentIds: newRunningIds,
+            overallStatus: newRunningIds.size > 0 ? 'running' : 'idle',
+            conflictComponentIds: newConflicts,
+            agents: s.agents.map((a) =>
+              a.name === doneAgentName
+                ? { ...a, status: newConflicts.size > 0 ? 'conflict' : 'done', currentTask: undefined, taskProgress: 100 }
+                : a,
+            ),
+            chatMessages: [
+              ...s.chatMessages.filter((m) => !m.id.startsWith(`optimistic-agent-${doneAgent?.definitionId}`)),
+              {
+                id: `optimistic-agent-${doneAgent?.definitionId ?? Date.now()}`,
+                role: 'agent' as const,
+                content: (msg.summary as string) || '작업 완료',
+                agentName: doneAgentName || 'Agent',
+                agentDefinitionId: doneAgent?.definitionId,
+                timestamp: new Date().toISOString(),
+                type: newConflicts.size > 0 ? 'error' as const : 'success' as const,
+              },
+            ],
+            agentLogs: [
+              {
+                id: `log-${Date.now()}`,
+                agentId: doneAgent?.definitionId ?? '',
+                agentName: doneAgentName || 'Agent',
+                message: newConflicts.size > 0 ? `충돌 감지: ${newConflicts.size}개 컴포넌트` : '작업 완료',
+                timestamp: new Date().toISOString(),
+                type: newConflicts.size > 0 ? 'conflict' : 'success',
+              },
+              ...s.agentLogs,
+            ],
+            activeRightTab: 'agent',
+          }
+        })
         const ppt = get().presentation
-        if (ppt) get().loadPresentation(ppt.id)
+        if (ppt) {
+          get().loadPresentation(ppt.id)
+          get().loadChatHistory(ppt.id)
+        }
       }
 
       if (type === 'agent_error') {
-        set((s) => ({
-          overallStatus: 'idle',
-          agents: s.agents.map((a) =>
-            a.status === 'running' ? { ...a, status: 'error', currentTask: undefined } : a,
-          ),
-          agentLogs: [
-            {
-              id: `log-${Date.now()}`,
-              agentId: '',
-              agentName: 'Agent',
-              message: `오류: ${msg.error ?? '알 수 없는 오류'}`,
-              timestamp: new Date().toISOString(),
-              type: 'error',
-            },
-            ...s.agentLogs,
-          ],
-        }))
+        const { agents } = get()
+        const errAgentName = (msg.agent_name as string) ?? ''
+        const errAgent = agents.find((a) => a.name === errAgentName || a.status === 'running')
+        const errMsg = (msg.error as string) ?? '알 수 없는 오류'
+
+        set((s) => {
+          const newRunningIds = new Set(s.runningAgentIds)
+          if (errAgent?.definitionId) newRunningIds.delete(errAgent.definitionId)
+          return {
+            runningAgentIds: newRunningIds,
+            overallStatus: newRunningIds.size > 0 ? 'running' : 'idle',
+            agents: s.agents.map((a) =>
+              a.name === errAgentName || (errAgentName === '' && a.status === 'running')
+                ? { ...a, status: 'error', currentTask: undefined }
+                : a,
+            ),
+            chatMessages: [
+              ...s.chatMessages,
+              {
+                id: `optimistic-agent-err-${Date.now()}`,
+                role: 'agent' as const,
+                content: `오류: ${errMsg}`,
+                agentName: errAgentName || 'Agent',
+                agentDefinitionId: errAgent?.definitionId,
+                timestamp: new Date().toISOString(),
+                type: 'error' as const,
+              },
+            ],
+            agentLogs: [
+              {
+                id: `log-${Date.now()}`,
+                agentId: errAgent?.definitionId ?? '',
+                agentName: errAgentName || 'Agent',
+                message: `오류: ${errMsg}`,
+                timestamp: new Date().toISOString(),
+                type: 'error',
+              },
+              ...s.agentLogs,
+            ],
+          }
+        })
+        const ppt = get().presentation
+        if (ppt) get().loadChatHistory(ppt.id)
       }
     })
     return unsubscribe
   },
 
   setCurrentSlide: (index) => set({ currentSlideIndex: index, selectedComponentId: null }),
-
   selectComponent: (id) => set({ selectedComponentId: id }),
-
-  setCommandPaletteOpen: (open) => set({ isCommandPaletteOpen: open }),
-
+  selectChatAgent: (definitionId) => set({ selectedAgentDefinitionId: definitionId }),
   setActiveRightTab: (tab) => set({ activeRightTab: tab }),
-
   setTitleEditing: (v) => set({ isTitleEditing: v }),
 
   updateTitle: (title) => set((s) => ({
@@ -194,24 +328,150 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
   },
 
-  runAgent: async (command, agentRole = 'content') => {
+  deleteSlide: async (index) => {
+    const ppt = get().presentation
+    if (!ppt || ppt.slides.length <= 1) return
+    const idx = index ?? get().currentSlideIndex
+    const slide = ppt.slides[idx]
+    const newSlides = ppt.slides.filter((_, i) => i !== idx)
+    const newIndex = Math.min(idx, newSlides.length - 1)
+    // optimistic
+    set((s) => ({
+      presentation: s.presentation ? { ...s.presentation, slides: newSlides } : null,
+      currentSlideIndex: newIndex,
+      selectedComponentId: null,
+    }))
+    try {
+      const { deleteSlide: apiDelete } = await import('@/shared/lib/projectApi')
+      await apiDelete(ppt.id, slide.id)
+    } catch (e) {
+      console.error('deleteSlide failed', e)
+      set((s) => ({
+        presentation: s.presentation ? { ...s.presentation, slides: ppt.slides } : null,
+        currentSlideIndex: idx,
+      }))
+    }
+  },
+
+  duplicateSlide: async (index) => {
+    const ppt = get().presentation
+    if (!ppt) return
+    const idx = index ?? get().currentSlideIndex
+    const sourceSlide = ppt.slides[idx]
+    try {
+      const newSlideRes = await api.post<{ id: string; order: number }>(`/projects/${ppt.id}/slides`, {})
+      const copiedComps = await Promise.all(
+        sourceSlide.components.map((comp) =>
+          api.post<any>(`/projects/${ppt.id}/slides/${newSlideRes.id}/components`, {
+            type: comp.type,
+            properties: comp.props,
+            order: comp.zIndex,
+          })
+        )
+      )
+      const newSlide: Slide = {
+        id: newSlideRes.id,
+        order: newSlideRes.order,
+        components: copiedComps.map((c: any) => ({
+          id: c.id,
+          type: c.type,
+          position: c.properties?.position ?? { x: 0, y: 0 },
+          size: c.properties?.size ?? { w: 400, h: 100 },
+          props: c.properties,
+          zIndex: c.order ?? 0,
+        })),
+      }
+      const slides = [...ppt.slides]
+      slides.splice(idx + 1, 0, newSlide)
+      set((s) => ({
+        presentation: s.presentation ? { ...s.presentation, slides } : null,
+        currentSlideIndex: idx + 1,
+      }))
+      const { reorderSlides: apiReorder } = await import('@/shared/lib/projectApi')
+      await apiReorder(ppt.id, slides.map((s) => s.id))
+    } catch (e) {
+      console.error('duplicateSlide failed', e)
+    }
+  },
+
+  reorderSlides: async (oldIndex, newIndex) => {
+    const ppt = get().presentation
+    if (!ppt || oldIndex === newIndex) return
+    const slides = [...ppt.slides]
+    const [moved] = slides.splice(oldIndex, 1)
+    slides.splice(newIndex, 0, moved)
+    const currentIdx = get().currentSlideIndex
+    const newCurrentIdx =
+      currentIdx === oldIndex ? newIndex
+      : currentIdx > oldIndex && currentIdx <= newIndex ? currentIdx - 1
+      : currentIdx < oldIndex && currentIdx >= newIndex ? currentIdx + 1
+      : currentIdx
+    // optimistic
+    set((s) => ({
+      presentation: s.presentation ? { ...s.presentation, slides } : null,
+      currentSlideIndex: newCurrentIdx,
+    }))
+    try {
+      const { reorderSlides: apiReorder } = await import('@/shared/lib/projectApi')
+      await apiReorder(ppt.id, slides.map((s) => s.id))
+    } catch (e) {
+      console.error('reorderSlides failed', e)
+      set((s) => ({
+        presentation: s.presentation ? { ...s.presentation, slides: ppt.slides } : null,
+        currentSlideIndex: currentIdx,
+      }))
+    }
+  },
+
+  sendMessage: async (command: string) => {
+    const { selectedAgentDefinitionId, agents } = get()
+    const selectedAgent = agents.find((a) => a.definitionId === selectedAgentDefinitionId)
+
+    // 즉시 user 말풍선 표시 (optimistic)
+    set((s) => ({
+      chatMessages: [
+        ...s.chatMessages,
+        {
+          id: `optimistic-user-${Date.now()}`,
+          role: 'user' as const,
+          content: command,
+          agentDefinitionId: selectedAgentDefinitionId ?? undefined,
+          timestamp: new Date().toISOString(),
+          type: 'info' as const,
+        },
+      ],
+      activeRightTab: 'agent',
+    }))
+
+    await get().runAgent(command, selectedAgent?.role ?? 'content', selectedAgentDefinitionId ?? undefined)
+  },
+
+  runAgent: async (command, agentRole = 'content', agentDefinitionId?) => {
     const ppt = get().presentation
     const slideIndex = get().currentSlideIndex
     const currentSlide = ppt?.slides[slideIndex]
     if (!ppt || !currentSlide) return
 
-    set({ overallStatus: 'running', isCommandPaletteOpen: false, activeRightTab: 'agent' })
+    // 해당 에이전트만 running으로 — 다른 에이전트 차단 없음
+    set((s) => {
+      const newRunningIds = new Set(s.runningAgentIds)
+      if (agentDefinitionId) newRunningIds.add(agentDefinitionId)
+      return { runningAgentIds: newRunningIds, overallStatus: 'running', activeRightTab: 'agent' }
+    })
 
-    try {
-      await runAgent({
-        project_id: ppt.id,
-        slide_id: currentSlide.id,
-        command,
-        agent_role: agentRole,
+    await runAgent({
+      project_id: ppt.id,
+      slide_id: currentSlide.id,
+      command,
+      agent_role: agentRole,
+      agent_definition_id: agentDefinitionId,
+    }).catch((e: any) => {
+      set((s) => {
+        const newRunningIds = new Set(s.runningAgentIds)
+        if (agentDefinitionId) newRunningIds.delete(agentDefinitionId)
+        return { runningAgentIds: newRunningIds, overallStatus: newRunningIds.size > 0 ? 'running' : 'idle' }
       })
-    } catch (e: any) {
-      set({ overallStatus: 'idle' })
       throw e
-    }
+    })
   },
 }))
