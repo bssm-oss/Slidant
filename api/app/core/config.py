@@ -15,10 +15,15 @@ class Settings(BaseSettings):
 
     APP_ENV: str = "development"
     MOCK_AGENT: bool = False
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:5173"
 
     @property
     def is_production(self) -> bool:
         return self.APP_ENV == "production"
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
 
 
 settings = Settings()
