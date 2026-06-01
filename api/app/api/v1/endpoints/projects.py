@@ -24,6 +24,20 @@ class VersionResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+async def _snapshot(uow, slide_id: UUID, message: str) -> None:
+    """현재 슬라이드 상태를 버전으로 저장."""
+    from app.models.version import Version
+    slide = await uow.slides.get(slide_id)
+    if not slide:
+        return
+    v = Version(
+        slide_id=slide_id,
+        message=message,
+        snapshot={"content": list(slide.content or [])},
+    )
+    uow.versions.add(v)
+
+
 @router.get("", response_model=list[ProjectResponse])
 async def list_projects(current_user: CurrentUser, uow: UoW):
     return await project_service.list_projects(uow.projects, current_user.id)
@@ -78,6 +92,7 @@ async def list_components(project_id: UUID, slide_id: UUID, current_user: Curren
 
 @router.post("/{project_id}/slides/{slide_id}/components", response_model=ComponentResponse, status_code=status.HTTP_201_CREATED)
 async def create_component(project_id: UUID, slide_id: UUID, body: ComponentCreate, current_user: CurrentUser, uow: UoW):
+    await _snapshot(uow, slide_id, "사용자: 컴포넌트 추가")
     return await project_service.create_component(
         uow.projects, uow.slides, project_id, current_user.id, slide_id,
         body.type, body.properties, body.parent_id, body.order,
@@ -86,6 +101,7 @@ async def create_component(project_id: UUID, slide_id: UUID, body: ComponentCrea
 
 @router.patch("/{project_id}/slides/{slide_id}/components/{component_id}", response_model=ComponentResponse)
 async def update_component(project_id: UUID, slide_id: UUID, component_id: str, body: ComponentUpdate, current_user: CurrentUser, uow: UoW):
+    await _snapshot(uow, slide_id, f"사용자: 컴포넌트 수정 ({component_id[:8]})")
     return await project_service.update_component(
         uow.projects, uow.slides, project_id, current_user.id, slide_id, component_id,
         body.properties, body.order,
@@ -94,6 +110,7 @@ async def update_component(project_id: UUID, slide_id: UUID, component_id: str, 
 
 @router.post("/{project_id}/slides/{slide_id}/components/patch", response_model=list[ComponentResponse])
 async def apply_json_patch(project_id: UUID, slide_id: UUID, body: ComponentPatchRequest, current_user: CurrentUser, uow: UoW):
+    await _snapshot(uow, slide_id, f"사용자: 패치 적용 ({len(body.ops)}개 ops)")
     return await project_service.apply_json_patch(
         uow.projects, uow.slides, project_id, current_user.id, slide_id, body.ops
     )
@@ -101,6 +118,7 @@ async def apply_json_patch(project_id: UUID, slide_id: UUID, body: ComponentPatc
 
 @router.delete("/{project_id}/slides/{slide_id}/components/{component_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_component(project_id: UUID, slide_id: UUID, component_id: str, current_user: CurrentUser, uow: UoW):
+    await _snapshot(uow, slide_id, f"사용자: 컴포넌트 삭제 ({component_id[:8]})")
     await project_service.delete_component(
         uow.projects, uow.slides, project_id, current_user.id, slide_id, component_id
     )

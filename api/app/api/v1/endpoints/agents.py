@@ -183,16 +183,15 @@ async def _run_agent_background_inner(
             logger.info("   comp_ops=%d  slide_ops=%d", len(comp_ops), len(slide_ops))
 
             # 패치 적용 전 슬라이드 스냅샷 저장
-            _slide_before = await uow.slides.get(body.slide_id)
-            if _slide_before and comp_ops:
+            if comp_ops:
                 from app.models.version import Version
-                _version = Version(
-                    slide_id=body.slide_id,
-                    message=f"{agent_def_name}: {body.command[:120]}",
-                    snapshot={"content": list(_slide_before.content or [])},
-                )
-                uow.versions.add(_version)
-                await uow.versions.session.flush()
+                _slide_before = await uow.slides.get(body.slide_id)
+                if _slide_before:
+                    uow.versions.add(Version(
+                        slide_id=body.slide_id,
+                        message=f"{agent_def_name}: {body.command[:120]}",
+                        snapshot={"content": list(_slide_before.content or [])},
+                    ))
 
             # 컴포넌트 패치 적용
             await agent_service.apply_patches(uow.slides, body.slide_id, comp_ops)
