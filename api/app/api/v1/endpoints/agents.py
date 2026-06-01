@@ -1,59 +1,33 @@
 import json as json_lib
-from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, status
 
+from app.core.config import settings
 from app.core.deps import CurrentUser, UoW
-from app.models.agent import AgentDefinition, AgentRun, LlmLog
 from app.schemas.agent import AgentRunRequest, AgentRunResponse
+from app.services import agent_service
 from app.services.agent_runner import run_agent
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
-# 인메모리 WebSocket 연결 관리 (프로덕션에서는 Redis pub/sub 사용)
 _ws_connections: dict[str, list[WebSocket]] = {}
 
 
 @router.post("/run", response_model=AgentRunResponse, status_code=status.HTTP_202_ACCEPTED)
 async def run_agent_endpoint(body: AgentRunRequest, current_user: CurrentUser, uow: UoW):
-    # API Key 조회 — openrouter 우선, 없으면 anthropic
-    api_key = await uow.api_keys.get_active(current_user.id, "openrouter")
-    provider = "openrouter"
-    if not api_key:
-        api_key = await uow.api_keys.get_active(current_user.id, "anthropic")
-        provider = "anthropic"
-    if not api_key:
-        from app.core.config import settings
-        if not settings.MOCK_AGENT:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="API key not registered. Register OpenRouter or Anthropic key in Settings.",
-            )
-
-    # AgentDefinition 조회 or 시스템 기본 사용
-    agent_def = await uow.agent_definitions.get_system_by_role(body.agent_role)
-    if not agent_def:
-        # 없으면 즉석 생성
-        agent_def = AgentDefinition(
-            name=f"{body.agent_role.capitalize()}Agent",
-            role=body.agent_role,
-            is_system=True,
+    # API Key 조회
+    api_key, provider = await agent_service.resolve_api_key(uow.api_keys, current_user.id)
+    if not api_key and not settings.MOCK_AGENT:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="API key not registered. Register OpenRouter or Anthropic key in Settings.",
         )
-        uow.agent_definitions.add(agent_def)
-        await uow.flush()
 
-    # AgentRun 생성
-    agent_run = AgentRun(
-        project_id=body.project_id,
-        agent_definition_id=agent_def.id,
-        status="running",
-        started_at=datetime.utcnow(),
-    )
-    uow.agent_runs.add(agent_run)
-    await uow.flush()
+    # AgentDefinition + AgentRun 생성
+    agent_def = await agent_service.get_or_create_agent_def(uow.agent_definitions, body.agent_role)
+    agent_run = await agent_service.create_agent_run(uow.agent_runs, body.project_id, agent_def.id)
 
-    # WebSocket 구독자에게 시작 알림
     await _broadcast(str(body.project_id), {
         "type": "agent_started",
         "agent_run_id": str(agent_run.id),
@@ -76,40 +50,10 @@ async def run_agent_endpoint(body: AgentRunRequest, current_user: CurrentUser, u
             encrypted_api_key=api_key.encrypted_key if api_key else "",
             provider=provider,
         )
-
-        # 패치 적용
-        for op in patches:
-            path_parts = op.get("path", "").strip("/").split("/")
-            if len(path_parts) < 2:
-                continue
-            comp_id_str, field = path_parts[0], path_parts[1]
-            try:
-                comp_uuid = UUID(comp_id_str)
-                comp_obj = await uow.components.get(comp_uuid)
-                if comp_obj and comp_obj.slide_id == body.slide_id:
-                    if field == "properties" and len(path_parts) > 2:
-                        prop_key = path_parts[2]
-                        comp_obj.properties = {**comp_obj.properties, prop_key: op.get("value")}
-                    comp_obj.updated_at = datetime.utcnow()
-            except (ValueError, Exception):
-                continue
-
-        agent_run.status = "done"
-        agent_run.finished_at = datetime.utcnow()
-
-        # LlmLog 기록 (토큰 정보는 실제 응답에서 추출 — 지금은 placeholder)
-        llm_log = LlmLog(
-            agent_run_id=agent_run.id,
-            model="claude-sonnet-4-6",
-            prompt=body.command,
-            response=str(patches),
-            tokens_input=0,
-            tokens_output=0,
-            cache_hit=False,
+        await agent_service.apply_patches(uow.components, body.slide_id, patches)
+        await agent_service.finalize_agent_run(
+            uow.agent_runs, uow.llm_logs, agent_run, body.command, patches
         )
-        uow.llm_logs.add(llm_log)
-        await uow.flush()
-
         await _broadcast(str(body.project_id), {
             "type": "agent_done",
             "agent_run_id": str(agent_run.id),
@@ -117,9 +61,9 @@ async def run_agent_endpoint(body: AgentRunRequest, current_user: CurrentUser, u
         })
 
     except Exception as e:
-        agent_run.status = "error"
-        agent_run.finished_at = datetime.utcnow()
-        await uow.flush()
+        await agent_service.finalize_agent_run(
+            uow.agent_runs, uow.llm_logs, agent_run, body.command, [], status="error", error=str(e)
+        )
         await _broadcast(str(body.project_id), {
             "type": "agent_error",
             "agent_run_id": str(agent_run.id),
@@ -127,7 +71,6 @@ async def run_agent_endpoint(body: AgentRunRequest, current_user: CurrentUser, u
         })
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
-    await uow.refresh(agent_run)
     return agent_run
 
 
@@ -145,9 +88,6 @@ async def get_agent_logs(project_id: UUID, current_user: CurrentUser, uow: UoW):
     ]
 
 
-# ── WebSocket ─────────────────────────────────────────────
-
-
 @router.websocket("/ws/{project_id}")
 async def websocket_endpoint(websocket: WebSocket, project_id: str):
     await websocket.accept()
@@ -156,7 +96,7 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
     _ws_connections[project_id].append(websocket)
     try:
         while True:
-            await websocket.receive_text()  # keep-alive ping 수신
+            await websocket.receive_text()
     except WebSocketDisconnect:
         _ws_connections[project_id].remove(websocket)
 
