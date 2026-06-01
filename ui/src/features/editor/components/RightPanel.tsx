@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useEditorStore } from '../store/editorStore'
 import { cn } from '@/shared/lib/utils'
-import { Maximize2, Send, Loader2, ChevronDown, ChevronUp } from 'lucide-react'
+import { Maximize2, Send, Loader2, ChevronDown, ChevronUp, Settings } from 'lucide-react'
 import type { Agent, ChatMessage } from '@/shared/types'
+import AgentManagerPanel from './AgentManagerPanel'
 
 function ChatBubble({ msg }: { msg: ChatMessage }) {
   const isUser = msg.role === 'user'
@@ -196,6 +197,7 @@ export default function RightPanel() {
   const { activeRightTab, setActiveRightTab } = useEditorStore()
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
+  const [showManager, setShowManager] = useState(false)
 
   return (
     <div className="w-96 border-l border-[var(--border)] bg-white flex flex-col shrink-0 overflow-hidden">
@@ -212,8 +214,15 @@ export default function RightPanel() {
           </button>
         ))}
         <button
+          onClick={() => setShowManager(true)}
+          className="px-2.5 py-2.5 text-[var(--text-disabled)] hover:text-[var(--accent)] transition-colors cursor-pointer shrink-0"
+          title="에이전트 관리"
+        >
+          <Settings size={14} />
+        </button>
+        <button
           onClick={() => navigate(`/edit/${id}/agent`)}
-          className="px-3 py-2.5 text-[var(--text-disabled)] hover:text-[var(--accent)] transition-colors cursor-pointer shrink-0"
+          className="px-2.5 py-2.5 text-[var(--text-disabled)] hover:text-[var(--accent)] transition-colors cursor-pointer shrink-0"
           title="전체 화면으로 보기"
         >
           <Maximize2 size={14} />
@@ -222,6 +231,7 @@ export default function RightPanel() {
       <div className="flex-1 overflow-y-auto">
         {activeRightTab === 'agent' ? <AgentTab /> : <PropertiesTab />}
       </div>
+      {showManager && <AgentManagerPanel onClose={() => setShowManager(false)} />}
     </div>
   )
 }

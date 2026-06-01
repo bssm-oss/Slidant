@@ -11,6 +11,7 @@ class AgentDefinition(SQLModel, table=True):
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     user_id: UUID | None = Field(default=None, foreign_key="users.id")  # None = system agent
+    project_id: UUID | None = Field(default=None, foreign_key="projects.id", index=True)  # None = library/system
     name: str = Field(max_length=100)
     role: str = Field(max_length=50)  # content | design | layout | custom
     config: dict = Field(default_factory=dict, sa_column=Column(JSONB))

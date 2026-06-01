@@ -16,7 +16,7 @@ export default function EditPage() {
     if (!id) return
     loadPresentation(id)
     loadAgentLogs(id)
-    loadAgents()
+    loadAgents(id)
     loadChatHistory(id)
     const unsubscribe = connectWs(id)
     return () => {

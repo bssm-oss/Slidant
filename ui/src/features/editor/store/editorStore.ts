@@ -20,7 +20,7 @@ interface EditorState {
 
   loadPresentation: (id: string) => Promise<void>
   loadAgentLogs: (projectId: string) => Promise<void>
-  loadAgents: () => Promise<void>
+  loadAgents: (projectId?: string) => Promise<void>
   loadChatHistory: (projectId: string) => Promise<void>
   connectWs: (projectId: string) => () => void
   setCurrentSlide: (index: number) => void
@@ -52,27 +52,22 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   activeRightTab: 'agent',
   isTitleEditing: false,
 
-  loadAgents: async () => {
+  loadAgents: async (projectId) => {
     try {
       const { fetchAgents } = await import('@/shared/lib/agentApi')
-      const data = await fetchAgents()
+      const data = await fetchAgents(projectId)
+      const toAgent = (prefix: string) => (a: any): Agent => ({
+        id: `${prefix}-${a.id}`,
+        definitionId: a.id,
+        name: a.name,
+        role: a.role,
+        status: 'idle' as AgentStatus,
+        description: (a.config?.description as string) ?? '',
+      })
       const allAgents: Agent[] = [
-        ...data.system.map((a) => ({
-          id: `sys-${a.id}`,
-          definitionId: a.id,
-          name: a.name,
-          role: a.role,
-          status: 'idle' as AgentStatus,
-          description: (a.config?.description as string) ?? '',
-        })),
-        ...data.custom.map((a) => ({
-          id: `custom-${a.id}`,
-          definitionId: a.id,
-          name: a.name,
-          role: a.role,
-          status: 'idle' as AgentStatus,
-          description: (a.config?.description as string) ?? '',
-        })),
+        ...data.system.map(toAgent('sys')),
+        ...(data.library ?? []).map(toAgent('lib')),
+        ...(data.project ?? []).map(toAgent('proj')),
       ]
       set({ agents: allAgents })
     } catch {}
@@ -145,6 +140,38 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         })
       }
 
+      if (type === 'agent_token') {
+        const accumulated = (msg.accumulated as string) ?? ''
+        // 스트리밍 중인 에이전트의 마지막 optimistic 메시지 업데이트
+        set((s) => {
+          const streamingAgent = s.agents.find((a) => a.status === 'running')
+          if (!streamingAgent) return s
+          const streamId = `streaming-${streamingAgent.definitionId}`
+          const existing = s.chatMessages.find((m) => m.id === streamId)
+          if (existing) {
+            return {
+              chatMessages: s.chatMessages.map((m) =>
+                m.id === streamId ? { ...m, content: accumulated } : m
+              ),
+            }
+          }
+          return {
+            chatMessages: [
+              ...s.chatMessages,
+              {
+                id: streamId,
+                role: 'agent' as const,
+                content: accumulated,
+                agentName: streamingAgent.name,
+                agentDefinitionId: streamingAgent.definitionId,
+                timestamp: new Date().toISOString(),
+                type: 'info' as const,
+              },
+            ],
+          }
+        })
+      }
+
       if (type === 'new_slides' || (type === 'agent_done' && msg.new_slides)) {
         const newSlides = (msg.new_slides as any[]) ?? []
         if (newSlides.length > 0) {
@@ -205,7 +232,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
                 : a,
             ),
             chatMessages: [
-              ...s.chatMessages.filter((m) => !m.id.startsWith(`optimistic-agent-${doneAgent?.definitionId}`)),
+              // streaming 임시 메시지 + optimistic 메시지 제거
+              ...s.chatMessages.filter((m) =>
+                m.id !== `streaming-${doneAgent?.definitionId}` &&
+                !m.id.startsWith(`optimistic-agent-${doneAgent?.definitionId}`)
+              ),
               {
                 id: `optimistic-agent-${doneAgent?.definitionId ?? Date.now()}`,
                 role: 'agent' as const,

@@ -25,9 +25,21 @@ class AgentDefinitionRepository(BaseRepository[AgentDefinition]):
         return list(result.scalars().all())
 
     async def list_by_user(self, user_id: UUID) -> list[AgentDefinition]:
+        """Library agents: user-owned, not project-scoped."""
         result = await self.session.execute(
             select(AgentDefinition).where(
                 AgentDefinition.user_id == user_id,
+                AgentDefinition.is_system.is_(False),
+                AgentDefinition.project_id.is_(None),
+            )
+        )
+        return list(result.scalars().all())
+
+    async def list_by_project(self, user_id: UUID, project_id: UUID) -> list[AgentDefinition]:
+        result = await self.session.execute(
+            select(AgentDefinition).where(
+                AgentDefinition.user_id == user_id,
+                AgentDefinition.project_id == project_id,
                 AgentDefinition.is_system.is_(False),
             )
         )

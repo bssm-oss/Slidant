@@ -8,6 +8,17 @@ class AgentDefinitionCreate(BaseModel):
     role: str = "custom"
     description: str = ""
     config: dict = {}
+    project_id: UUID | None = None
+
+
+class AgentDefinitionUpdate(BaseModel):
+    name: str
+    description: str = ""
+    config: dict = {}
+
+
+class AgentDefinitionClone(BaseModel):
+    project_id: UUID
 
 
 class AgentDefinitionResponse(BaseModel):
@@ -15,6 +26,7 @@ class AgentDefinitionResponse(BaseModel):
     name: str
     role: str
     is_system: bool
+    project_id: UUID | None
     config: dict
 
     model_config = {"from_attributes": True}
@@ -22,4 +34,5 @@ class AgentDefinitionResponse(BaseModel):
 
 class AgentListResponse(BaseModel):
     system: list[AgentDefinitionResponse]
-    custom: list[AgentDefinitionResponse]
+    library: list[AgentDefinitionResponse]
+    project: list[AgentDefinitionResponse]
