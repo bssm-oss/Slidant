@@ -8,7 +8,8 @@ class AgentRunRequest(BaseModel):
     project_id: UUID
     slide_id: UUID
     command: str
-    agent_role: str = "content"  # content | design | layout | custom
+    agent_role: str = "content"
+    agent_definition_id: UUID | None = None  # 특정 AgentDefinition 지정 시 사용
 
 
 class AgentRunResponse(BaseModel):

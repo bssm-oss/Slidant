@@ -4,14 +4,14 @@ from uuid import UUID
 from app.models.agent import AgentDefinition, AgentRun, LlmLog
 from app.repositories.agent import AgentDefinitionRepository, AgentRunRepository, LlmLogRepository
 from app.repositories.api_key import ApiKeyRepository
-from app.repositories.component import ComponentRepository
+from app.repositories.slide import SlideRepository
+from app.services import slide_content
 
 
 async def resolve_api_key(
     api_key_repo: ApiKeyRepository,
     user_id: UUID,
 ) -> tuple[object | None, str]:
-    """openrouter 우선, 없으면 anthropic. (api_key, provider) 반환"""
     key = await api_key_repo.get_active(user_id, "openrouter")
     if key:
         return key, "openrouter"
@@ -35,6 +35,29 @@ async def get_or_create_agent_def(
     return agent_def
 
 
+async def resolve_agent_def(
+    agent_def_repo: AgentDefinitionRepository,
+    agent_definition_id: UUID | None,
+    role: str,
+) -> tuple[AgentDefinition, str | None]:
+    """
+    Returns (AgentDefinition, system_prompt).
+    agent_definition_id 지정 시 해당 정의 사용 (커스텀 포함).
+    미지정 시 role 기반 시스템 에이전트로 fallback.
+    system_prompt는 config.system_prompt → config.description 순으로 추출.
+    """
+    agent_def = None
+    if agent_definition_id:
+        agent_def = await agent_def_repo.get(agent_definition_id)
+
+    if not agent_def:
+        agent_def = await get_or_create_agent_def(agent_def_repo, role)
+
+    config = agent_def.config or {}
+    system_prompt: str | None = config.get("system_prompt") or config.get("description") or None
+    return agent_def, system_prompt
+
+
 async def create_agent_run(
     agent_run_repo: AgentRunRepository,
     project_id: UUID,
@@ -52,27 +75,14 @@ async def create_agent_run(
 
 
 async def apply_patches(
-    component_repo: ComponentRepository,
+    slide_repo: SlideRepository,
     slide_id: UUID,
     patches: list[dict],
 ) -> None:
-    for op in patches:
-        path_parts = op.get("path", "").strip("/").split("/")
-        if len(path_parts) < 2:
-            continue
-        try:
-            comp_uuid = UUID(path_parts[0])
-        except ValueError:
-            continue
-        comp = await component_repo.get(comp_uuid)
-        if not comp or comp.slide_id != slide_id:
-            continue
-        field = path_parts[1]
-        if field == "properties" and len(path_parts) > 2:
-            comp.properties = {**comp.properties, path_parts[2]: op.get("value")}
-        elif field == "order":
-            comp.order = op.get("value")
-        comp.updated_at = datetime.utcnow()
+    s = await slide_repo.get(slide_id)
+    if s:
+        slide_content.apply_patches(s, patches)
+        s.updated_at = datetime.utcnow()
 
 
 async def finalize_agent_run(
