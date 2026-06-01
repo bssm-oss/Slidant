@@ -56,6 +56,25 @@ export default function LoginPage() {
               {loading ? '로그인 중...' : '로그인'}
             </Button>
           </form>
+          <Divider label="개발용" />
+          <Button
+            variant="secondary"
+            className="w-full"
+            disabled={loading}
+            onClick={async () => {
+              setLoading(true)
+              try {
+                await login({ email: 'dev@slidant.com', password: 'pass1234' })
+                navigate('/drive')
+              } catch (err: any) {
+                toast(err.message ?? '로그인 실패', 'error')
+              } finally {
+                setLoading(false)
+              }
+            }}
+          >
+            ⚡ 어드민으로 바로 로그인
+          </Button>
           <Divider />
           <GoogleButton label="Google로 계속" onClick={() => toast('Google 로그인 준비 중', 'info')} />
           <p className="text-xs text-center text-[var(--text-muted)]">

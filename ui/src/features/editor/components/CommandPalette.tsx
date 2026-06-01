@@ -31,11 +31,11 @@ export default function CommandPalette() {
     if (isCommandPaletteOpen) { inputRef.current?.focus(); setInput(''); setRunning(false) }
   }, [isCommandPaletteOpen])
 
-  const handleRun = async (label: string) => {
+  const handleRun = async (label: string, role = 'content') => {
     const command = input.trim() || label
     setRunning(true)
     try {
-      await executeAgent(command)
+      await executeAgent(command, role)
       toast(`Agent 작업 시작: ${command}`, 'info')
     } catch (e: any) {
       toast(e.message ?? 'Agent 실행 실패', 'error')
@@ -47,7 +47,7 @@ export default function CommandPalette() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (input.trim()) handleRun(input.trim())
+    if (input.trim()) handleRun(input.trim(), 'content')
   }
 
   if (!isCommandPaletteOpen) return null
@@ -79,7 +79,7 @@ export default function CommandPalette() {
         <div className="py-1.5">
           {suggestions.map((s) => (
             <button key={s.id} disabled={running}
-              onClick={() => handleRun(s.label)}
+              onClick={() => handleRun(s.label, s.id)}
               className={cn('w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[var(--text-muted)] transition-colors cursor-pointer text-left disabled:opacity-50', s.bg)}>
               <Sparkles size={13} className={s.color} />
               {s.label}
