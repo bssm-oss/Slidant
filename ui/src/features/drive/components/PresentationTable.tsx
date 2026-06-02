@@ -7,9 +7,15 @@ import { useDriveStore } from '../store/driveStore'
 import { useToastStore } from '@/shared/components/ui/Toast'
 import SlideThumbnail from './SlideThumbnail'
 
-function formatDate(d: string) {
-  const dt = new Date(d)
-  return `${dt.getFullYear()}.${String(dt.getMonth()+1).padStart(2,'0')}.${String(dt.getDate()).padStart(2,'0')}`
+function formatDate(iso: string) {
+  const d = new Date(iso)
+  const now = new Date()
+  const diffMs = now.getTime() - d.getTime()
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+  if (diffDays === 0) return '오늘'
+  if (diffDays === 1) return '어제'
+  if (diffDays < 7) return diffDays + '일 전'
+  return d.getFullYear() + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + String(d.getDate()).padStart(2,'0')
 }
 
 export default function PresentationTable({ presentations }: { presentations: Presentation[] }) {
@@ -50,14 +56,14 @@ export default function PresentationTable({ presentations }: { presentations: Pr
 
   return (
     <div className="rounded-[var(--radius)] border border-[var(--border)] overflow-hidden bg-white">
-      <div className="grid grid-cols-[1fr_100px_160px_120px_48px] gap-4 px-6 py-3 bg-[var(--bg-muted)] border-b border-[var(--border)]">
+      <div className="grid grid-cols-[1fr_88px_160px_120px_48px] gap-4 px-6 py-3 bg-[var(--bg-muted)] border-b border-[var(--border)]">
         {['제목','미리보기','수정일','슬라이드',''].map((h, i) => (
           <span key={i} className="text-sm font-semibold text-[var(--text-muted)]">{h}</span>
         ))}
       </div>
       {presentations.map((ppt, i) => (
         <div key={ppt.id}
-          className={cn('grid grid-cols-[1fr_100px_160px_120px_48px] gap-4 px-6 py-4 items-center hover:bg-[var(--bg-muted)] transition-colors group relative',
+          className={cn('grid grid-cols-[1fr_88px_160px_120px_48px] gap-4 px-6 py-4 items-center cursor-pointer hover:bg-[var(--bg-muted)] transition-colors group relative',
             i !== presentations.length - 1 && 'border-b border-[var(--border)]')}>
           {renamingId === ppt.id ? (
             <input autoFocus value={renameValue} onChange={(e) => setRenameValue(e.target.value)}
@@ -70,7 +76,7 @@ export default function PresentationTable({ presentations }: { presentations: Pr
               {ppt.title}
             </span>
           )}
-          <div className="w-[100px] rounded-[6px] overflow-hidden border border-[var(--border)]">
+          <div className="w-[88px] rounded-[6px] overflow-hidden border border-[var(--border)]">
             <SlideThumbnail projectId={ppt.id} />
           </div>
           <span className="text-sm text-[var(--text-muted)]">{formatDate(ppt.updatedAt)}</span>

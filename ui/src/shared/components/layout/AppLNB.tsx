@@ -52,9 +52,9 @@ export default function AppLNB() {
             key={to}
             to={to}
             className={({ isActive }) => cn(
-              'flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-sm font-medium transition-all duration-150',
+              'flex items-center gap-3 rounded-[8px] mx-2 px-3 py-2.5 text-sm font-medium transition-all duration-150',
               isActive
-                ? 'bg-[var(--accent-subtle)] text-[var(--accent-text)]'
+                ? 'bg-[var(--accent-subtle)] text-[var(--accent)]'
                 : 'text-[var(--text-muted)] hover:bg-[var(--bg-muted)] hover:text-[var(--text)]',
             )}
           >
@@ -68,10 +68,10 @@ export default function AppLNB() {
       <div className="px-3 py-4 border-t border-[var(--border)] flex flex-col gap-0.5">
         <button
           onClick={handleLogout}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-sm font-medium text-[var(--text-muted)] hover:bg-red-50 hover:text-red-500 transition-all duration-150 cursor-pointer w-full text-left"
+          title="로그아웃"
+          className="flex items-center justify-center gap-3 rounded-[8px] mx-2 px-3 py-2.5 text-sm font-medium text-[var(--text-muted)] hover:bg-red-50 hover:text-red-500 transition-all duration-150 cursor-pointer"
         >
           <LogOut size={16} />
-          로그아웃
         </button>
       </div>
     </div>

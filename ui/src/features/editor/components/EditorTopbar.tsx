@@ -1,35 +1,24 @@
 import { useRef, useState } from 'react'
 import { useEditorStore } from '../store/editorStore'
 import { useToastStore } from '@/shared/components/ui/Toast'
-import { AgentStatusBadge, Button } from '@/shared/components/ui'
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/shared/components/ui/tooltip'
-import { Save, Share2, History, Undo2 } from 'lucide-react'
-import HistoryPanel from './HistoryPanel'
+import { Button } from '@/shared/components/ui'
+import { Save } from 'lucide-react'
 import ThemePanel from '@/features/presentation/components/ThemePanel'
+import type { AgentStatus } from '@/shared/types'
 
-function IconButton({ onClick, title, children }: {
-  onClick: () => void
-  title: string
-  children: React.ReactNode
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button variant="ghost" size="icon" onClick={onClick}>
-          {children}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>{title}</TooltipContent>
-    </Tooltip>
-  )
+const statusMap: Record<AgentStatus, { color: string; label: string }> = {
+  idle: { color: '#22c55e', label: '대기' },
+  running: { color: '#f59e0b', label: '실행 중' },
+  error: { color: '#ef4444', label: '오류' },
 }
 
 export default function EditorTopbar() {
   const { presentation, overallStatus, saveTitle, isTitleEditing, setTitleEditing } = useEditorStore()
   const toast = useToastStore((s) => s.push)
   const inputRef = useRef<HTMLInputElement>(null)
-  const [showHistory, setShowHistory] = useState(false)
   const [showTheme, setShowTheme] = useState(false)
+
+  const status = statusMap[overallStatus] ?? statusMap.idle
 
   const handleTitleClick = () => {
     setTitleEditing(true)
@@ -45,68 +34,79 @@ export default function EditorTopbar() {
     setTitleEditing(false)
   }
 
-  return (
-    <TooltipProvider delayDuration={400}>
-      <div className="flex items-center justify-between px-4 h-14 border-b border-[var(--border)] bg-white shrink-0">
-        {/* 좌측 */}
-        <div className="flex items-center gap-3 min-w-0">
-          <a href="/drive" className="w-7 h-7 rounded-[8px] bg-gradient-to-br from-[var(--accent)] to-[var(--pink)] flex items-center justify-center shadow-sm shrink-0 hover:opacity-80 transition-opacity" title="드라이브로 이동">
-            <span className="text-white text-[11px] font-bold">S</span>
-          </a>
-          {isTitleEditing ? (
-            <input
-              ref={inputRef}
-              defaultValue={presentation?.title ?? ''}
-              onBlur={handleTitleBlur}
-              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-              className="text-[13px] font-semibold text-[var(--text)] bg-transparent border-b border-[var(--accent)] outline-none px-0.5 w-48"
-              autoFocus
-            />
-          ) : (
-            <span
-              onClick={handleTitleClick}
-              className="text-[13px] font-semibold text-[var(--text)] cursor-text hover:text-[var(--accent)] transition-colors truncate max-w-48"
-            >
-              {presentation?.title ?? '제목 없음'}
-            </span>
-          )}
-          <AgentStatusBadge status={overallStatus} />
-        </div>
+  const handleSave = () => {
+    toast('저장되었습니다', 'success')
+  }
 
-        {/* 우측 */}
-        <div className="flex items-center gap-1 shrink-0">
-          <IconButton onClick={() => setShowHistory(true)} title="버전 히스토리">
-            <History size={15} />
-          </IconButton>
-          <IconButton onClick={() => toast('실행 취소 준비 중', 'info')} title="실행 취소">
-            <Undo2 size={15} />
-          </IconButton>
-          <div className="w-px h-4 bg-[var(--border)] mx-1.5" />
-          <div className="relative">
-            <button
-              onClick={() => setShowTheme((v) => !v)}
-              className="h-8 px-3 text-[12px] font-medium rounded-[8px] border border-[var(--border)] hover:bg-[var(--bg-muted)] transition-colors flex items-center gap-1.5"
-              title="디자인 테마"
-            >
-              🎨 테마
-            </button>
-            {showTheme && (
-              <div className="absolute top-full right-0 mt-1 z-50 w-64 bg-white rounded-[12px] border border-[var(--border)] shadow-xl">
-                <ThemePanel onClose={() => setShowTheme(false)} />
-              </div>
-            )}
-          </div>
-          <Button variant="ghost" size="sm" onClick={() => toast('공유 링크가 복사되었습니다', 'success')}>
-            <Share2 size={14} />
-            공유
-          </Button>
-          <Button variant="primary" size="sm" onClick={() => toast('저장되었습니다', 'success')}>
-            <Save size={14} />
-            저장
-          </Button>
+  return (
+    <div className="flex items-center justify-between px-4 h-12 border-b border-[var(--border)] bg-white shrink-0">
+      {/* Left: Logo + Title + Status */}
+      <div className="flex items-center gap-3 min-w-0 flex-1">
+        <a
+          href="/drive"
+          className="w-7 h-7 rounded-[8px] bg-gradient-to-br from-[var(--accent)] to-[#A855F7] flex items-center justify-center shadow-sm shrink-0 hover:opacity-80 transition-opacity"
+          title="드라이브로 이동"
+        >
+          <span className="text-white text-[11px] font-bold">S</span>
+        </a>
+
+        {/* Title area */}
+        {isTitleEditing ? (
+          <input
+            ref={inputRef}
+            defaultValue={presentation?.title ?? ''}
+            onBlur={handleTitleBlur}
+            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+            className="text-[13px] font-semibold text-[var(--text)] bg-transparent border-b border-[var(--accent)] outline-none px-0.5 w-48"
+            autoFocus
+          />
+        ) : (
+          <span
+            onClick={handleTitleClick}
+            className="text-[13px] font-semibold text-[var(--text)] cursor-text hover:text-[var(--accent)] transition-colors truncate max-w-48"
+          >
+            {presentation?.title ?? '제목 없음'}
+          </span>
+        )}
+
+        {/* Status dot */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span
+            className="w-1.5 h-1.5 rounded-full"
+            style={{ backgroundColor: status.color }}
+          />
+          <span className="text-[11px] text-[var(--text-muted)]">{status.label}</span>
         </div>
       </div>
-      <HistoryPanel open={showHistory} onClose={() => setShowHistory(false)} />
-    </TooltipProvider>
+
+      {/* Right: Theme + Save */}
+      <div className="flex items-center gap-2 shrink-0">
+        {/* Theme button + panel */}
+        <div className="relative">
+          <button
+            onClick={() => setShowTheme((v) => !v)}
+            className="h-8 px-3 text-[12px] font-medium rounded-[8px] hover:bg-[var(--bg-muted)] transition-colors flex items-center gap-1.5"
+            title="디자인 테마"
+          >
+            🎨 테마
+          </button>
+          {showTheme && (
+            <div className="absolute top-full right-0 mt-1 z-50 w-64 bg-white rounded-[12px] border border-[var(--border)] shadow-xl">
+              <ThemePanel onClose={() => setShowTheme(false)} />
+            </div>
+          )}
+        </div>
+
+        {/* Save button */}
+        <Button
+          variant="primary"
+          onClick={handleSave}
+          className="h-8 px-4 text-[12px] leading-none"
+        >
+          <Save size={13} />
+          저장
+        </Button>
+      </div>
+    </div>
   )
 }

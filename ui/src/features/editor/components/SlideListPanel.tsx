@@ -25,33 +25,60 @@ import {
 
 function MiniComponent({ comp }: { comp: SlideComponent }) {
   const props = comp.props as Record<string, unknown>
-  const SCALE = 180 / 960
+  const SCALE = 200 / 960
 
-  return (
-    <div style={{
-      position: 'absolute',
-      left: comp.position.x * SCALE,
-      top: comp.position.y * SCALE,
-      width: comp.size.w * SCALE,
-      height: comp.size.h * SCALE,
-      overflow: 'hidden',
-    }}>
-      {comp.type === 'text' ? (
+  if (comp.type === 'shape') {
+    return (
+      <div style={{
+        position: 'absolute',
+        left: comp.position.x * SCALE, top: comp.position.y * SCALE,
+        width: comp.size.w * SCALE, height: comp.size.h * SCALE,
+        background: (props.bgColor as string) ?? (props.color as string) ?? '#e5e7eb',
+        opacity: (props.opacity as number) ?? 1,
+        borderRadius: ((props.borderRadius as number) ?? 0) * SCALE,
+      }} />
+    )
+  }
+  if (comp.type === 'text') {
+    return (
+      <div style={{
+        position: 'absolute',
+        left: comp.position.x * SCALE, top: comp.position.y * SCALE,
+        width: comp.size.w * SCALE, height: comp.size.h * SCALE,
+        overflow: 'hidden',
+      }}>
         <p style={{
-          fontSize: Math.max(3, ((props.fontSize as number) ?? 16) * SCALE),
+          fontSize: Math.max(2, ((props.fontSize as number) ?? 16) * SCALE),
           fontWeight: (props.fontWeight as number) ?? 400,
           color: (props.color as string) ?? '#1A1523',
-          lineHeight: 1.3,
+          lineHeight: 1.2,
           whiteSpace: 'pre-wrap',
           overflow: 'hidden',
-        }}>
-          {(props.content as string) ?? ''}
-        </p>
-      ) : (
-        <div style={{ width: '100%', height: '100%', background: '#e5e7eb', borderRadius: 2 }} />
-      )}
-    </div>
-  )
+          margin: 0,
+        }}>{(props.content as string) ?? ''}</p>
+      </div>
+    )
+  }
+  if (comp.type === 'image') {
+    const src = (props.src ?? props.url) as string | undefined
+    return src && !props.placeholder ? (
+      <img src={src} style={{
+        position: 'absolute',
+        left: comp.position.x * SCALE, top: comp.position.y * SCALE,
+        width: comp.size.w * SCALE, height: comp.size.h * SCALE,
+        objectFit: 'cover' as const,
+        display: 'block',
+      }} alt="" />
+    ) : (
+      <div style={{
+        position: 'absolute',
+        left: comp.position.x * SCALE, top: comp.position.y * SCALE,
+        width: comp.size.w * SCALE, height: comp.size.h * SCALE,
+        background: 'rgba(124,58,237,0.06)',
+      }} />
+    )
+  }
+  return null
 }
 
 interface SortableSlideItemProps {
@@ -74,6 +101,8 @@ function SortableSlideItem({
   const [menuOpen, setMenuOpen] = useState(false)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: slide.id })
 
+  const sortedComponents = [...slide.components].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
+
   return (
     <div
       ref={setNodeRef}
@@ -94,7 +123,7 @@ function SortableSlideItem({
         )}
       >
         <div style={{ position: 'absolute', inset: 0 }}>
-          {slide.components.map((comp) => (
+          {sortedComponents.map((comp) => (
             <MiniComponent key={comp.id} comp={comp} />
           ))}
           {slide.components.length === 0 && (
@@ -174,11 +203,14 @@ export default function SlideListPanel() {
   const slides = presentation?.slides ?? []
 
   return (
-    <div className="w-44 border-r border-[var(--border)] bg-[var(--bg-muted)] flex flex-col shrink-0 overflow-hidden">
-      <div className="px-3 py-2.5 border-b border-[var(--border)] shrink-0">
+    <div className="w-52 border-r border-[var(--border)] bg-white flex flex-col shrink-0 overflow-hidden">
+      {/* Header */}
+      <div className="px-3 py-2.5 border-b border-[var(--border)] flex items-center justify-between shrink-0">
         <span className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wide">슬라이드</span>
+        <span className="text-[11px] font-medium text-[var(--text-disabled)]">{slides.length}</span>
       </div>
 
+      {/* Slide list */}
       <div className="flex-1 overflow-y-auto py-2 px-2 flex flex-col gap-2">
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToVerticalAxis]}>
           <SortableContext items={slides.map((s) => s.id)} strategy={verticalListSortingStrategy}>
@@ -198,12 +230,16 @@ export default function SlideListPanel() {
             ))}
           </SortableContext>
         </DndContext>
+      </div>
 
+      {/* Add slide button */}
+      <div className="px-2 py-2 shrink-0 border-t border-[var(--border)]">
         <button
           onClick={addSlide}
-          className="shrink-0 w-full aspect-video rounded-[6px] border-2 border-dashed border-[var(--border)] hover:border-[var(--accent)] hover:bg-[var(--accent-subtle)] flex items-center justify-center transition-all duration-150 cursor-pointer group"
+          className="w-full py-1.5 rounded-[6px] border border-dashed border-[var(--border)] hover:border-[var(--accent)] hover:bg-[var(--accent-subtle)] flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer group"
         >
-          <Plus size={14} className="text-[var(--text-disabled)] group-hover:text-[var(--accent)] transition-colors" />
+          <Plus size={13} className="text-[var(--text-disabled)] group-hover:text-[var(--accent)] transition-colors" />
+          <span className="text-[11px] text-[var(--text-disabled)] group-hover:text-[var(--accent)] transition-colors">슬라이드 추가</span>
         </button>
       </div>
     </div>
