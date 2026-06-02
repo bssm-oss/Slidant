@@ -20,6 +20,24 @@ logger = logging.getLogger("slidant.agent")
 _sse_queues: dict[str, list[asyncio.Queue]] = {}
 
 
+def _sanitize_error(e: Exception) -> str:
+    """기술적 에러 상세를 사용자 친화적 메시지로 변환."""
+    msg = str(e)
+    if "credit balance" in msg or "insufficient" in msg.lower():
+        return "크레딧이 부족합니다. 설정에서 API 키를 확인하세요."
+    if "length limit" in msg or "completion_tokens" in msg or "token" in msg.lower():
+        return "요청이 너무 깁니다. 더 짧은 명령으로 나눠서 시도하세요."
+    if "rate limit" in msg or "429" in msg:
+        return "요청이 너무 많습니다. 잠시 후 다시 시도하세요."
+    if "api key" in msg.lower() or "authentication" in msg.lower():
+        return "API 키가 유효하지 않습니다. 설정에서 확인하세요."
+    if "timeout" in msg.lower():
+        return "응답 시간이 초과되었습니다. 다시 시도하세요."
+    if "can only concatenate" in msg or "NoneType" in msg or "AttributeError" in msg:
+        return "처리 중 오류가 발생했습니다. 다시 시도하세요."
+    return f"오류가 발생했습니다: {msg[:80]}" if len(msg) > 80 else f"오류가 발생했습니다: {msg}"
+
+
 @router.post("/run", response_model=AgentRunResponse, status_code=status.HTTP_202_ACCEPTED)
 async def run_agent_endpoint(
     body: AgentRunRequest,
@@ -102,7 +120,7 @@ async def _run_agent_background(
         await _broadcast(str(body.project_id), {
             "type": "agent_error",
             "agent_run_id": str(agent_run_id),
-            "error": str(e),
+            "error": _sanitize_error(e),
         })
 
 
@@ -301,7 +319,7 @@ async def _run_agent_background_inner(
                 project_id=body.project_id,
                 slide_id=body.slide_id,
                 role="agent",
-                content=f"오류: {str(e)}",
+                content=f"오류: {_sanitize_error(e)}",
                 agent_run_id=agent_run.id,
                 agent_definition_id=agent_def_id,
                 agent_name=agent_def_name,
@@ -312,7 +330,7 @@ async def _run_agent_background_inner(
                 "type": "agent_error",
                 "agent_run_id": str(agent_run.id),
                 "agent_name": agent_def_name,
-                "error": str(e),
+                "error": _sanitize_error(e),
             })
 
 
