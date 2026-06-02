@@ -224,6 +224,27 @@ def build_slide_context(components: list[dict]) -> str:
     return f'<slide>{"".join(parts)}</slide>'
 
 
+def build_all_slides_context(all_slides: list[dict]) -> str:
+    """전체 슬라이드 구조 요약 — 빈 슬라이드 식별을 위해 component 수 포함."""
+    lines = [f"<presentation_structure total_slides='{len(all_slides)}'>"]
+    for s in all_slides:
+        comp_count = len(s.get("components", []))
+        title = s.get("title") or "(제목 없음)"
+        is_empty = "EMPTY" if comp_count == 0 else f"{comp_count}개 컴포넌트"
+        lines.append(
+            f'  <slide index="{s["order"]}" id="{s["id"]}" title="{title}" status="{is_empty}" />'
+        )
+    lines.append("</presentation_structure>")
+    lines.append(
+        "\nIMPORTANT: To fill or modify existing slides, use path '/{slide_id}/...' or add "
+        "components to the current slide with path '/-'. "
+        "Do NOT add '/slides/-' ops for slides that already exist. "
+        "To fill an EMPTY slide: the user must navigate to that slide first, "
+        "OR use slide_ops with '/slides/-' ONLY for genuinely new slides."
+    )
+    return "\n".join(lines)
+
+
 def _make_llm(api_key_plaintext: str, provider: str = "anthropic", json_mode: bool = False):
     from app.core.config import settings
 
@@ -642,10 +663,7 @@ async def run_agent(
 
     slide_context = build_slide_context(components)
     if all_slides:
-        slide_context += f"\n\n<presentation_structure>Total slides: {len(all_slides)}\n"
-        for s in all_slides:
-            slide_context += f"  Slide {s['order']+1}: id={s['id']} title={s.get('title') or '(no title)'}\n"
-        slide_context += "</presentation_structure>"
+        slide_context += "\n\n" + build_all_slides_context(all_slides)
 
     logger.info("agent_run  role=%s  components=%d  slides=%d  command=%r",
                 role, len(components), len(all_slides or []), command[:80])

@@ -205,7 +205,12 @@ async def _run_agent_background_inner(
                 encrypted_api_key=encrypted_api_key,
                 provider=provider,
                 system_prompt=system_prompt,
-                all_slides=[{"id": str(s.id), "order": s.order, "title": s.title} for s in all_slides],
+                all_slides=[{
+                    "id": str(s.id),
+                    "order": s.order,
+                    "title": s.title,
+                    "components": list(s.content or []),
+                } for s in all_slides],
                 on_token=on_token,
                 on_event=on_event,
                 conversation_history=conversation_history,
