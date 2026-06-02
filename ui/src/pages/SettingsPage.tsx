@@ -145,7 +145,7 @@ export default function SettingsPage() {
                   <button
                     key={p}
                     onClick={() => setProvider(p)}
-                    className={`flex-1 py-2 text-xs font-semibold rounded-[8px] border transition-all cursor-pointer ${
+                    className={`flex-1 py-2 text-\[12px\] leading-none font-semibold rounded-[8px] border transition-all cursor-pointer ${
                       provider === p
                         ? 'bg-[var(--accent-subtle)] text-[var(--accent-text)] border-purple-200'
                         : 'bg-white text-[var(--text-muted)] border-[var(--border)] hover:border-[var(--border-strong)]'

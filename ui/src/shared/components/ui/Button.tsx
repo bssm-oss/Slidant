@@ -20,9 +20,9 @@ const buttonVariants = cva(
           'border border-[var(--border)] bg-transparent hover:bg-[var(--bg-muted)] text-[var(--text)]',
       },
       size: {
-        sm: 'h-8 px-3 text-xs rounded-[8px]',
-        md: 'h-9 px-4 text-sm rounded-[10px]',
-        lg: 'h-10 px-5 text-sm rounded-[12px]',
+        sm: 'h-8 px-3 text-[12px] leading-none rounded-[8px]',
+        md: 'h-9 px-4 text-[13px] leading-none rounded-[10px]',
+        lg: 'h-10 px-5 text-[14px] leading-none rounded-[12px]',
         icon: 'h-8 w-8 rounded-[8px]',
       },
     },

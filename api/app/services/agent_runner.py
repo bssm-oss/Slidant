@@ -508,7 +508,7 @@ def build_agent_graph(
         logger.info("  [validator] valid ops=%d  retry=%d", len(valid), state.get("retry_count", 0))
         return {**state, "result_patches": valid}
 
-    # ── Node 5: formatter — Python, patches → 사람이 읽는 설명 ──────
+    # ── Node 5: formatter — LLM 요약 + 변경 수 통계만 표시 ──────────
     def formatter_node(state: AgentState) -> AgentState:
         patches = state.get("result_patches", [])
         llm_summary = state.get("result_summary", "")
@@ -516,60 +516,27 @@ def build_agent_graph(
         if not patches:
             return state
 
-        lines: list[str] = []
-        for op in patches:
-            kind = op.get("op")
-            path = op.get("path", "")
-            value = op.get("value", {})
-            props = value.get("properties", {}) if isinstance(value, dict) else {}
-            comp_type = value.get("type", "") if isinstance(value, dict) else ""
+        # 변경 수 통계 (세부 목록 없이 숫자만)
+        adds = sum(1 for op in patches if op.get("op") == "add" and op.get("path") == "/-")
+        replaces = sum(1 for op in patches if op.get("op") == "replace")
+        removes = sum(1 for op in patches if op.get("op") == "remove")
+        slide_adds = sum(1 for op in patches if op.get("op") == "add" and op.get("path", "").startswith("/slides/"))
 
-            if kind == "add" and path == "/-":
-                if comp_type == "text":
-                    content = str(props.get("content", ""))
-                    preview = content[:40] + "…" if len(content) > 40 else content
-                    fs = props.get("fontSize", "")
-                    fw = "굵게 " if props.get("fontWeight", 400) >= 700 else ""
-                    color = props.get("color", "")
-                    lines.append(f'✏️ 텍스트 추가  "{preview}"')
-                    if fs or fw or color:
-                        lines.append(f'   {fw}{fs}pt  {color}')
-                elif comp_type == "shape":
-                    bg = props.get("bgColor", props.get("color", ""))
-                    sz = props.get("size", {})
-                    lines.append(f'🔷 도형 추가  색상 {bg}  {sz.get("w","?")}×{sz.get("h","?")}px')
-                elif comp_type == "image":
-                    src = props.get("src", props.get("url", ""))
-                    lines.append(f'🖼 이미지 추가  {src[:60]}')
-                else:
-                    lines.append(f'➕ {comp_type} 컴포넌트 추가')
+        stats_parts = []
+        if adds: stats_parts.append(f"컴포넌트 {adds}개 추가")
+        if replaces: stats_parts.append(f"{replaces}개 수정")
+        if removes: stats_parts.append(f"{removes}개 삭제")
+        if slide_adds: stats_parts.append(f"슬라이드 {slide_adds}장 추가")
+        stats = " · ".join(stats_parts) if stats_parts else "변경 없음"
 
-            elif kind == "add" and path.startswith("/slides/"):
-                title = value.get("title", "") if isinstance(value, dict) else ""
-                n_comp = len(value.get("components", [])) if isinstance(value, dict) else 0
-                lines.append(f'📄 슬라이드 추가  "{title}"  컴포넌트 {n_comp}개')
-
-            elif kind == "replace":
-                parts = path.strip("/").split("/")
-                if "properties" in parts:
-                    key = parts[-1]
-                    val = op.get("value", "")
-                    labels = {"content": "텍스트", "bgColor": "배경색", "color": "글자색",
-                              "fontSize": "폰트 크기", "fontWeight": "굵기"}
-                    lines.append(f'✏️ {labels.get(key, key)} 변경 → {str(val)[:40]}')
-
-            elif kind == "remove":
-                lines.append(f'🗑 컴포넌트 삭제')
-
-        # LLM summary가 있으면 먼저, 그 다음 변경 목록
-        formatted = ""
+        # LLM 자연어 요약이 있으면 그것만, 없으면 통계
         if llm_summary:
-            formatted = llm_summary.strip() + "\n\n"
-        if lines:
-            formatted += "\n".join(lines)
+            formatted = llm_summary.strip()
+        else:
+            formatted = stats
 
-        logger.info("  [formatter] %d ops → %d lines", len(patches), len(lines))
-        return {**state, "result_summary": formatted.strip()}
+        logger.info("  [formatter] %d ops → %s", len(patches), stats)
+        return {**state, "result_summary": formatted}
 
     # ── Conditional: retry or done ────────────────────────────────
     def should_retry(state: AgentState) -> str:

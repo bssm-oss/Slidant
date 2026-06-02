@@ -391,7 +391,7 @@ function PropertiesTab() {
       <div className="pt-2 border-t border-[var(--border)]">
         <button
           onClick={() => deleteComponent()}
-          className="w-full h-8 text-xs font-medium text-red-500 hover:bg-red-50 border border-red-200 rounded-[8px] transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+          className="w-full h-8 text-[12px] leading-none font-medium text-red-500 hover:bg-red-50 border border-red-200 rounded-[8px] transition-colors cursor-pointer flex items-center justify-center gap-1.5"
         >
           🗑 컴포넌트 삭제
         </button>
