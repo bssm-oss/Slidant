@@ -386,6 +386,7 @@ def build_agent_graph(
     system_prompt: list[dict] | str | None = None,
     on_token: "Callable[[str], None] | None" = None,
     on_event: "Callable[[str, str], None] | None" = None,  # (event_type, message)
+    slide_scope_locked: bool = False,
 ) -> StateGraph:
     from typing import Callable
     gen_prompt = system_prompt or SYSTEM_PROMPTS.get(role, SYSTEM_PROMPTS["content"])
@@ -490,6 +491,14 @@ def build_agent_graph(
         invalid = len(patches) - len(valid)
         if invalid:
             logger.warning("  [validator] %d개 무효 op 제거", invalid)
+
+        # 슬라이드 스코프 잠금 시 신규 슬라이드 생성 op 제거
+        if slide_scope_locked:
+            before = len(valid)
+            valid = [op for op in valid if not op.get("path", "").startswith("/slides/")]
+            removed = before - len(valid)
+            if removed:
+                logger.info("  [validator] slide_scope_locked: /slides/ op %d개 제거", removed)
 
         add_ops = [op for op in valid if op.get("op") == "add" and op.get("path") in ("/-", "/")]
         if add_ops:
@@ -653,6 +662,7 @@ async def run_agent(
     system_prompt: str | None = None,
     all_slides: list[dict] | None = None,
     theme: dict | None = None,
+    slide_scope_locked: bool = False,
     on_token: "Callable[[str], None] | None" = None,
     on_event: "Callable[[str, str], None] | None" = None,
     conversation_history: str = "",
@@ -679,8 +689,21 @@ MANDATORY: Always use these exact colors and font for this presentation:
 Do NOT deviate from these values. All new components must use these colors.
 </presentation_theme>"""
 
-    logger.info("agent_run  role=%s  components=%d  slides=%d  command=%r",
-                role, len(components), len(all_slides or []), command[:80])
+    if slide_scope_locked:
+        slide_context += """
+
+<scope_constraint>
+CRITICAL — SCOPE LOCKED TO CURRENT SLIDE:
+- The user explicitly mentioned a specific slide using @슬라이드N.
+- You MUST ONLY add or modify components in THIS slide.
+- Do NOT generate ANY '/slides/-' operations (new slide creation is FORBIDDEN).
+- Do NOT plan or suggest creating additional slides.
+- Focus entirely on improving the content/design of the current slide only.
+</scope_constraint>"""
+        logger.info("  slide_scope_locked=True: /slides/ ops will be stripped by validator")
+
+    logger.info("agent_run  role=%s  components=%d  slides=%d  command=%r  scope_locked=%s",
+                role, len(components), len(all_slides or []), command[:80], slide_scope_locked)
 
     # Mock 모드
     if getattr(settings, "MOCK_AGENT", False):
@@ -698,7 +721,7 @@ Do NOT deviate from these values. All new components must use these colors.
     resolved_prompt: list[dict] | str | None = system_prompt
     if isinstance(system_prompt, str):
         resolved_prompt = _make_cached_system_prompt(system_prompt)
-    graph = build_agent_graph(role, llm_json, llm_plain, resolved_prompt, on_token=on_token, on_event=on_event)
+    graph = build_agent_graph(role, llm_json, llm_plain, resolved_prompt, on_token=on_token, on_event=on_event, slide_scope_locked=slide_scope_locked)
 
     t0 = time.perf_counter()
     try:

@@ -201,6 +201,9 @@ async def _run_agent_background_inner(
                     "message": message,
                 })
 
+            import re as _re
+            slide_scope_locked = bool(_re.search(r'@슬라이드\d+', body.command))
+
             patches, _, llm_summary = await run_agent(
                 role=agent_def_role,
                 command=body.command,
@@ -215,6 +218,7 @@ async def _run_agent_background_inner(
                     "components": list(s.content or []),
                 } for s in all_slides],
                 theme=project_theme,
+                slide_scope_locked=slide_scope_locked,
                 on_token=on_token,
                 on_event=on_event,
                 conversation_history=conversation_history,
