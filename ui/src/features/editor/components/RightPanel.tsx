@@ -72,25 +72,25 @@ function AgentSelector({ agents, selectedId, onSelect }: {
     <div className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--accent-subtle)] text-[var(--accent)] text-[12px] font-medium hover:bg-purple-100 transition-colors"
+        className="flex items-center gap-2 px-3 py-2 rounded-[10px] bg-[var(--accent-subtle)] text-[var(--accent)] text-[13px] font-semibold hover:bg-purple-100 transition-colors"
       >
-        <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] shrink-0" />
-        <span className="max-w-[80px] truncate">{selected?.name ?? '에이전트'}</span>
-        <ChevronDown size={10} />
+        <span className="w-2 h-2 rounded-full bg-[var(--accent)] shrink-0" />
+        <span className="max-w-[120px] truncate">{selected?.name ?? '에이전트'}</span>
+        <ChevronDown size={12} />
       </button>
       {open && (
-        <div className="absolute left-0 top-full mt-1 z-30 bg-white border border-[var(--border)] rounded-[10px] shadow-lg py-1 min-w-[160px]">
+        <div className="absolute left-0 top-full mt-1 z-30 bg-white border border-[var(--border)] rounded-[10px] shadow-lg py-1 min-w-[180px]">
           {agents.map((a) => (
             <button
               key={a.id}
               onClick={() => { onSelect(a.definitionId ?? a.id); setOpen(false) }}
               className={cn(
-                'w-full flex items-center gap-2 px-3 py-2 text-[12px] text-left transition-colors hover:bg-[var(--bg-muted)]',
-                a.definitionId === selectedId && 'text-[var(--accent)] font-medium',
+                'w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] text-left transition-colors hover:bg-[var(--bg-muted)]',
+                a.definitionId === selectedId && 'text-[var(--accent)] font-semibold',
               )}
             >
               <span className={cn(
-                'w-1.5 h-1.5 rounded-full shrink-0',
+                'w-2 h-2 rounded-full shrink-0',
                 a.definitionId === selectedId ? 'bg-[var(--accent)]' : 'bg-[var(--border)]',
               )} />
               {a.name}
@@ -167,7 +167,7 @@ export default function RightPanel() {
     const cmd = input.trim()
     if (!cmd || isRunning) return
     setInput('')
-    if (inputRef.current) inputRef.current.style.height = '36px'
+    if (inputRef.current) inputRef.current.style.height = '72px'
     setShowSlidePicker(false)
     if (activeAgent) selectChatAgent(activeAgent.definitionId ?? null)
     try { await sendMessage(cmd) } catch {}
@@ -257,7 +257,7 @@ export default function RightPanel() {
       </div>
 
       {/* Input area */}
-      <div className="px-3 py-2 border-t border-[var(--border)] bg-white shrink-0">
+      <div className="px-3 py-3 border-t border-[var(--border)] bg-white shrink-0">
         {/* @ slide picker */}
         {showSlidePicker && slides.length > 0 && (
           <div
@@ -289,7 +289,7 @@ export default function RightPanel() {
               setInput(e.target.value)
               const el = e.target
               el.style.height = 'auto'
-              el.style.height = Math.min(el.scrollHeight, 96) + 'px'
+              el.style.height = Math.min(Math.max(el.scrollHeight, 72), 150) + 'px'
             }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
@@ -297,8 +297,8 @@ export default function RightPanel() {
             onFocus={() => activeAgent && selectChatAgent(activeAgent.definitionId ?? null)}
             placeholder={activeAgent ? `${activeAgent.name}에게 요청... (Shift+Enter 줄바꿈)` : '요청...'}
             disabled={isRunning}
-            className="flex-1 resize-none text-[13px] border-0 outline-none bg-transparent py-2 leading-relaxed disabled:opacity-50"
-            style={{ height: '36px', maxHeight: '96px' }}
+            className="flex-1 resize-none text-[13px] border-0 outline-none bg-transparent py-2.5 leading-relaxed disabled:opacity-50"
+            style={{ height: '72px', maxHeight: '150px' }}
           />
           <div className="flex items-center gap-1 pb-2 shrink-0">
             {/* @ button */}
