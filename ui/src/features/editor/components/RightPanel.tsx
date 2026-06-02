@@ -301,14 +301,13 @@ function PropertiesTab() {
 
 // ── Root ─────────────────────────────────────────────────────────────────────
 export default function RightPanel() {
-  const { activeRightTab, setActiveRightTab, proposals, presentation, currentSlideIndex } = useEditorStore()
+  const { activeRightTab, setActiveRightTab, proposals, presentation } = useEditorStore()
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const [showManager, setShowManager] = useState(false)
   const [showProposal, setShowProposal] = useState(false)
 
-  const currentSlide = presentation?.slides[currentSlideIndex]
-  const pendingCount = proposals.filter((p) => p.status === 'pending' && p.slide_id === currentSlide?.id).length
+  const pendingCount = proposals.filter((p) => p.status === 'pending').length
 
   return (
     <div className="w-80 border-l border-[var(--border)] bg-white flex flex-col shrink-0 overflow-hidden">
@@ -350,7 +349,15 @@ export default function RightPanel() {
       <div className="flex-1 overflow-hidden flex flex-col">
         {activeRightTab === 'agent' && pendingCount > 0 && (
           <button
-            onClick={() => setShowProposal(true)}
+            onClick={() => {
+              // 제안이 있는 첫 슬라이드로 이동
+              const firstProposal = proposals.find((p) => p.status === 'pending')
+              if (firstProposal && presentation) {
+                const slideIdx = presentation.slides.findIndex((s) => s.id === firstProposal.slide_id)
+                if (slideIdx >= 0) useEditorStore.getState().setCurrentSlide(slideIdx)
+              }
+              setShowProposal(true)
+            }}
             className='mx-3 mt-2 flex items-center gap-2 px-3 py-2 rounded-[8px] bg-[var(--accent-subtle)] border border-purple-200 text-[var(--accent)] text-[12px] font-medium hover:bg-purple-100 transition-colors w-auto'
           >
             <Zap size={13} />

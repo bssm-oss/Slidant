@@ -17,7 +17,7 @@ export default function ProposalPanel({ open, onClose }: Props) {
 
   const currentSlide = presentation?.slides[currentSlideIndex]
   // 현재 슬라이드의 pending 제안만 필터
-  const slideProposals = proposals.filter((p) => p.status === 'pending' && p.slide_id === currentSlide?.id)
+  const slideProposals = proposals.filter((p) => p.status === 'pending')
   const proposal = slideProposals[currentIdx]
 
   const handleApprove = async () => {
