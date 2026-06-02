@@ -35,7 +35,6 @@ class SlidePatches(BaseModel):
 
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-OPENROUTER_DEFAULT_MODEL = "deepseek/deepseek-v4-pro"
 
 
 class AgentState(TypedDict):
@@ -330,7 +329,31 @@ Example (전체 PPT 생성 — "김치찌개 PPT 만들어줘"):
 슬라이드 4: [QUOTE] "핵심 팁" — 감칠맛 비법 인용구, 큰 따옴표 장식
 슬라이드 5: [CLOSING] "맛있는 한 끼" 마무리, 연락처/해시태그"""
 
-MAX_RETRIES = 2
+
+def _check_design_rules(add_ops: list[dict]) -> list[str]:
+    """디자인 룰 위반 경고 수집 (로깅 전용)."""
+    warnings = []
+    types_added = [op.get("value", {}).get("type") for op in add_ops]
+    props_list = [op.get("value", {}).get("properties", {}) for op in add_ops]
+
+    has_background = any(
+        props.get("size", {}).get("w", 0) >= 900 and props.get("size", {}).get("h", 0) >= 500
+        for props in props_list
+    )
+    if not has_background:
+        warnings.append("배경 레이어 없음 (960x540 shape/image 없음)")
+
+    text_ops_props = [p for t, p in zip(types_added, props_list) if t == "text"]
+    if text_ops_props:
+        max_font = max((p.get("fontSize", 0) for p in text_ops_props), default=0)
+        if max_font < 28:
+            warnings.append(f"최대 폰트 {max_font}pt — 28pt 이상 권장")
+
+    text_count = sum(1 for t in types_added if t == "text")
+    if text_count > 8:
+        warnings.append(f"텍스트 컴포넌트 {text_count}개 — 슬라이드당 8개 이하 권장")
+
+    return warnings
 
 
 def build_agent_graph(
@@ -442,6 +465,12 @@ def build_agent_graph(
         invalid = len(patches) - len(valid)
         if invalid:
             logger.warning("  [validator] %d개 무효 op 제거", invalid)
+
+        add_ops = [op for op in valid if op.get("op") == "add" and op.get("path") in ("/-", "/")]
+        if add_ops:
+            for w in _check_design_rules(add_ops):
+                logger.warning("  [validator] design: %s", w)
+
         logger.info("  [validator] valid ops=%d  retry=%d", len(valid), state.get("retry_count", 0))
         return {**state, "result_patches": valid}
 
