@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { useEditorStore } from '@/features/editor/store/editorStore'
 import { useSlideStore } from '@/features/editor/store/slideStore'
+import { useSessionStore } from '@/features/editor/store/sessionStore'
 import { sseClient } from '@/shared/lib/sseClient'
 import { AppShell } from '@/shared/components/layout'
 import EditorTopbar from '@/features/editor/components/EditorTopbar'
@@ -15,10 +16,17 @@ export default function EditPage() {
 
   useEffect(() => {
     if (!id) return
-    loadPresentation(id)
-    loadAgentLogs(id)
-    loadAgents(id)
-    loadChatHistory(id)
+    ;(async () => {
+      loadPresentation(id)
+      loadAgentLogs(id)
+      loadAgents(id)
+      const { loadSessions, createSession } = useSessionStore.getState()
+      await loadSessions(id)
+      if (useSessionStore.getState().sessions.length === 0) {
+        await createSession(id, '기본 세션')
+      }
+      loadChatHistory(id)
+    })()
     const unsubscribe = connectWs(id)
     return () => {
       unsubscribe()

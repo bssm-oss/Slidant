@@ -72,6 +72,13 @@ export interface ComponentDiff {
   agentName: string
 }
 
+export interface ChatSession {
+  id: string
+  project_id: string
+  name: string
+  created_at: string
+}
+
 // JSON Patch / Proposal 타입
 export interface JsonPatchOp {
   op: 'add' | 'replace' | 'remove'

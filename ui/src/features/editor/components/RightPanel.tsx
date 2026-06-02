@@ -8,6 +8,7 @@ import { Maximize2, Send, Loader2, Settings, ChevronDown, Zap } from 'lucide-rea
 import type { Agent, ChatMessage } from '@/shared/types'
 import AgentManagerPanel from './AgentManagerPanel'
 import ProposalPanel from './ProposalPanel'
+import SessionSelector from './SessionSelector'
 
 // ── Chat bubble ──────────────────────────────────────────────────────────────
 function formatContent(content: string, isUser: boolean): React.ReactNode {
@@ -297,7 +298,13 @@ function AgentTab() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* AgentSelector is now inside AgentChat's input bottom bar */}
+      {/* Selector bar */}
+      <div className="px-3 py-2.5 border-b border-[var(--border)] flex items-center gap-2">
+        <AgentSelector agents={agents} selectedId={activeId} onSelect={handleSelect} />
+        <div className="ml-auto">
+          <SessionSelector />
+        </div>
+      </div>
       {activeAgent && (
         <AgentChat
           agent={activeAgent}

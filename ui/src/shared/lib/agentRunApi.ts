@@ -6,6 +6,7 @@ export interface AgentRunRequest {
   command: string
   agent_role: string
   agent_definition_id?: string
+  session_id?: string
 }
 
 export interface AgentRunResponse {
@@ -41,7 +42,7 @@ export const runAgent = (body: AgentRunRequest) =>
 export const fetchAgentLogs = (projectId: string) =>
   api.get<AgentLogEntry[]>(`/agent/logs/${projectId}`)
 
-export const fetchChatHistory = (projectId: string, agentId?: string) =>
-  api.get<ChatMessageEntry[]>(
-    `/agent/chat/${projectId}${agentId ? `?agent_id=${agentId}` : ''}`
-  )
+export const fetchChatHistory = (projectId: string, sessionId?: string) => {
+  const params = sessionId ? `?session_id=${sessionId}` : ''
+  return api.get<ChatMessageEntry[]>(`/agent/chat/${projectId}${params}`)
+}

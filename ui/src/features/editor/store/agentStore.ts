@@ -36,6 +36,7 @@ import { runAgent as apiRunAgent } from '@/shared/lib/agentRunApi'
 import { sseClient } from '@/shared/lib/sseClient'
 import { useSlideStore } from './slideStore'
 import { useProposalStore } from './proposalStore'
+import { useSessionStore } from './sessionStore'
 
 interface AgentState {
   agents: Agent[]
@@ -90,7 +91,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   loadChatHistory: async (projectId) => {
     try {
       const { fetchChatHistory } = await import('@/shared/lib/agentRunApi')
-      const msgs = await fetchChatHistory(projectId)
+      const currentSessionId = useSessionStore.getState().currentSessionId
+      const msgs = await fetchChatHistory(projectId, currentSessionId ?? undefined)
       const chatMessages: ChatMessage[] = msgs.map((m) => ({
         id: m.id,
         role: m.role,
@@ -505,12 +507,15 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       return { runningAgentIds: newRunningIds, overallStatus: 'running', activeRightTab: 'agent' }
     })
 
+    const sessionId = useSessionStore.getState().currentSessionId
+
     await apiRunAgent({
       project_id: ppt.id,
       slide_id: currentSlide.id,
       command,
       agent_role: agentRole,
       agent_definition_id: agentDefinitionId,
+      session_id: sessionId ?? undefined,
     }).catch((e: any) => {
       set((s) => {
         const newRunningIds = new Set(s.runningAgentIds)
