@@ -5,6 +5,7 @@ import { cn } from '@/shared/lib/utils'
 import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 import { useDriveStore } from '../store/driveStore'
 import { useToastStore } from '@/shared/components/ui/Toast'
+import SlideThumbnail from './SlideThumbnail'
 
 function formatDate(d: string) {
   const dt = new Date(d)
@@ -49,14 +50,14 @@ export default function PresentationTable({ presentations }: { presentations: Pr
 
   return (
     <div className="rounded-[var(--radius)] border border-[var(--border)] overflow-hidden bg-white">
-      <div className="grid grid-cols-[1fr_160px_120px_48px] gap-4 px-6 py-3 bg-[var(--bg-muted)] border-b border-[var(--border)]">
-        {['제목','수정일','슬라이드',''].map((h, i) => (
+      <div className="grid grid-cols-[1fr_100px_160px_120px_48px] gap-4 px-6 py-3 bg-[var(--bg-muted)] border-b border-[var(--border)]">
+        {['제목','미리보기','수정일','슬라이드',''].map((h, i) => (
           <span key={i} className="text-sm font-semibold text-[var(--text-muted)]">{h}</span>
         ))}
       </div>
       {presentations.map((ppt, i) => (
         <div key={ppt.id}
-          className={cn('grid grid-cols-[1fr_160px_120px_48px] gap-4 px-6 py-4 items-center hover:bg-[var(--bg-muted)] transition-colors group relative',
+          className={cn('grid grid-cols-[1fr_100px_160px_120px_48px] gap-4 px-6 py-4 items-center hover:bg-[var(--bg-muted)] transition-colors group relative',
             i !== presentations.length - 1 && 'border-b border-[var(--border)]')}>
           {renamingId === ppt.id ? (
             <input autoFocus value={renameValue} onChange={(e) => setRenameValue(e.target.value)}
@@ -69,6 +70,9 @@ export default function PresentationTable({ presentations }: { presentations: Pr
               {ppt.title}
             </span>
           )}
+          <div className="w-[100px] rounded-[6px] overflow-hidden border border-[var(--border)]">
+            <SlideThumbnail projectId={ppt.id} />
+          </div>
           <span className="text-sm text-[var(--text-muted)]">{formatDate(ppt.updatedAt)}</span>
           <span className="text-sm text-[var(--text-muted)]">{ppt.slides.length}장</span>
           <div className="relative">
