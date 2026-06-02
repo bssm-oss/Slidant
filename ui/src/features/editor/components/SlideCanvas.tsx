@@ -237,6 +237,7 @@ export default function SlideCanvas() {
   }
 
   return (
+    <>
     <div ref={containerRef}
       className="flex-1 flex items-center justify-center bg-[var(--bg-muted)] overflow-hidden"
       onClick={() => selectComponent(null)}>
@@ -312,5 +313,6 @@ export default function SlideCanvas() {
         onClose={() => setConflictTarget(null)}
       />
     )}
+    </>
   )
 }
