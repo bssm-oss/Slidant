@@ -23,6 +23,11 @@ class ProposalResponse(BaseModel):
     model_config = {'from_attributes': True}
 
 
+@router.get('/by-slide/{slide_id}', response_model=list[ProposalResponse])
+async def list_proposals_by_slide(slide_id: UUID, current_user: CurrentUser, uow: UoW, status_filter: str | None = None):
+    return await uow.proposals.list_by_slide(slide_id, status=status_filter)
+
+
 @router.post('/{proposal_id}/approve', status_code=status.HTTP_204_NO_CONTENT)
 async def approve_proposal(proposal_id: UUID, current_user: CurrentUser, uow: UoW):
     proposal = await uow.proposals.get(proposal_id)

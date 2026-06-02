@@ -115,6 +115,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const { fetchProjectWithSlides } = await import('@/shared/lib/projectApi')
       const ppt = await fetchProjectWithSlides(id)
       set({ presentation: ppt })
+      // 모든 슬라이드의 pending proposals 로드
+      try {
+        const { fetchPendingProposals } = await import('@/shared/lib/proposalApi')
+        const allProposals = await Promise.all(
+          ppt.slides.map((s) => fetchPendingProposals(id, s.id).catch(() => []))
+        )
+        set({ proposals: allProposals.flat() })
+      } catch {}
     } catch (e) {
       console.error('loadPresentation failed', e)
     }
