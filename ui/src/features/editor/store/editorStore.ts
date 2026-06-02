@@ -296,7 +296,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
           const newSlides = s.presentation.slides.map((sl, idx) =>
             idx === slideIndex
-              ? { ...sl, components: [...sl.components.filter((c) => !c.id.startsWith('preview-')), ...slide.components.filter((c) => !c.id.startsWith('preview-')).slice(0), ...newComponents] }
+              ? { ...sl, components: [...sl.components.filter((c) => !c.id.startsWith('preview-')), ...newComponents] }
               : sl
           )
 
