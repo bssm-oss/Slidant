@@ -120,4 +120,4 @@ def apply_patches(slide: Slide, ops: list[dict]) -> None:
         elif operation == "remove":
             del comp_map[comp_id]
 
-    slide.content = list(comp_map.values())
+    slide.content = sorted(comp_map.values(), key=lambda c: c.get("order", 0))
