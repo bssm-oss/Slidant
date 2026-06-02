@@ -3,8 +3,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy import select, func
 
 from app.core.deps import CurrentUser, UoW
+from app.models.slide import Slide
 from app.models.slide_history import SlideHistory
 from app.schemas.project import (
     ComponentCreate, ComponentPatchRequest, ComponentResponse,
@@ -42,7 +44,27 @@ async def _archive_snapshot(uow, slide_id: UUID, reason: str) -> None:
 
 @router.get("", response_model=list[ProjectResponse])
 async def list_projects(current_user: CurrentUser, uow: UoW):
-    return await project_service.list_projects(uow.projects, current_user.id)
+    projects = await project_service.list_projects(uow.projects, current_user.id)
+    if not projects:
+        return []
+    project_ids = [p.id for p in projects]
+    counts_result = await uow.session.execute(
+        select(Slide.project_id, func.count(Slide.id).label("cnt"))
+        .where(Slide.project_id.in_(project_ids))
+        .group_by(Slide.project_id)
+    )
+    count_map = {row.project_id: row.cnt for row in counts_result}
+    return [
+        ProjectResponse(
+            id=p.id,
+            owner_id=p.owner_id,
+            title=p.title,
+            slide_count=count_map.get(p.id, 0),
+            created_at=p.created_at,
+            updated_at=p.updated_at,
+        )
+        for p in projects
+    ]
 
 
 @router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)

@@ -22,6 +22,7 @@ export interface Presentation {
   id: string
   title: string
   slides: Slide[]
+  slideCount?: number
   createdAt: string
   updatedAt: string
   ownerId: string

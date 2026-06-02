@@ -74,7 +74,7 @@ export default function PresentationTable({ presentations }: { presentations: Pr
             <SlideThumbnail projectId={ppt.id} />
           </div>
           <span className="text-sm text-[var(--text-muted)]">{formatDate(ppt.updatedAt)}</span>
-          <span className="text-sm text-[var(--text-muted)]">{ppt.slides.length}장</span>
+          <span className="text-sm text-[var(--text-muted)]">{ppt.slideCount ?? ppt.slides.length}장</span>
           <div className="relative">
             <button onClick={(e) => { e.stopPropagation(); setMenuOpenId(menuOpenId === ppt.id ? null : ppt.id) }}
               className="w-8 h-8 flex items-center justify-center rounded-[6px] text-[var(--text-disabled)] hover:bg-[var(--border)] hover:text-[var(--text)] transition-colors cursor-pointer">
