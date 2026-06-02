@@ -10,6 +10,7 @@ class AgentRunRequest(BaseModel):
     command: str
     agent_role: str = "content"
     agent_definition_id: UUID | None = None  # 특정 AgentDefinition 지정 시 사용
+    session_id: UUID | None = None
 
 
 class AgentRunResponse(BaseModel):

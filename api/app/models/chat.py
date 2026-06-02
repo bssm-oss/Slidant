@@ -18,4 +18,5 @@ class ChatMessage(SQLModel, table=True):
     agent_definition_id: UUID | None = Field(default=None, foreign_key="agent_definitions.id", index=True)
     agent_name: str | None = Field(default=None, max_length=100)
     affected_component_ids: list = Field(default_factory=list, sa_column=Column(JSONB, nullable=False, server_default="[]"))
+    session_id: UUID | None = Field(default=None, foreign_key="chat_sessions.id", index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)

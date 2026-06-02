@@ -5,6 +5,7 @@ from app.repositories.agent import AgentDefinitionRepository, AgentRunRepository
 from app.repositories.agent_proposal import AgentProposalRepository
 from app.repositories.api_key import ApiKeyRepository, ApiKeyUsageLogRepository
 from app.repositories.chat import ChatMessageRepository
+from app.repositories.chat_session import ChatSessionRepository
 from app.repositories.project import ProjectRepository
 from app.repositories.slide import SlideRepository
 from app.repositories.slide_history import SlideHistoryRepository
@@ -26,6 +27,7 @@ class UnitOfWork:
     agent_definitions: AgentDefinitionRepository
     agent_runs: AgentRunRepository
     llm_logs: LlmLogRepository
+    chat_sessions: ChatSessionRepository
     chat_messages: ChatMessageRepository
     versions: VersionRepository
 
@@ -41,6 +43,7 @@ class UnitOfWork:
         self.agent_definitions = AgentDefinitionRepository(self.session)
         self.agent_runs = AgentRunRepository(self.session)
         self.llm_logs = LlmLogRepository(self.session)
+        self.chat_sessions = ChatSessionRepository(self.session)
         self.chat_messages = ChatMessageRepository(self.session)
         self.versions = VersionRepository(self.session)
         return self

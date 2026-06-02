@@ -67,6 +67,7 @@ async def run_agent_endpoint(
         content=body.command,
         agent_definition_id=agent_def.id,
         agent_name=agent_def.name,
+        session_id=body.session_id,
     )
     uow.chat_messages.add(user_msg)
     await uow.commit()  # BackgroundTask 전에 커밋 필수 (bg에서 조회 가능하도록)
@@ -154,7 +155,7 @@ async def _run_agent_background_inner(
 
         # 에이전트별 최근 대화 10턴 조회 (세션 유지)
         recent_msgs = await uow.chat_messages.list_by_project(
-            body.project_id, agent_definition_id=agent_def_id, limit=20
+            body.project_id, agent_definition_id=agent_def_id, session_id=body.session_id, limit=20
         )
         conversation_history = ""
         if recent_msgs:
@@ -292,6 +293,7 @@ async def _run_agent_background_inner(
                 agent_definition_id=agent_def_id,
                 agent_name=agent_def_name,
                 affected_component_ids=affected_ids,
+                session_id=body.session_id,
             )
             uow.chat_messages.add(agent_msg)
 
@@ -328,6 +330,7 @@ async def _run_agent_background_inner(
                 agent_run_id=agent_run.id,
                 agent_definition_id=agent_def_id,
                 agent_name=agent_def_name,
+                session_id=body.session_id,
             )
             uow.chat_messages.add(error_msg)
             await uow.commit()
@@ -345,8 +348,9 @@ async def get_chat_history(
     current_user: CurrentUser,
     uow: UoW,
     agent_id: UUID | None = None,
+    session_id: UUID | None = None,
 ):
-    msgs = await uow.chat_messages.list_by_project(project_id, agent_definition_id=agent_id)
+    msgs = await uow.chat_messages.list_by_project(project_id, agent_definition_id=agent_id, session_id=session_id)
     return [
         {
             "id": str(m.id),
