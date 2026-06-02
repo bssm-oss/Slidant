@@ -9,7 +9,9 @@ import type { AgentStatus } from '@/shared/types'
 const statusMap: Record<AgentStatus, { color: string; label: string }> = {
   idle: { color: '#22c55e', label: '대기' },
   running: { color: '#f59e0b', label: '실행 중' },
+  done: { color: '#22c55e', label: '완료' },
   error: { color: '#ef4444', label: '오류' },
+  conflict: { color: '#f59e0b', label: '충돌' },
 }
 
 export default function EditorTopbar() {
