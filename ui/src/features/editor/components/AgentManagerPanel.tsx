@@ -47,7 +47,6 @@ export default function AgentManagerPanel({ open, onClose }: Props) {
   const { presentation, loadAgents } = useEditorStore()
   const projectId = presentation?.id
 
-  const [systemAgents, setSystemAgents] = useState<AgentDefinition[]>([])
   const [libraryAgents, setLibraryAgents] = useState<AgentDefinition[]>([])
   const [projectAgents, setProjectAgents] = useState<AgentDefinition[]>([])
 
@@ -59,7 +58,6 @@ export default function AgentManagerPanel({ open, onClose }: Props) {
   const load = async () => {
     if (!projectId) return
     const data = await fetchAgents(projectId)
-    setSystemAgents(data.system)
     setLibraryAgents(data.library)
     setProjectAgents(data.project)
   }
@@ -198,11 +196,6 @@ export default function AgentManagerPanel({ open, onClose }: Props) {
               </div>
             </div>
           )}
-
-          <Section title="기본 에이전트" subtitle="수정 불가">
-            {systemAgents.map((a) => <AgentRow key={a.id} agent={a} badge={roleBadge(a.role)} />)}
-            {systemAgents.length === 0 && <Empty />}
-          </Section>
 
           <Section
             title="이 PPT 전용"

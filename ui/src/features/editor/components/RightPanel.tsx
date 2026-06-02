@@ -4,63 +4,135 @@ import { useEditorStore } from '../store/editorStore'
 import { useAgentStore, type AgentStep } from '../store/agentStore'
 import { useSlideStore } from '../store/slideStore'
 import { cn } from '@/shared/lib/utils'
-import { Maximize2, Send, Loader2, Settings, ChevronDown, Zap, GitBranch } from 'lucide-react'
+import { Maximize2, Send, Loader2, ChevronDown, Zap, GitBranch, MousePointer2 } from 'lucide-react'
 import type { Agent, ChatMessage } from '@/shared/types'
 import AgentManagerPanel from './AgentManagerPanel'
 import ProposalPanel from './ProposalPanel'
-import { fetchPipelines, type Pipeline } from '@/shared/lib/pipelineApi'
+import { fetchPipelines, fetchAllUserPipelines, clonePipelineToProject, type Pipeline } from '@/shared/lib/pipelineApi'
+import type { HtmlComponentStyle } from './SlideCanvas'
+
+// ── 단일 노드 아이템 ──────────────────────────────────────────────────────────
+function StepNode({ step, showLine, lineGreen }: { step: AgentStep; showLine: boolean; lineGreen: boolean }) {
+  const isDone = step.status === 'done'
+  const isActive = step.status === 'active'
+  return (
+    <div className="flex gap-3">
+      <div className="flex flex-col items-center shrink-0">
+        <div className={cn(
+          'w-[18px] h-[18px] rounded-full flex items-center justify-center shrink-0 transition-all duration-300',
+          isDone && 'bg-emerald-500',
+          isActive && 'bg-[var(--accent)] ring-4 ring-[var(--accent)] ring-opacity-20',
+          !isDone && !isActive && 'border-2 border-[var(--border)] bg-[var(--bg-muted)]',
+        )}>
+          {isDone && (
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <path d="M2 5l2.5 2.5L8 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          )}
+          {isActive && <div className="w-[6px] h-[6px] rounded-full bg-white animate-pulse" />}
+        </div>
+        {showLine && (
+          <div className={cn('w-px flex-1 my-0.5 min-h-[12px] transition-all duration-500', lineGreen ? 'bg-emerald-400' : 'bg-[var(--border)]')} />
+        )}
+      </div>
+      <div className={cn(
+        'pb-3 pt-0.5 text-[12px] leading-[18px] transition-all duration-300',
+        !showLine && 'pb-0',
+        isDone && 'text-[var(--text-muted)]',
+        isActive && 'text-[var(--text)] font-semibold',
+        !isDone && !isActive && 'text-[var(--text-disabled)]',
+      )}>
+        {step.label}
+      </div>
+    </div>
+  )
+}
 
 // ── 단계별 체크리스트 ─────────────────────────────────────────────────────────
 function StepsChecklist({ steps }: { steps: AgentStep[] }) {
+  // slide-* 단계를 병렬 그룹으로 분리
+  const slideSteps = steps.filter((s) => s.id.startsWith('slide-'))
+  const seqSteps = steps.filter((s) => !s.id.startsWith('slide-'))
+  const hasSlides = slideSteps.length > 0
+  const allSlidesDone = slideSteps.length > 0 && slideSteps.every((s) => s.status === 'done')
+  const anySlideActive = slideSteps.some((s) => s.status === 'active' || s.status === 'done')
+
   return (
     <div className="mx-3 my-2 px-3 py-2.5">
-      {steps.map((step, i) => {
-        const isLast = i === steps.length - 1
-        const isDone = step.status === 'done'
-        const isActive = step.status === 'active'
-        const isPending = step.status === 'pending'
+      {seqSteps.map((step, i) => {
+        const isLast = i === seqSteps.length - 1 && !hasSlides
         return (
-          <div key={step.id} className="flex gap-3">
-            {/* 노드 + 연결선 */}
-            <div className="flex flex-col items-center shrink-0">
-              {/* 노드 원 */}
-              <div className={cn(
-                'w-[18px] h-[18px] rounded-full flex items-center justify-center shrink-0 transition-all duration-300',
-                isDone && 'bg-emerald-500',
-                isActive && 'bg-[var(--accent)] ring-4 ring-[var(--accent)] ring-opacity-20',
-                isPending && 'border-2 border-[var(--border)] bg-[var(--bg-muted)]',
-              )}>
-                {isDone && (
-                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                    <path d="M2 5l2.5 2.5L8 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                )}
-                {isActive && (
-                  <div className="w-[6px] h-[6px] rounded-full bg-white animate-pulse" />
-                )}
-              </div>
-              {/* 연결선 */}
-              {!isLast && (
-                <div className={cn(
-                  'w-px flex-1 my-0.5 min-h-[12px] transition-all duration-500',
-                  isDone ? 'bg-emerald-400' : 'bg-[var(--border)]',
-                )} />
-              )}
-            </div>
-
-            {/* 레이블 */}
-            <div className={cn(
-              'pb-3 pt-0.5 text-[12px] leading-[18px] transition-all duration-300',
-              isLast && 'pb-0',
-              isDone && 'text-[var(--text-muted)]',
-              isActive && 'text-[var(--text)] font-semibold',
-              isPending && 'text-[var(--text-disabled)]',
-            )}>
-              {step.label}
-            </div>
-          </div>
+          <StepNode
+            key={step.id}
+            step={step}
+            showLine={!isLast}
+            lineGreen={step.status === 'done'}
+          />
         )
       })}
+
+      {/* 병렬 슬라이드 그룹 */}
+      {hasSlides && (
+        <>
+          {/* 진입 연결선 */}
+          <div className="flex gap-3">
+            <div className="flex flex-col items-center shrink-0 w-[18px]">
+              <div className={cn('w-px flex-1 min-h-[8px] transition-all duration-500', anySlideActive ? 'bg-emerald-400' : 'bg-[var(--border)]')} />
+            </div>
+          </div>
+
+          {/* 병렬 박스 */}
+          <div className={cn(
+            'ml-0 border rounded-[8px] p-2 mb-1 transition-all duration-300',
+            allSlidesDone
+              ? 'border-emerald-200 bg-emerald-50'
+              : anySlideActive
+                ? 'border-[var(--accent)] border-opacity-30 bg-[var(--accent-subtle)]'
+                : 'border-[var(--border)] bg-[var(--bg-muted)]',
+          )}>
+            {/* 병렬 헤더 */}
+            <div className="flex items-center gap-1.5 mb-2 px-1">
+              <div className="flex gap-0.5">
+                {[0,1,2].map((i) => <div key={i} className={cn('w-1 h-1 rounded-full', anySlideActive ? 'bg-[var(--accent)]' : 'bg-[var(--border)]')} />)}
+              </div>
+              <span className="text-[10px] text-[var(--text-disabled)] font-medium">슬라이드 생성</span>
+            </div>
+
+            {/* 슬라이드 아이템들 */}
+            <div className="flex flex-col gap-1">
+              {slideSteps.map((step) => {
+                const isDone = step.status === 'done'
+                const isActive = step.status === 'active'
+                return (
+                  <div key={step.id} className="flex items-center gap-2 px-1">
+                    <div className={cn(
+                      'w-[14px] h-[14px] rounded-full flex items-center justify-center shrink-0 transition-all duration-300',
+                      isDone && 'bg-emerald-500',
+                      isActive && 'bg-[var(--accent)]',
+                      !isDone && !isActive && 'border-2 border-[var(--border)] bg-white',
+                    )}>
+                      {isDone && (
+                        <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
+                          <path d="M2 5l2.5 2.5L8 3" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      )}
+                      {isActive && <div className="w-[5px] h-[5px] rounded-full bg-white animate-pulse" />}
+                    </div>
+                    <span className={cn(
+                      'text-[11px] truncate max-w-[160px] transition-colors duration-300',
+                      isDone && 'text-[var(--text-muted)]',
+                      isActive && 'text-[var(--text)] font-semibold',
+                      !isDone && !isActive && 'text-[var(--text-disabled)]',
+                    )}>
+                      {step.label}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }
@@ -166,12 +238,39 @@ function AgentSelector({ agents, onSelect, projectId }: {
   const [open, setOpen] = useState(false)
   const [pipelines, setPipelines] = useState<Pipeline[]>([])
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>(DEFAULT_PIPELINE_ID)
+  const [showImport, setShowImport] = useState(false)
+  const [allPipelines, setAllPipelines] = useState<Pipeline[]>([])
+  const [importing, setImporting] = useState<string | null>(null)
   const ref = useRef<HTMLDivElement>(null)
+
+  const loadPipelines = () => {
+    if (projectId) fetchPipelines(projectId).then(setPipelines).catch(() => {})
+  }
 
   useEffect(() => {
     if (!projectId || !open) return
-    fetchPipelines(projectId).then(setPipelines).catch(() => {})
+    loadPipelines()
   }, [projectId, open])
+
+  const openImport = () => {
+    setOpen(false)
+    setShowImport(true)
+    fetchAllUserPipelines().then((all) => {
+      // 현재 프로젝트 파이프라인 제외
+      setAllPipelines(all.filter((p) => p.project_id !== projectId))
+    }).catch(() => {})
+  }
+
+  const handleImport = async (pipeline: Pipeline) => {
+    if (!projectId) return
+    setImporting(pipeline.id)
+    try {
+      await clonePipelineToProject(pipeline.id, projectId)
+      loadPipelines()
+      setShowImport(false)
+    } catch {}
+    setImporting(null)
+  }
 
   useEffect(() => {
     if (!open) return
@@ -252,9 +351,112 @@ function AgentSelector({ agents, onSelect, projectId }: {
               </div>
             </button>
           ))}
-          <div className="h-1.5" />
+
+          {/* 불러오기 */}
+          <div className="border-t border-[var(--border)] mt-1 pt-1 pb-1.5">
+            <button
+              onClick={openImport}
+              className="w-full flex items-center gap-2 px-4 py-2 text-[12px] text-[var(--accent)] hover:bg-[var(--accent-subtle)] transition-colors"
+            >
+              <GitBranch size={11} />
+              불러오기
+            </button>
+          </div>
         </div>
       )}
+
+      {/* 불러오기 모달 */}
+      {showImport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowImport(false)}>
+          <div className="bg-white rounded-[12px] shadow-xl w-[360px] max-h-[480px] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-[var(--border)]">
+              <p className="text-[14px] font-semibold text-[var(--text)]">파이프라인 불러오기</p>
+              <p className="text-[11px] text-[var(--text-muted)] mt-0.5">다른 PPT의 파이프라인을 이 PPT에 추가합니다</p>
+            </div>
+            <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2">
+              {allPipelines.length === 0 ? (
+                <p className="text-[12px] text-[var(--text-disabled)] py-4 text-center">불러올 파이프라인이 없습니다</p>
+              ) : allPipelines.map((p) => (
+                <div key={p.id} className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-[8px] bg-[var(--bg-muted)] hover:bg-[var(--bg-raised)] transition-colors">
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-medium text-[var(--text)] truncate">{p.name}</p>
+                    <p className="text-[11px] text-[var(--text-muted)]">{p.steps.length}단계</p>
+                  </div>
+                  <button
+                    onClick={() => handleImport(p)}
+                    disabled={importing === p.id}
+                    className="shrink-0 px-3 py-1.5 text-[12px] font-medium bg-[var(--accent)] text-white rounded-[6px] disabled:opacity-40 hover:opacity-90 transition-opacity"
+                  >
+                    {importing === p.id ? '추가 중...' : '추가'}
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="px-4 pb-4">
+              <button onClick={() => setShowImport(false)} className="w-full py-2 text-[12px] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors">
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── HTML 속성 패널 ────────────────────────────────────────────────────────────
+function HtmlPropertiesPanel({ style }: { style: HtmlComponentStyle }) {
+  return (
+    <div className="border-t border-[var(--border)] px-4 py-3 shrink-0 bg-[var(--bg-muted)]">
+      <div className="flex items-center gap-1.5 mb-2.5">
+        <MousePointer2 size={12} className="text-[var(--accent)]" />
+        <span className="text-[11px] font-semibold text-[var(--text)] uppercase tracking-wide">선택된 요소</span>
+        <span className="ml-auto text-[10px] text-[var(--text-disabled)] font-mono bg-white px-1.5 py-0.5 rounded-[4px] border border-[var(--border)]">
+          {style.tagName}
+        </span>
+      </div>
+      {style.textContent && (
+        <p className="text-[11px] text-[var(--text-muted)] mb-2 truncate italic">&ldquo;{style.textContent}&rdquo;</p>
+      )}
+      <div className="flex flex-col gap-1.5">
+        {style.color && (
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] text-[var(--text-muted)]">글자 색상</span>
+            <div className="flex items-center gap-1.5">
+              <div
+                className="w-4 h-4 rounded-[3px] border border-[var(--border)] shrink-0"
+                style={{ background: style.color }}
+              />
+              <span className="text-[10px] font-mono text-[var(--text-disabled)]">{style.color}</span>
+            </div>
+          </div>
+        )}
+        {style.backgroundColor && style.backgroundColor !== 'rgba(0, 0, 0, 0)' && style.backgroundColor !== 'transparent' && (
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] text-[var(--text-muted)]">배경 색상</span>
+            <div className="flex items-center gap-1.5">
+              <div
+                className="w-4 h-4 rounded-[3px] border border-[var(--border)] shrink-0"
+                style={{ background: style.backgroundColor }}
+              />
+              <span className="text-[10px] font-mono text-[var(--text-disabled)]">{style.backgroundColor}</span>
+            </div>
+          </div>
+        )}
+        {style.fontSize && (
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] text-[var(--text-muted)]">폰트 크기</span>
+            <span className="text-[11px] font-mono text-[var(--text)]">{style.fontSize}</span>
+          </div>
+        )}
+        {style.opacity && style.opacity !== '1' && (
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] text-[var(--text-muted)]">투명도</span>
+            <span className="text-[11px] font-mono text-[var(--text)]">{style.opacity}</span>
+          </div>
+        )}
+      </div>
+      <p className="text-[10px] text-[var(--text-disabled)] mt-2.5">더블클릭으로 텍스트 편집 · 이미지 요소 클릭으로 업로드</p>
     </div>
   )
 }
@@ -273,6 +475,17 @@ export default function RightPanel() {
   const [localSelectedId, setLocalSelectedId] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [showSlidePicker, setShowSlidePicker] = useState(false)
+  const [htmlStyle, setHtmlStyle] = useState<HtmlComponentStyle | null>(null)
+
+  // HTML 모드에서 선택된 요소 스타일 수신
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<HtmlComponentStyle | null>).detail
+      setHtmlStyle(detail ?? null)
+    }
+    window.addEventListener('html-component-select', handler)
+    return () => window.removeEventListener('html-component-select', handler)
+  }, [])
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -333,7 +546,7 @@ export default function RightPanel() {
   }
 
   return (
-    <div className="w-80 border-l border-[var(--border)] bg-white flex flex-col shrink-0 overflow-hidden">
+    <div className="w-80 border-l border-[var(--border)] bg-white flex flex-col shrink-0 overflow-hidden h-full">
 
       {/* Header */}
       <div className="px-3 py-2 border-b border-[var(--border)] flex items-center gap-2 shrink-0">
@@ -348,13 +561,6 @@ export default function RightPanel() {
           <span className="text-[12px] text-[var(--text-disabled)]">에이전트 로딩 중...</span>
         )}
         <div className="flex items-center gap-0.5 ml-auto">
-          <button
-            onClick={() => setShowManager(true)}
-            className="p-1.5 rounded-[6px] text-[var(--text-disabled)] hover:text-[var(--text-muted)] hover:bg-[var(--bg-muted)] transition-colors"
-            title="에이전트 관리"
-          >
-            <Settings size={14} />
-          </button>
           <button
             onClick={() => navigate(`/edit/${id}/agent`)}
             className="p-1.5 rounded-[6px] text-[var(--text-disabled)] hover:text-[var(--text-muted)] hover:bg-[var(--bg-muted)] transition-colors"
@@ -486,6 +692,9 @@ export default function RightPanel() {
           </div>
         </div>
       </div>
+
+      {/* HTML 모드 속성 패널 — 요소 선택 시 하단 표시 */}
+      {htmlStyle && <HtmlPropertiesPanel style={htmlStyle} />}
 
       <AgentManagerPanel open={showManager} onClose={() => setShowManager(false)} />
       {showProposal && <ProposalPanel open={showProposal} onClose={() => setShowProposal(false)} />}

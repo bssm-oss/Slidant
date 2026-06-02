@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useEditorStore } from '../store/editorStore'
 import { useSlideStore } from '../store/slideStore'
 import { useProposalStore } from '../store/proposalStore'
@@ -6,6 +6,214 @@ import { cn } from '@/shared/lib/utils'
 import { api } from '@/shared/lib/apiClient'
 import type { SlideComponent } from '@/shared/types'
 import ConflictResolver from './ConflictResolver'
+
+// ── HTML 슬라이드 편집 훅 ───────────────────────────────────────────────────────
+
+/**
+ * iframe 내부 DOM에 인라인 텍스트 편집 + 이미지 업로드 이벤트를 주입하고,
+ * 변경사항을 html_content string에 반영 → API 저장한다.
+ */
+function useHtmlSlideEdit(
+  iframeRef: React.RefObject<HTMLIFrameElement | null>,
+  projectId: string,
+  slideId: string,
+  htmlContent: string,
+  onHtmlChange: (newHtml: string) => void,
+  onComponentSelect: (id: string | null, style: HtmlComponentStyle | null) => void,
+) {
+  // hidden file input (이미지 업로드용)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const pendingImageIdRef = useRef<string | null>(null)
+
+  // iframe 로드 시 내부 DOM에 이벤트 등록
+  const handleIframeLoad = useCallback(() => {
+    const iframe = iframeRef.current
+    const doc = iframe?.contentDocument
+    if (!doc) return
+
+    // 기존 이벤트 리스너를 교체하기 위해 body를 clone하지 않고 직접 등록
+    // (srcdoc 변경마다 onLoad 재호출되므로 중복 등록 없음)
+
+    doc.querySelectorAll<HTMLElement>('[data-component-id]').forEach((el) => {
+      const id = el.getAttribute('data-component-id') ?? ''
+
+      // ── 클릭: 컴포넌트 선택 → RightPanel 속성 패널 표시 ──
+      el.addEventListener('click', (e) => {
+        e.stopPropagation()
+        const style = parseElementStyle(el)
+        onComponentSelect(id, style)
+      })
+
+      // ── 더블클릭: 텍스트 요소 인라인 편집 ──
+      el.addEventListener('dblclick', (e) => {
+        e.stopPropagation()
+        const isTextEl = isTextElement(el)
+        if (!isTextEl) return
+
+        el.contentEditable = 'true'
+        el.focus()
+
+        // 커서 끝으로
+        const range = doc.createRange()
+        const sel = iframe!.contentWindow!.getSelection()
+        range.selectNodeContents(el)
+        range.collapse(false)
+        sel?.removeAllRanges()
+        sel?.addRange(range)
+
+        const onBlur = async () => {
+          el.removeEventListener('blur', onBlur)
+          el.removeEventListener('keydown', onKeyDown)
+          el.contentEditable = 'false'
+          const newHtml = doc.documentElement.innerHTML
+          const fullHtml = rebuildFullHtml(newHtml)
+          onHtmlChange(fullHtml)
+          try {
+            await api.patch(`/projects/${projectId}/slides/${slideId}`, { html_content: fullHtml })
+          } catch (err) {
+            console.error('html slide text update failed', err)
+          }
+        }
+
+        const onKeyDown = (ke: KeyboardEvent) => {
+          if (ke.key === 'Enter' && !ke.shiftKey) {
+            ke.preventDefault()
+            ;(el as HTMLElement).blur()
+          }
+          if (ke.key === 'Escape') {
+            el.removeEventListener('blur', onBlur)
+            el.removeEventListener('keydown', onKeyDown)
+            el.contentEditable = 'false'
+            onComponentSelect(null, null)
+          }
+        }
+
+        el.addEventListener('blur', onBlur)
+        el.addEventListener('keydown', onKeyDown)
+      })
+
+      // ── 이미지 플레이스홀더 클릭 → 파일 picker ──
+      if (isImagePlaceholder(el)) {
+        el.style.cursor = 'pointer'
+        el.addEventListener('click', (e) => {
+          e.stopPropagation()
+          pendingImageIdRef.current = id
+          fileInputRef.current?.click()
+        })
+      }
+    })
+
+    // 배경 클릭 → 선택 해제
+    doc.body.addEventListener('click', () => onComponentSelect(null, null))
+  }, [iframeRef, projectId, slideId, onHtmlChange, onComponentSelect])
+
+  // 파일 input onChange
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    const targetId = pendingImageIdRef.current
+    if (!file || !targetId) return
+    // reset so same file can be picked again
+    e.target.value = ''
+
+    const dataUrl = await readFileAsDataURL(file)
+
+    const iframe = iframeRef.current
+    const doc = iframe?.contentDocument
+    if (!doc) return
+
+    const el = doc.querySelector<HTMLElement>(`[data-component-id="${targetId}"]`)
+    if (!el) return
+
+    // img 요소면 src 교체, 아니면 background-image 설정
+    const imgTag = el.tagName === 'IMG' ? el as HTMLImageElement : el.querySelector<HTMLImageElement>('img')
+    if (imgTag) {
+      imgTag.src = dataUrl
+      imgTag.classList.remove('img-placeholder')
+    } else {
+      el.style.backgroundImage = `url(${dataUrl})`
+      el.style.backgroundSize = 'cover'
+      el.style.backgroundPosition = 'center'
+      el.classList.remove('img-placeholder')
+    }
+
+    const newHtml = doc.documentElement.innerHTML
+    const fullHtml = rebuildFullHtml(newHtml)
+    onHtmlChange(fullHtml)
+    try {
+      await api.patch(`/projects/${projectId}/slides/${slideId}`, { html_content: fullHtml })
+    } catch (err) {
+      console.error('html slide image update failed', err)
+    }
+    pendingImageIdRef.current = null
+  }, [iframeRef, projectId, slideId, htmlContent, onHtmlChange])
+
+  return { handleIframeLoad, handleFileChange, fileInputRef }
+}
+
+// ── 헬퍼 함수들 ───────────────────────────────────────────────────────────────
+
+function isTextElement(el: HTMLElement): boolean {
+  const tag = el.tagName.toLowerCase()
+  if (['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'div', 'li', 'td', 'th'].includes(tag)) return true
+  // div인데 이미지 없고 텍스트만 있으면 텍스트 요소로 간주
+  if (tag === 'div' && !el.querySelector('img') && el.textContent?.trim()) return true
+  return false
+}
+
+function isImagePlaceholder(el: HTMLElement): boolean {
+  return (
+    el.tagName === 'IMG' ||
+    el.classList.contains('img-placeholder') ||
+    el.querySelector('img') !== null
+  )
+}
+
+function readFileAsDataURL(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+/**
+ * iframe 내부 doc.documentElement.innerHTML을 받아
+ * 완전한 HTML 문서 string으로 복원한다.
+ */
+function rebuildFullHtml(innerHtml: string): string {
+  // innerHTML에서 <head>...</head> <body>...</body> 추출
+  const headMatch = innerHtml.match(/<head[^>]*>([\s\S]*?)<\/head>/i)
+  const bodyMatch = innerHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i)
+  const head = headMatch ? headMatch[1] : ''
+  const body = bodyMatch ? bodyMatch[1] : innerHtml
+  return `<!DOCTYPE html><html><head>${head}</head><body>${body}</body></html>`
+}
+
+// ── 속성 패널용 스타일 파싱 ───────────────────────────────────────────────────
+
+export interface HtmlComponentStyle {
+  componentId: string
+  color: string
+  backgroundColor: string
+  fontSize: string
+  opacity: string
+  tagName: string
+  textContent: string
+}
+
+function parseElementStyle(el: HTMLElement): HtmlComponentStyle {
+  const cs = el.ownerDocument.defaultView?.getComputedStyle(el) ?? el.style
+  return {
+    componentId: el.getAttribute('data-component-id') ?? '',
+    color: (cs as CSSStyleDeclaration).color ?? el.style.color ?? '',
+    backgroundColor: (cs as CSSStyleDeclaration).backgroundColor ?? el.style.backgroundColor ?? '',
+    fontSize: (cs as CSSStyleDeclaration).fontSize ?? el.style.fontSize ?? '',
+    opacity: (cs as CSSStyleDeclaration).opacity ?? el.style.opacity ?? '1',
+    tagName: el.tagName.toLowerCase(),
+    textContent: el.textContent?.trim().slice(0, 80) ?? '',
+  }
+}
 
 const SLIDE_W = 960
 const SLIDE_H = 540
@@ -138,6 +346,42 @@ export default function SlideCanvas() {
   const [liveGeom, setLiveGeom] = useState<Record<string, { x: number; y: number; w: number; h: number }>>({})
   const [conflictTarget, setConflictTarget] = useState<string | null>(null)
 
+  // HTML 모드 상태
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+  const [htmlContent, setHtmlContent] = useState<string>(currentSlide?.html_content ?? '')
+  const [selectedHtmlStyle, setSelectedHtmlStyle] = useState<HtmlComponentStyle | null>(null)
+
+  // 슬라이드 변경 시 htmlContent 동기화
+  useEffect(() => {
+    setHtmlContent(currentSlide?.html_content ?? '')
+    setSelectedHtmlStyle(null)
+  }, [currentSlide?.id, currentSlide?.html_content])
+
+  const handleHtmlChange = useCallback((newHtml: string) => {
+    setHtmlContent(newHtml)
+    // store 내 presentation도 낙관적 업데이트
+    const ppt = useSlideStore.getState().presentation
+    if (!ppt || !currentSlide) return
+    const updatedSlides = ppt.slides.map((s) =>
+      s.id === currentSlide.id ? { ...s, html_content: newHtml } : s
+    )
+    useSlideStore.setState({ presentation: { ...ppt, slides: updatedSlides } })
+  }, [currentSlide])
+
+  const handleComponentSelect = useCallback((id: string | null, style: HtmlComponentStyle | null) => {
+    setSelectedHtmlStyle(style)
+    selectComponent(id)
+  }, [selectComponent])
+
+  const { handleIframeLoad, handleFileChange, fileInputRef } = useHtmlSlideEdit(
+    iframeRef,
+    presentation?.id ?? '',
+    currentSlide?.id ?? '',
+    htmlContent,
+    handleHtmlChange,
+    handleComponentSelect,
+  )
+
   // 동적 스케일
   useEffect(() => {
     const el = containerRef.current
@@ -238,14 +482,30 @@ export default function SlideCanvas() {
 
   // HTML 모드 렌더링 (html_content 있으면 iframe 사용)
   if (currentSlide?.html_content) {
-    const iframeSrc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{width:960px;height:540px;overflow:hidden;}</style></head><body>${currentSlide.html_content}</body></html>`
+    // html_content가 완전한 HTML 문서면 그대로 사용, 아니면 감싸기
+    const rawHtml = htmlContent || currentSlide.html_content
+    const iframeSrc = rawHtml.trimStart().startsWith('<!DOCTYPE') || rawHtml.trimStart().startsWith('<html')
+      ? rawHtml
+      : `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{width:960px;height:540px;overflow:hidden;}</style></head><body>${rawHtml}</body></html>`
+
     return (
       <div ref={containerRef}
-        className="flex-1 flex items-center justify-center bg-[var(--bg-muted)] overflow-hidden">
+        className="flex-1 flex items-center justify-center bg-[var(--bg-muted)] overflow-hidden"
+        onClick={() => { setSelectedHtmlStyle(null); selectComponent(null) }}>
+        {/* hidden file input for image upload */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleFileChange}
+        />
         <div
           className="relative rounded-[8px] shadow-[0_8px_40px_rgba(0,0,0,0.18)] overflow-hidden shrink-0"
-          style={{ width: SLIDE_W * scale, height: SLIDE_H * scale }}>
+          style={{ width: SLIDE_W * scale, height: SLIDE_H * scale }}
+          onClick={(e) => e.stopPropagation()}>
           <iframe
+            ref={iframeRef}
             srcDoc={iframeSrc}
             style={{
               width: SLIDE_W,
@@ -257,8 +517,19 @@ export default function SlideCanvas() {
             }}
             sandbox="allow-same-origin"
             title="slide"
+            onLoad={() => handleIframeLoad()}
           />
+          {/* 선택된 요소 툴팁 힌트 */}
+          {selectedHtmlStyle && (
+            <div
+              className="absolute bottom-2 left-2 z-10 bg-black/70 text-white text-[10px] rounded-[6px] px-2 py-1 pointer-events-none max-w-[200px] truncate"
+            >
+              {selectedHtmlStyle.tagName} · 더블클릭으로 편집
+            </div>
+          )}
         </div>
+        {/* 우측 속성 패널과 상태 공유 */}
+        <HtmlStyleBroadcaster style={selectedHtmlStyle} />
       </div>
     )
   }
@@ -342,4 +613,13 @@ export default function SlideCanvas() {
     )}
     </>
   )
+}
+
+// ── HTML 스타일 브로드캐스터 ──────────────────────────────────────────────────
+// RightPanel과 상태 공유를 위해 전역 이벤트 방식으로 선택된 HTML 요소 스타일 전파
+function HtmlStyleBroadcaster({ style }: { style: HtmlComponentStyle | null }) {
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('html-component-select', { detail: style }))
+  }, [style])
+  return null
 }

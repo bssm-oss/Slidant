@@ -29,3 +29,14 @@ export async function createPipeline(
 export async function deletePipeline(projectId: string, pipelineId: string): Promise<void> {
   return api.delete(`/projects/${projectId}/pipelines/${pipelineId}`)
 }
+
+export async function fetchAllUserPipelines(): Promise<Pipeline[]> {
+  return api.get('/pipelines')
+}
+
+export async function clonePipelineToProject(
+  pipelineId: string,
+  targetProjectId: string,
+): Promise<Pipeline> {
+  return api.post(`/pipelines/${pipelineId}/clone?target_project_id=${targetProjectId}`, {})
+}

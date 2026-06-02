@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Palette } from 'lucide-react'
+import { Download, Palette, Play } from 'lucide-react'
 import { useEditorStore } from '../store/editorStore'
 import ThemePanel from '@/features/presentation/components/ThemePanel'
 import type { AgentStatus } from '@/shared/types'
@@ -13,7 +13,12 @@ const statusMap: Record<AgentStatus, { color: string; label: string }> = {
   conflict: { color: '#f59e0b', label: '충돌' },
 }
 
-export default function EditorTopbar() {
+interface EditorTopbarProps {
+  onPresent?: () => void
+  onExport?: () => void
+}
+
+export default function EditorTopbar({ onPresent, onExport }: EditorTopbarProps) {
   const { presentation, overallStatus, saveTitle, isTitleEditing, setTitleEditing } = useEditorStore()
   const inputRef = useRef<HTMLInputElement>(null)
   const [showTheme, setShowTheme] = useState(false)
@@ -77,8 +82,28 @@ export default function EditorTopbar() {
         </div>
       </div>
 
-      {/* Right: Theme (icon only) */}
-      <div className="flex items-center shrink-0">
+      {/* Right: Export + Present + Theme */}
+      <div className="flex items-center gap-1 shrink-0">
+        {onExport && (
+          <button
+            onClick={onExport}
+            className="flex items-center gap-1.5 px-3 h-8 rounded-[8px] border border-[var(--border)] text-[12px] font-medium text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-muted)] transition-colors"
+            title="PDF로 내보내기"
+          >
+            <Download size={13} />
+            내보내기
+          </button>
+        )}
+        {onPresent && (
+          <button
+            onClick={onPresent}
+            className="flex items-center gap-1.5 px-3 h-8 rounded-[8px] bg-[var(--accent)] text-white text-[12px] font-medium hover:opacity-90 transition-opacity"
+            title="발표 모드"
+          >
+            <Play size={13} />
+            발표
+          </button>
+        )}
         <div className="relative">
           <button
             onClick={() => setShowTheme((v) => !v)}

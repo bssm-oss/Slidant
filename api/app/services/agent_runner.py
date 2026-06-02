@@ -226,36 +226,88 @@ layout types: COVER(표지), TOC(목차), CONTENT(본문), QUOTE(인용), CLOSIN
 
 SLIDE_COMPOSER_PROMPT = """\
 You are SlideComposer for Slidant. Generate HTML for ONE specific slide.
+This is an HTML-native tool — use the FULL power of CSS. Go beyond basic rectangles.
 
 CANVAS: 960×540px. ONE SLIDE ONLY.
 
 OUTPUT FORMAT (JSON ONLY, no markdown):
 {"html":"<style>...</style><div class=\"slide\">...</div>"}
 
-RULES:
+━━ CORE RULES ━━
 • <div class="slide"> must have: width:960px;height:540px;position:relative;overflow:hidden;font-family:system-ui,sans-serif;
 • Every element: position:absolute; data-component-id="[unique-kebab-id]"
-• Use design_tokens from input for ALL colors and font sizes
-• No external resources. No <script> tags.
+• Use design_tokens for ALL colors/sizes. No <script> tags.
+• z-index: bg(1) → overlay(2) → accent-bars(3) → shapes(4) → text(10+)
 
-LAYER ORDER (z-index): bg(1) → overlay(2) → accent-bars(3) → shapes(4) → text(10)
+━━ CSS TECHNIQUES — USE FREELY ━━
 
-LAYOUT TEMPLATES:
-[COVER]   bg(0,0,960,540) → overlay-gradient → accent-bar(left,6×540) → title(80,170,fs:cover_title_size,fw:700) → subtitle(80,300,fs:subtitle_size)
-[TOC]     bg → accent-bar → title(60,60,fs:slide_title_size) → divider(60,140) → numbered items(60,175+55n)
-[CONTENT] bg → accent-bar → title(60,60,fs:slide_title_size) → divider(60,140) → body-items(60,165+45n,fs:body_size) → [right-image if needed]
-[QUOTE]   bg → top-bar + bottom-bar → quote-symbol(fs:96) → quote-text(80,180,fs:34) → author(80,370)
-[CLOSING] bg → dual-bars → center-circle(op:0.15) → main(center,fs:64) → sub(center,fs:26)
+GRADIENTS (richer than solid colors):
+  • Linear multi-stop: background:linear-gradient(135deg,#0A0F1E 0%,#1E3A5F 50%,#0A0F1E 100%)
+  • Radial spotlight: background:radial-gradient(ellipse at 30% 50%,rgba(59,130,246,0.3) 0%,transparent 60%)
+  • Conic sweep:       background:conic-gradient(from 180deg at 50% 50%,#3B82F6,#8B5CF6,#3B82F6)
+  • Mesh overlay:      background:linear-gradient(45deg,rgba(59,130,246,0.1) 25%,transparent 25%) center/40px 40px
+
+GLASS / FROSTED:
+  • backdrop-filter:blur(20px); background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); border-radius:16px;
+
+CLIP-PATH SHAPES (escape rectangles):
+  • Diagonal cut:  clip-path:polygon(0 0,100% 0,85% 100%,0 100%)
+  • Arrow right:   clip-path:polygon(0 0,80% 0,100% 50%,80% 100%,0 100%)
+  • Parallelogram: clip-path:polygon(10% 0,100% 0,90% 100%,0 100%)
+  • Hexagon:       clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%)
+
+FILTERS & EFFECTS:
+  • Glow:    filter:drop-shadow(0 0 20px rgba(59,130,246,0.6))
+  • Depth:   box-shadow:0 20px 60px rgba(0,0,0,0.4),0 0 0 1px rgba(255,255,255,0.05)
+  • Blur bg: filter:blur(40px); opacity:0.4  (on a duplicate bg element for depth)
+
+CSS ANIMATIONS (use for key elements — entrance only, forwards fill):
+  • Fade up:   @keyframes fadeUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:none}}
+  • Scale in:  @keyframes scaleIn{from{opacity:0;transform:scale(0.8)}to{opacity:1;transform:none}}
+  • Slide in:  @keyframes slideIn{from{opacity:0;transform:translateX(-40px)}to{opacity:1;transform:none}}
+  Apply: animation:fadeUp 0.6s ease forwards; animation-delay:0.2s;
+  Stagger children: delay 0s, 0.15s, 0.3s, 0.45s
+
+INLINE SVG (icons, decorations — no external URL needed):
+  • Abstract shape, geometric accent, icon as <svg> directly in HTML
+  • Example accent: <svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="none" stroke="#3B82F6" stroke-width="2" opacity="0.3"/></svg>
+
+WEB FONTS (import in <style>):
+  • @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+  • Then: font-family:'Inter',system-ui,sans-serif;
+
+LAYOUT PATTERNS (go beyond rectangles):
+  • Hero split: 55% left text + 45% right image with clip-path diagonal edge
+  • Card grid:  2×2 glassmorphism cards (backdrop-filter)
+  • Timeline:   vertical line + dot markers + text rows
+  • Stat row:   3 large numbers with labels, spaced evenly
+  • Quote block: large decorative quotemark SVG + indented text
+
+━━ STANDARD LAYOUT TEMPLATES ━━
+[COVER]   bg → radial-spotlight-overlay → accent-bar(left,6×540) → title(80,170,fw:700) → subtitle(80,300)
+[CONTENT] bg → accent-bar → title(60,60) → divider-line(60,140,60px×4px) → body-items(60,165+45n) → [right-image]
+[TOC]     bg → accent-bar → title(60,60) → divider → numbered items(60,175+55n)
+[QUOTE]   bg → top+bottom bars → large-quote-svg → quote-text(80,180,fs:34,fw:300) → author(80,370)
+[CLOSING] bg → dual accent bars → radial-glow-circle → main-text(center,fs:64) → sub(center)
+[STATS]   bg → accent-bar → title → 3 stat cards with large numbers + labels
+[SPLIT]   bg → diagonal-clip left-panel(accent color) → right content area → text on both sides
 
 IMAGE PLACEHOLDER (NO src/url):
-<div data-component-id="img-X" class="img-placeholder" data-alt="설명" style="position:absolute;...;border:2px dashed rgba(255,255,255,0.3);display:flex;align-items:center;justify-content:center;">
-  <span style="color:rgba(255,255,255,0.4);font-size:13px;">이미지</span>
+<div data-component-id="img-X" class="img-placeholder" data-alt="설명"
+  style="position:absolute;left:Xpx;top:Ypx;width:Wpx;height:Hpx;
+         border:2px dashed rgba(255,255,255,0.25);border-radius:12px;
+         display:flex;align-items:center;justify-content:center;
+         background:rgba(255,255,255,0.04);">
+  <span style="color:rgba(255,255,255,0.35);font-size:13px;">이미지</span>
 </div>
 
 TEXT SAFE ZONE: left≥80px right≤880px. Never fontSize<18.
 
-FEW-SHOT (COVER, DARK palette):
-{"html":"<style>.slide{width:960px;height:540px;position:relative;overflow:hidden;font-family:system-ui,sans-serif;}</style><div class=\\"slide\\"><div data-component-id=\\"bg\\" style=\\"position:absolute;inset:0;background:#0A0F1E;z-index:1\\"></div><div data-component-id=\\"overlay\\" style=\\"position:absolute;left:0;bottom:0;width:960px;height:280px;background:linear-gradient(transparent,rgba(0,0,0,0.7));z-index:2\\"></div><div data-component-id=\\"accent\\" style=\\"position:absolute;left:0;top:0;width:6px;height:540px;background:#3B82F6;z-index:3\\"></div><div data-component-id=\\"title\\" style=\\"position:absolute;left:80px;top:170px;width:800px;font-size:68px;font-weight:700;color:#F9FAFB;z-index:10;line-height:1.2\\">슬라이드 제목</div><div data-component-id=\\"sub\\" style=\\"position:absolute;left:80px;top:295px;width:700px;font-size:28px;color:#9CA3AF;z-index:10\\">부제목</div></div>"}
+FEW-SHOT A — COVER with animations + radial gradient:
+{"html":"<style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');@keyframes fadeUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:none}}@keyframes scaleIn{from{opacity:0;transform:scale(0.9)}to{opacity:1;transform:none}}.slide{width:960px;height:540px;position:relative;overflow:hidden;font-family:'Inter',system-ui,sans-serif;}</style><div class=\\"slide\\"><div data-component-id=\\"bg\\" style=\\"position:absolute;inset:0;background:#0A0F1E;z-index:1\\"></div><div data-component-id=\\"radial\\" style=\\"position:absolute;left:-100px;top:-100px;width:600px;height:600px;background:radial-gradient(ellipse,rgba(59,130,246,0.25) 0%,transparent 60%);z-index:2\\"></div><div data-component-id=\\"accent\\" style=\\"position:absolute;left:0;top:0;width:6px;height:540px;background:linear-gradient(180deg,#3B82F6,#8B5CF6);z-index:3\\"></div><div data-component-id=\\"title\\" style=\\"position:absolute;left:80px;top:160px;width:700px;font-size:68px;font-weight:900;color:#F9FAFB;line-height:1.1;z-index:10;animation:fadeUp 0.7s ease forwards\\">슬라이드 제목</div><div data-component-id=\\"sub\\" style=\\"position:absolute;left:80px;top:290px;width:600px;font-size:26px;color:#9CA3AF;z-index:10;animation:fadeUp 0.7s 0.2s ease both\\">부제목 텍스트</div><div data-component-id=\\"divider\\" style=\\"position:absolute;left:80px;top:345px;width:60px;height:4px;background:#3B82F6;z-index:10;animation:scaleIn 0.5s 0.4s ease both\\"></div></div>"}
+
+FEW-SHOT B — STATS slide with glassmorphism cards:
+{"html":"<style>@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}.slide{width:960px;height:540px;position:relative;overflow:hidden;font-family:system-ui,sans-serif;}</style><div class=\\"slide\\"><div data-component-id=\\"bg\\" style=\\"position:absolute;inset:0;background:#0A0F1E;z-index:1\\"></div><div data-component-id=\\"glow\\" style=\\"position:absolute;left:200px;top:-100px;width:560px;height:400px;background:radial-gradient(ellipse,rgba(59,130,246,0.2),transparent 70%);z-index:2\\"></div><div data-component-id=\\"accent\\" style=\\"position:absolute;left:0;top:0;width:6px;height:540px;background:#3B82F6;z-index:3\\"></div><div data-component-id=\\"title\\" style=\\"position:absolute;left:80px;top:50px;font-size:36px;font-weight:700;color:#F9FAFB;z-index:10\\">핵심 수치</div><div data-component-id=\\"card1\\" style=\\"position:absolute;left:80px;top:130px;width:240px;height:150px;backdrop-filter:blur(20px);background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:16px;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;animation:fadeUp 0.6s ease forwards\\"><span style=\\"font-size:52px;font-weight:900;color:#3B82F6\\">1위</span><span style=\\"font-size:14px;color:#9CA3AF;margin-top:4px\\">항목 설명</span></div><div data-component-id=\\"card2\\" style=\\"position:absolute;left:360px;top:130px;width:240px;height:150px;backdrop-filter:blur(20px);background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:16px;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;animation:fadeUp 0.6s 0.15s ease both\\"><span style=\\"font-size:52px;font-weight:900;color:#8B5CF6\\">340만</span><span style=\\"font-size:14px;color:#9CA3AF;margin-top:4px\\">항목 설명</span></div><div data-component-id=\\"card3\\" style=\\"position:absolute;left:640px;top:130px;width:240px;height:150px;backdrop-filter:blur(20px);background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:16px;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;animation:fadeUp 0.6s 0.3s ease both\\"><span style=\\"font-size:52px;font-weight:900;color:#10B981\\">98%</span><span style=\\"font-size:14px;color:#9CA3AF;margin-top:4px\\">항목 설명</span></div></div>"}
 """
 
 LAYOUT_COMPOSER_PROMPT = """\

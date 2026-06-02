@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useEditorStore } from '@/features/editor/store/editorStore'
 import { useSlideStore } from '@/features/editor/store/slideStore'
@@ -9,10 +9,13 @@ import EditorTopbar from '@/features/editor/components/EditorTopbar'
 import SlideListPanel from '@/features/editor/components/SlideListPanel'
 import SlideCanvas from '@/features/editor/components/SlideCanvas'
 import RightPanel from '@/features/editor/components/RightPanel'
+import PresentationMode from '@/features/editor/components/PresentationMode'
+import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-react'
 
 export default function EditPage() {
   const { id } = useParams<{ id: string }>()
   const { loadPresentation, loadAgentLogs, loadAgents, loadChatHistory, connectWs } = useEditorStore()
+  const { presentation, currentSlideIndex } = useSlideStore()
 
   useEffect(() => {
     if (!id) return
@@ -72,14 +75,75 @@ export default function EditPage() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
 
+  const [leftOpen, setLeftOpen] = useState(true)
+  const [rightOpen, setRightOpen] = useState(true)
+  const [presenting, setPresenting] = useState(false)
+
+  const handlePresent = () => setPresenting(true)
+
+  const handleExport = () => {
+    const exportSlides = presentation?.slides ?? []
+    const printHtml = `<!DOCTYPE html><html><head>
+<style>
+  @page { size: 960px 540px; margin: 0; }
+  body { margin: 0; padding: 0; }
+  .slide-page { width: 960px; height: 540px; overflow: hidden; page-break-after: always; }
+</style></head><body>
+${exportSlides.map(s => s.html_content ? `<div class="slide-page">${s.html_content}</div>` : '').filter(Boolean).join('')}
+</body></html>`
+    const win = window.open('', '_blank')
+    if (!win) return
+    win.document.write(printHtml)
+    win.document.close()
+    win.focus()
+    setTimeout(() => { win.print(); win.close() }, 500)
+  }
+
+  const slides = presentation?.slides ?? []
+
   return (
     <AppShell>
+      {presenting && (
+        <PresentationMode
+          slides={slides}
+          startIndex={currentSlideIndex}
+          onClose={() => setPresenting(false)}
+        />
+      )}
       <div className="flex flex-col h-screen overflow-hidden">
-        <EditorTopbar />
-        <div className="flex flex-1 overflow-hidden">
-          <SlideListPanel />
+        <EditorTopbar onPresent={handlePresent} onExport={handleExport} />
+        <div className="flex flex-1 overflow-hidden relative">
+          {/* 좌측 슬라이드 패널 */}
+          <div className={`transition-all duration-200 shrink-0 ${leftOpen ? 'w-52' : 'w-0'} overflow-hidden`}>
+            <SlideListPanel />
+          </div>
+
+          {/* 좌측 토글 버튼 */}
+          <button
+            onClick={() => setLeftOpen((v) => !v)}
+            className="absolute left-0 bottom-4 z-20 flex items-center justify-center w-5 h-10 bg-white border border-[var(--border)] border-l-0 rounded-r-[6px] text-[var(--text-disabled)] hover:text-[var(--text-muted)] hover:bg-[var(--bg-muted)] transition-all shadow-sm"
+            style={{ left: leftOpen ? '208px' : '0px' }}
+            title={leftOpen ? '슬라이드 패널 닫기' : '슬라이드 패널 열기'}
+          >
+            {leftOpen ? <PanelLeftClose size={12} /> : <PanelLeftOpen size={12} />}
+          </button>
+
           <SlideCanvas />
-          <RightPanel />
+
+          {/* 우측 토글 버튼 */}
+          <button
+            onClick={() => setRightOpen((v) => !v)}
+            className="absolute right-0 bottom-4 z-20 flex items-center justify-center w-5 h-10 bg-white border border-[var(--border)] border-r-0 rounded-l-[6px] text-[var(--text-disabled)] hover:text-[var(--text-muted)] hover:bg-[var(--bg-muted)] transition-all shadow-sm"
+            style={{ right: rightOpen ? '320px' : '0px' }}
+            title={rightOpen ? '채팅 패널 닫기' : '채팅 패널 열기'}
+          >
+            {rightOpen ? <PanelRightClose size={12} /> : <PanelRightOpen size={12} />}
+          </button>
+
+          {/* 우측 채팅 패널 */}
+          <div className={`transition-all duration-200 shrink-0 ${rightOpen ? 'w-80' : 'w-0'} overflow-hidden`}>
+            <RightPanel />
+          </div>
         </div>
       </div>
     </AppShell>

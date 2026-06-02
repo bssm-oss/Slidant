@@ -18,6 +18,7 @@ type RawSlideComponent = {
 
 type RawSlide = {
   components?: RawSlideComponent[]
+  html_content?: string | null
 }
 
 function ThumbnailComp({ comp }: { comp: SlideComponent }) {
@@ -107,6 +108,7 @@ export default function SlideThumbnail({ projectId }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [scale, setScale] = useState(0.34)
   const [components, setComponents] = useState<SlideComponent[] | null>(null)
+  const [htmlContent, setHtmlContent] = useState<string | null>(null)
   const [status, setStatus] = useState<'loading' | 'empty' | 'ready'>('loading')
   const fetchedRef = useRef(false)
 
@@ -132,9 +134,16 @@ export default function SlideThumbnail({ projectId }: Props) {
 
       api.get<RawSlide[]>(`/projects/${projectId}/slides`).then((slides) => {
         const first = slides?.[0]
-        if (!first || !first.components?.length) { setStatus('empty'); return }
-        setComponents(parseComponents(first.components))
-        setStatus('ready')
+        if (!first) { setStatus('empty'); return }
+        if (first.html_content) {
+          setHtmlContent(first.html_content)
+          setStatus('ready')
+        } else if (first.components?.length) {
+          setComponents(parseComponents(first.components))
+          setStatus('ready')
+        } else {
+          setStatus('empty')
+        }
       }).catch(() => setStatus('empty'))
     }, { threshold: 0 })
 
@@ -162,7 +171,26 @@ export default function SlideThumbnail({ projectId }: Props) {
         </div>
       )}
 
-      {status === 'ready' && components && (
+      {status === 'ready' && htmlContent && (
+        <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+          <iframe
+            srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{width:960px;height:540px;overflow:hidden;}</style></head><body>${htmlContent}</body></html>`}
+            style={{
+              width: SLIDE_W,
+              height: SLIDE_H,
+              border: 'none',
+              transform: `scale(${scale})`,
+              transformOrigin: 'top left',
+              display: 'block',
+              pointerEvents: 'none',
+            }}
+            sandbox="allow-same-origin"
+            title="슬라이드 미리보기"
+          />
+        </div>
+      )}
+
+      {status === 'ready' && !htmlContent && components && (
         <div style={{
           position: 'absolute', top: 0, left: 0,
           width: SLIDE_W, height: SLIDE_H,

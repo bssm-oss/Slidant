@@ -102,6 +102,29 @@ async def create_slide(project_id: UUID, body: SlideCreate, current_user: Curren
     return SlideResponse.from_slide(slide)
 
 
+@router.patch("/{project_id}/slides/{slide_id}", response_model=SlideResponse)
+async def update_slide_html(project_id: UUID, slide_id: UUID, body: dict, current_user: CurrentUser, uow: UoW):
+    """html_content 직접 업데이트 (인라인 편집, 이미지 업로드)"""
+    from app.services import slide_history_service
+    project = await uow.projects.get(project_id)
+    if not project or project.owner_id != current_user.id:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Not authorized")
+    slide = await uow.slides.get(slide_id)
+    if not slide:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Slide not found")
+    if "html_content" in body:
+        reason = "사용자: 직접 편집"
+        await slide_history_service.archive_and_apply(
+            uow, slide_id, list(slide.content or []),
+            reason, html_content=body["html_content"]
+        )
+    await uow.commit()
+    await uow.refresh(slide)
+    return SlideResponse.from_slide(slide)
+
+
 @router.delete("/{project_id}/slides/{slide_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_slide(project_id: UUID, slide_id: UUID, current_user: CurrentUser, uow: UoW):
     await project_service.delete_slide(uow.projects, uow.slides, project_id, current_user.id, slide_id)

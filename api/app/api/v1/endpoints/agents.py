@@ -353,6 +353,17 @@ async def _run_agent_background_inner(
             )
             uow.chat_messages.add(agent_msg)
 
+            # 프레젠테이션 제목 자동 설정 (기본값인 경우만)
+            if project and (not project.title or project.title in ("제목 없는 프레젠테이션", "Untitled")):
+                # llm_summary 첫 줄에서 제목 추출
+                if llm_summary:
+                    # "N장 PPT — WARM 팔레트" → "N장 PPT" 앞부분 또는 첫 슬라이드 제목 사용
+                    candidate = llm_summary.split("—")[0].split("·")[0].strip()
+                    candidate = candidate.split("\n")[0].strip()
+                    if 3 <= len(candidate) <= 50:
+                        project.title = candidate
+                        logger.info("   프레젠테이션 제목 자동 설정: %r", candidate)
+
             broadcast_payload: dict = {
                 "type": "agent_done",
                 "agent_run_id": str(agent_run.id),
