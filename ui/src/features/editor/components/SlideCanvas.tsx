@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useEditorStore } from '../store/editorStore'
 import { useSlideStore } from '../store/slideStore'
+import { useProposalStore } from '../store/proposalStore'
 import { cn } from '@/shared/lib/utils'
 import { api } from '@/shared/lib/apiClient'
 import type { SlideComponent } from '@/shared/types'
+import ConflictResolver from './ConflictResolver'
 
 const SLIDE_W = 960
 const SLIDE_H = 540
@@ -128,11 +130,13 @@ type DragState = {
 export default function SlideCanvas() {
   const { presentation, currentSlideIndex, selectedComponentId, selectComponent, loadPresentation } = useEditorStore()
   const currentSlide = presentation?.slides[currentSlideIndex]
+  const { conflicts } = useProposalStore()
+  const conflictedIds = new Set(conflicts.map((c) => c.componentId))
   const containerRef = useRef<HTMLDivElement>(null)
   const [scale, setScale] = useState(0.75)
   const drag = useRef<DragState | null>(null)
-  // 드래그 중 임시 위치/크기 (렌더링용)
   const [liveGeom, setLiveGeom] = useState<Record<string, { x: number; y: number; w: number; h: number }>>({})
+  const [conflictTarget, setConflictTarget] = useState<string | null>(null)
 
   // 동적 스케일
   useEffect(() => {
@@ -244,6 +248,7 @@ export default function SlideCanvas() {
 
           {currentSlide?.components.map((comp) => {
             const isSelected = selectedComponentId === comp.id
+            const isConflicted = conflictedIds.has(comp.id)
             const { x, y, w, h } = getGeom(comp)
             const isDragging = !!liveGeom[comp.id]
 
@@ -251,17 +256,35 @@ export default function SlideCanvas() {
               <div key={comp.id}
                 style={{ position: 'absolute', left: x, top: y, width: w, height: h, zIndex: comp.zIndex,
                          cursor: isDragging ? 'grabbing' : 'grab' }}
-                onMouseDown={(e) => startDrag(e, comp, 'move')}
-                onClick={(e) => { e.stopPropagation(); selectComponent(comp.id) }}>
+                onMouseDown={(e) => { if (!isConflicted) startDrag(e, comp, 'move') }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (isConflicted) {
+                    setConflictTarget(comp.id)
+                  } else {
+                    selectComponent(comp.id)
+                  }
+                }}>
 
                 {/* 컴포넌트 내용 */}
                 <div style={{ width: '100%', height: '100%', overflow: 'hidden' }}
-                     className={cn(isSelected && 'outline outline-2 outline-[var(--accent)] outline-offset-1 rounded-[2px]')}>
+                     className={cn(
+                       isSelected && !isConflicted && 'outline outline-2 outline-[var(--accent)] outline-offset-1 rounded-[2px]',
+                       isConflicted && 'outline outline-2 outline-red-500 outline-offset-1 rounded-[2px]',
+                     )}>
                   <ComponentContent comp={{ ...comp, position: { x, y }, size: { w, h } }} />
                 </div>
 
-                {/* 리사이즈 핸들 (선택된 경우만) */}
-                {isSelected && HANDLES.map((handle) => (
+                {/* 충돌 뱃지 */}
+                {isConflicted && (
+                  <div style={{ position: 'absolute', top: -8, right: -8, zIndex: 10000 }}
+                       className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center shadow-md animate-pulse">
+                    <span className="text-white text-[9px] font-bold">!</span>
+                  </div>
+                )}
+
+                {/* 리사이즈 핸들 (선택된 경우만, 충돌 아닌 경우만) */}
+                {isSelected && !isConflicted && HANDLES.map((handle) => (
                   <div key={handle.id}
                     style={{ position: 'absolute', width: 8, height: 8, background: 'white',
                              border: '2px solid var(--accent)', borderRadius: 2,
@@ -281,5 +304,13 @@ export default function SlideCanvas() {
         </div>
       </div>
     </div>
+
+    {/* 충돌 해결 모달 */}
+    {conflictTarget && (
+      <ConflictResolver
+        componentId={conflictTarget}
+        onClose={() => setConflictTarget(null)}
+      />
+    )}
   )
 }

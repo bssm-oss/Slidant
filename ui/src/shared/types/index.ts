@@ -109,3 +109,9 @@ export interface AgentProposal {
   status: ProposalStatus
   created_at: string
 }
+
+// 컴포넌트 단위 충돌 타입
+export interface ComponentConflict {
+  componentId: string
+  proposals: AgentProposal[]   // 이 컴포넌트를 동시에 수정하는 제안들 (2개 이상)
+}
