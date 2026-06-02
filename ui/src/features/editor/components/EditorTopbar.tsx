@@ -50,9 +50,9 @@ export default function EditorTopbar() {
       <div className="flex items-center justify-between px-4 h-14 border-b border-[var(--border)] bg-white shrink-0">
         {/* 좌측 */}
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-7 h-7 rounded-[8px] bg-gradient-to-br from-[var(--accent)] to-[var(--pink)] flex items-center justify-center shadow-sm shrink-0">
+          <a href="/drive" className="w-7 h-7 rounded-[8px] bg-gradient-to-br from-[var(--accent)] to-[var(--pink)] flex items-center justify-center shadow-sm shrink-0 hover:opacity-80 transition-opacity" title="드라이브로 이동">
             <span className="text-white text-[11px] font-bold">S</span>
-          </div>
+          </a>
           {isTitleEditing ? (
             <input
               ref={inputRef}

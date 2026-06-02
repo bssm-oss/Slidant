@@ -27,12 +27,12 @@ export default function AppLNB() {
   return (
     <div className="w-56 h-full flex flex-col border-r border-[var(--border)] bg-white shrink-0">
       {/* 로고 */}
-      <div className="flex items-center gap-2.5 px-5 h-16 border-b border-[var(--border)]">
+      <NavLink to="/drive" className="flex items-center gap-2.5 px-5 h-16 border-b border-[var(--border)] hover:bg-[var(--bg-muted)] transition-colors">
         <div className="w-8 h-8 rounded-[10px] bg-gradient-to-br from-[var(--accent)] to-[var(--pink)] flex items-center justify-center shadow-sm">
           <span className="text-white text-sm font-bold">S</span>
         </div>
         <span className="text-base font-bold text-[var(--text)]">Slidant</span>
-      </div>
+      </NavLink>
 
       {/* 새 프레젠테이션 */}
       <div className="px-3 pt-4 pb-2">
