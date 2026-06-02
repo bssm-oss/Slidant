@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, func
 
 from app.core.deps import CurrentUser, UoW
+from app.models.component_history import ComponentHistory as ComponentHistoryModel
 from app.models.slide import Slide
 from app.models.slide_history import SlideHistory
 from app.schemas.project import (
@@ -186,4 +187,71 @@ async def update_project_theme(
         id=project.id, owner_id=project.owner_id, title=project.title,
         slide_count=slide_count, theme=project.theme,
         created_at=project.created_at, updated_at=project.updated_at,
+    )
+
+
+class ComponentHistoryResponse(BaseModel):
+    id: UUID
+    slide_id: UUID
+    component_id: str
+    op: str
+    path: str
+    old_value: dict | None
+    new_value: dict | None
+    agent_name: str | None
+    reason: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+@router.get("/{project_id}/slides/{slide_id}/component-history", response_model=list[ComponentHistoryResponse])
+async def list_component_history(
+    project_id: UUID, slide_id: UUID, current_user: CurrentUser, uow: UoW,
+    component_id: str | None = None,
+):
+    """슬라이드 전체 또는 특정 컴포넌트의 변경 이력 조회."""
+    await project_service.get_slide(uow.projects, uow.slides, project_id, current_user.id, slide_id)
+    if component_id:
+        return await uow.component_history.list_by_component(slide_id, component_id)
+    return await uow.component_history.list_by_slide(slide_id)
+
+
+@router.post("/{project_id}/slides/{slide_id}/component-history/{history_id}/revert", status_code=204)
+async def revert_component_change(
+    project_id: UUID, slide_id: UUID, history_id: UUID,
+    current_user: CurrentUser, uow: UoW,
+):
+    """특정 컴포넌트 변경사항을 역방향으로 되돌린다."""
+    await project_service.get_slide(uow.projects, uow.slides, project_id, current_user.id, slide_id)
+    entry = await uow.component_history.get(history_id)
+    if not entry or entry.slide_id != slide_id:
+        raise HTTPException(status_code=404, detail="History entry not found")
+
+    slide = await uow.slides.get(slide_id)
+    if not slide:
+        raise HTTPException(status_code=404, detail="Slide not found")
+
+    from app.services.slide_content import apply_patches
+    from app.services import slide_history_service
+
+    # 역방향 op 생성
+    if entry.op == "add":
+        inverse_ops = [{"op": "remove", "path": f"/{entry.component_id}"}]
+    elif entry.op == "remove":
+        inverse_ops = [{"op": "add", "path": "/-", "value": entry.old_value}]
+    elif entry.op == "replace":
+        inverse_ops = [{"op": "replace", "path": entry.path, "value": entry.old_value}]
+    else:
+        raise HTTPException(status_code=400, detail="Unknown op")
+
+    class _Target:
+        def __init__(self, content):
+            self.content = content
+
+    target = _Target(list(slide.content or []))
+    apply_patches(target, inverse_ops)
+    await slide_history_service.archive_and_apply(
+        uow, slide_id, target.content,
+        f"컴포넌트 변경 되돌리기 ({entry.op} → 역방향)",
     )

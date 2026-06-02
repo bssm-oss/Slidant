@@ -70,7 +70,7 @@ async def approve_proposal(proposal_id: UUID, current_user: CurrentUser, uow: Uo
     apply_patches(target, proposal.patches)
 
     reason = f'{proposal.agent_name}: {proposal.command[:120]}'
-    await slide_history_service.archive_and_apply(uow, proposal.slide_id, target.content, reason)
+    await slide_history_service.archive_and_apply(uow, proposal.slide_id, target.content, reason, agent_name=proposal.agent_name)
     proposal.status = 'approved'
 
 

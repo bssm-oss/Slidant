@@ -7,6 +7,7 @@ from app.repositories.agent_proposal import AgentProposalRepository
 from app.repositories.api_key import ApiKeyRepository, ApiKeyUsageLogRepository
 from app.repositories.chat import ChatMessageRepository
 from app.repositories.chat_session import ChatSessionRepository
+from app.repositories.component_history import ComponentHistoryRepository
 from app.repositories.project import ProjectRepository
 from app.repositories.slide import SlideRepository
 from app.repositories.slide_history import SlideHistoryRepository
@@ -22,6 +23,7 @@ class UnitOfWork:
     projects: ProjectRepository
     slides: SlideRepository
     slide_history: SlideHistoryRepository
+    component_history: ComponentHistoryRepository
     proposals: AgentProposalRepository
     api_keys: ApiKeyRepository
     api_key_usage_logs: ApiKeyUsageLogRepository
@@ -40,6 +42,7 @@ class UnitOfWork:
         self.projects = ProjectRepository(self.session)
         self.slides = SlideRepository(self.session)
         self.slide_history = SlideHistoryRepository(self.session)
+        self.component_history = ComponentHistoryRepository(self.session)
         self.proposals = AgentProposalRepository(self.session)
         self.api_keys = ApiKeyRepository(self.session)
         self.api_key_usage_logs = ApiKeyUsageLogRepository(self.session)

@@ -4,6 +4,7 @@ from app.models.agent_proposal import AgentProposal
 from app.models.api_key import ApiKey, ApiKeyUsageLog
 from app.models.chat_session import ChatSession
 from app.models.chat import ChatMessage
+from app.models.component_history import ComponentHistory
 from app.models.conflict import Conflict
 from app.models.project import Project
 from app.models.slide import Slide
@@ -20,4 +21,5 @@ __all__ = [
     "ChatSession", "ChatMessage",
     "Version", "ComponentPatch",
     "Conflict",
+    "ComponentHistory",
 ]
