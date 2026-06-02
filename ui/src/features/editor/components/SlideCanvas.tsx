@@ -171,7 +171,7 @@ export default function SlideCanvas() {
       setLiveGeom((prev) => ({ ...prev, [compId]: { x, y, w, h } }))
     }
 
-    const onUp = async (e: MouseEvent) => {
+    const onUp = async (_e: MouseEvent) => {
       if (!drag.current) return
       const { compId } = drag.current
       drag.current = null

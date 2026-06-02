@@ -80,9 +80,9 @@ export default function DiffViewer({ currentContent, patches }: DiffViewerProps)
               <span className='text-green-600'>{formatValue(item.newValue)}</span>
             </p>
           )}
-          {item.type === 'add' && item.newComp?.properties && (
+          {item.type === 'add' && !!item.newComp?.properties && (
             <p className='text-[var(--text-muted)] ml-1 text-[11px]'>
-              {Object.entries(item.newComp.properties as object).slice(0, 2).map(([k, v]) =>
+              {Object.entries(item.newComp.properties as Record<string, unknown>).slice(0, 2).map(([k, v]) =>
                 `${k}: ${formatValue(v)}`
               ).join(' · ')}
             </p>
