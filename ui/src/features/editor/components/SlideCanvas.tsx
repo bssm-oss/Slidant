@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useEditorStore } from '../store/editorStore'
+import { useSlideStore } from '../store/slideStore'
 import { cn } from '@/shared/lib/utils'
 import { api } from '@/shared/lib/apiClient'
 import type { SlideComponent } from '@/shared/types'
@@ -182,8 +183,8 @@ export default function SlideCanvas() {
       setLiveGeom((prev) => { const next = { ...prev }; delete next[compId]; return next })
 
       // API에 저장
-      const ppt = useEditorStore.getState().presentation
-      const slide = ppt?.slides[useEditorStore.getState().currentSlideIndex]
+      const ppt = useSlideStore.getState().presentation
+      const slide = ppt?.slides[useSlideStore.getState().currentSlideIndex]
       const comp = slide?.components.find((c) => c.id === compId)
       if (!ppt || !slide || !comp) return
 

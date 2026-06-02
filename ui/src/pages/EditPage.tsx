@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { useEditorStore } from '@/features/editor/store/editorStore'
+import { useSlideStore } from '@/features/editor/store/slideStore'
 import { sseClient } from '@/shared/lib/sseClient'
 import { AppShell } from '@/shared/components/layout'
 import EditorTopbar from '@/features/editor/components/EditorTopbar'
@@ -31,7 +32,7 @@ export default function EditPage() {
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return
 
       const { selectedComponentId, presentation, currentSlideIndex, deleteSlide, deleteComponent, setCurrentSlide } =
-        useEditorStore.getState()
+        useSlideStore.getState()
       const slideCount = presentation?.slides.length ?? 0
 
       if (e.key === 'Delete' || e.key === 'Backspace') {

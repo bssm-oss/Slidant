@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useEditorStore } from '../store/editorStore'
+import { useSlideStore } from '../store/slideStore'
 import { cn } from '@/shared/lib/utils'
 import { api } from '@/shared/lib/apiClient'
 import { Maximize2, Send, Loader2, Settings, ChevronDown, Zap } from 'lucide-react'
@@ -58,10 +59,12 @@ function ChatBubble({ msg }: { msg: ChatMessage }) {
 }
 
 // ── Agent selector pill ───────────────────────────────────────────────────────
-function AgentSelector({ agents, selectedId, onSelect }: {
+function AgentSelector({ agents, selectedId, onSelect, compact = false, upward = false }: {
   agents: Agent[]
   selectedId: string | null
   onSelect: (id: string) => void
+  compact?: boolean
+  upward?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const selected = agents.find((a) => a.definitionId === selectedId) ?? agents[0]
@@ -72,14 +75,20 @@ function AgentSelector({ agents, selectedId, onSelect }: {
     <div className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] bg-[var(--bg-muted)] hover:bg-[var(--border)] transition-colors text-[12px] font-medium text-[var(--text)]"
+        className={cn(
+          'flex items-center gap-1.5 rounded-[6px] bg-[var(--bg-muted)] hover:bg-[var(--border)] transition-colors font-medium text-[var(--text)]',
+          compact ? 'px-2 py-1 text-[11px]' : 'px-3 py-1.5 text-[12px]',
+        )}
       >
         <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] shrink-0" />
-        {selected?.name ?? '에이전트 선택'}
-        <ChevronDown size={12} className="text-[var(--text-disabled)]" />
+        <span className="max-w-[72px] truncate">{selected?.name ?? '에이전트'}</span>
+        <ChevronDown size={compact ? 10 : 12} className="text-[var(--text-disabled)] shrink-0" />
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1 z-20 bg-white border border-[var(--border)] rounded-[10px] shadow-lg py-1 min-w-[160px]">
+        <div className={cn(
+          'absolute left-0 z-30 bg-white border border-[var(--border)] rounded-[10px] shadow-lg py-1 min-w-[160px]',
+          upward ? 'bottom-full mb-1' : 'top-full mt-1',
+        )}>
           {agents.map((a) => (
             <button
               key={a.id}
@@ -103,25 +112,52 @@ function AgentSelector({ agents, selectedId, onSelect }: {
 }
 
 // ── Agent chat ────────────────────────────────────────────────────────────────
-function AgentChat({ agent }: { agent: Agent }) {
-  const { chatMessages, runningAgentIds, sendMessage, selectChatAgent } = useEditorStore()
+function AgentChat({ agent, agents, onSelectAgent }: {
+  agent: Agent
+  agents: Agent[]
+  onSelectAgent: (id: string) => void
+}) {
+  const { chatMessages, runningAgentIds, sendMessage, selectChatAgent, presentation } = useEditorStore()
   const [input, setInput] = useState('')
+  const [showSlidePicker, setShowSlidePicker] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const pickerRef = useRef<HTMLDivElement>(null)
 
   const msgs = chatMessages.filter((m) => m.agentDefinitionId === agent.definitionId)
   const isRunning = agent.definitionId ? runningAgentIds.has(agent.definitionId) : false
+  const slides = presentation?.slides ?? []
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [msgs.length, isRunning])
 
+  // @ picker 외부 클릭 시 닫기
+  useEffect(() => {
+    if (!showSlidePicker) return
+    const handle = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setShowSlidePicker(false)
+      }
+    }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [showSlidePicker])
+
   const handleSend = async () => {
     const cmd = input.trim()
     if (!cmd || isRunning) return
     setInput('')
+    setShowSlidePicker(false)
     selectChatAgent(agent.definitionId ?? null)
     try { await sendMessage(cmd) } catch {}
+  }
+
+  const handleSlideSelect = (slide: { id: string; title: string; order: number }) => {
+    const mention = `@슬라이드${slide.order + 1}(${slide.title || '제목 없음'}) `
+    setInput((prev) => prev + mention)
+    setShowSlidePicker(false)
+    inputRef.current?.focus()
   }
 
   return (
@@ -149,25 +185,82 @@ function AgentChat({ agent }: { agent: Agent }) {
         <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
-      <div className="px-3 py-3 border-t border-[var(--border)] flex gap-2 bg-white">
-        <input
-          ref={inputRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
-          onFocus={() => selectChatAgent(agent.definitionId ?? null)}
-          placeholder={`${agent.name}에게 요청...`}
-          disabled={isRunning}
-          className="flex-1 h-9 px-3 text-[13px] border border-[var(--border)] rounded-[8px] outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-subtle)] bg-white disabled:opacity-50 transition-colors"
-        />
-        <button
-          onClick={handleSend}
-          disabled={!input.trim() || isRunning}
-          className="h-9 w-9 flex items-center justify-center rounded-[8px] bg-[var(--accent)] text-white disabled:opacity-40 hover:bg-[var(--accent-hover)] transition-colors shrink-0"
-        >
-          {isRunning ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
-        </button>
+      {/* Input area — SnapDeck style */}
+      <div className="px-3 py-2.5 border-t border-[var(--border)] bg-white relative">
+        {/* @ slide picker */}
+        {showSlidePicker && slides.length > 0 && (
+          <div
+            ref={pickerRef}
+            className="absolute bottom-full left-3 right-3 mb-1 bg-white border border-[var(--border)] rounded-[10px] shadow-lg py-1 z-30 max-h-48 overflow-y-auto"
+          >
+            <p className="px-3 py-1 text-[10px] font-semibold text-[var(--text-disabled)] uppercase tracking-wide">슬라이드 선택</p>
+            {slides.map((s, i) => (
+              <button
+                key={s.id}
+                onClick={() => handleSlideSelect({ id: s.id, title: s.title ?? '', order: i })}
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-left hover:bg-[var(--bg-muted)] transition-colors"
+              >
+                <span className="w-5 h-5 flex items-center justify-center rounded-[4px] bg-[var(--bg-muted)] text-[10px] font-bold text-[var(--text-muted)] shrink-0">
+                  {i + 1}
+                </span>
+                <span className="truncate text-[var(--text)]">{s.title || `슬라이드 ${i + 1}`}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="border border-[var(--border)] rounded-[12px] focus-within:border-[var(--accent)] focus-within:ring-2 focus-within:ring-[var(--accent-subtle)] transition-all bg-white overflow-hidden">
+          {/* Textarea */}
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
+            }}
+            onFocus={() => selectChatAgent(agent.definitionId ?? null)}
+            placeholder={`${agent.name}에게 요청...`}
+            disabled={isRunning}
+            rows={2}
+            className="w-full px-3 pt-2.5 pb-1 text-[13px] outline-none bg-transparent disabled:opacity-50 resize-none leading-relaxed"
+          />
+          {/* Bottom bar */}
+          <div className="flex items-center justify-between px-2 pb-2 pt-0.5 gap-1">
+            <div className="flex items-center gap-1 min-w-0">
+              {/* Agent selector — compact, dropdown opens upward */}
+              <AgentSelector
+                agents={agents}
+                selectedId={agent.definitionId ?? null}
+                onSelect={onSelectAgent}
+                compact
+                upward
+              />
+              {/* @ slide context button */}
+              {slides.length > 0 && (
+                <button
+                  onClick={() => setShowSlidePicker((v) => !v)}
+                  className={cn(
+                    'px-2 py-1 rounded-[6px] text-[12px] font-semibold transition-colors',
+                    showSlidePicker
+                      ? 'bg-[var(--accent-subtle)] text-[var(--accent)]'
+                      : 'text-[var(--text-disabled)] hover:text-[var(--text-muted)] hover:bg-[var(--bg-muted)]',
+                  )}
+                  title="슬라이드 컨텍스트 추가 (@)"
+                >
+                  @
+                </button>
+              )}
+            </div>
+            {/* Send */}
+            <button
+              onClick={handleSend}
+              disabled={!input.trim() || isRunning}
+              className="h-7 w-7 flex items-center justify-center rounded-[7px] bg-[var(--accent)] text-white disabled:opacity-40 hover:bg-[var(--accent-hover)] transition-colors shrink-0"
+            >
+              {isRunning ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -204,12 +297,14 @@ function AgentTab() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Agent selector bar */}
-      <div className="px-3 py-2.5 border-b border-[var(--border)] flex items-center gap-2">
-        <AgentSelector agents={agents} selectedId={activeId} onSelect={handleSelect} />
-      </div>
-      {/* Chat */}
-      {activeAgent && <AgentChat agent={activeAgent} />}
+      {/* AgentSelector is now inside AgentChat's input bottom bar */}
+      {activeAgent && (
+        <AgentChat
+          agent={activeAgent}
+          agents={agents}
+          onSelectAgent={handleSelect}
+        />
+      )}
     </div>
   )
 }
@@ -239,7 +334,7 @@ function PropertiesTab() {
       // presentation 재로드
       const { fetchProjectWithSlides } = await import('@/shared/lib/projectApi')
       const updated = await fetchProjectWithSlides(presentation.id)
-      useEditorStore.setState({ presentation: updated })
+      useSlideStore.setState({ presentation: updated })
     } catch (e) {
       console.error('Failed to update image URL', e)
     } finally {
@@ -350,11 +445,10 @@ export default function RightPanel() {
         {activeRightTab === 'agent' && pendingCount > 0 && (
           <button
             onClick={() => {
-              // 제안이 있는 첫 슬라이드로 이동
               const firstProposal = proposals.find((p) => p.status === 'pending')
               if (firstProposal && presentation) {
                 const slideIdx = presentation.slides.findIndex((s) => s.id === firstProposal.slide_id)
-                if (slideIdx >= 0) useEditorStore.getState().setCurrentSlide(slideIdx)
+                if (slideIdx >= 0) useSlideStore.getState().setCurrentSlide(slideIdx)
               }
               setShowProposal(true)
             }}
