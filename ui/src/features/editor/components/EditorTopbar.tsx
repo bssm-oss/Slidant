@@ -5,6 +5,7 @@ import { AgentStatusBadge, Button } from '@/shared/components/ui'
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/shared/components/ui/tooltip'
 import { Save, Share2, History, Undo2 } from 'lucide-react'
 import HistoryPanel from './HistoryPanel'
+import ThemePanel from '@/features/presentation/components/ThemePanel'
 
 function IconButton({ onClick, title, children }: {
   onClick: () => void
@@ -28,6 +29,7 @@ export default function EditorTopbar() {
   const toast = useToastStore((s) => s.push)
   const inputRef = useRef<HTMLInputElement>(null)
   const [showHistory, setShowHistory] = useState(false)
+  const [showTheme, setShowTheme] = useState(false)
 
   const handleTitleClick = () => {
     setTitleEditing(true)
@@ -80,6 +82,20 @@ export default function EditorTopbar() {
             <Undo2 size={15} />
           </IconButton>
           <div className="w-px h-4 bg-[var(--border)] mx-1.5" />
+          <div className="relative">
+            <button
+              onClick={() => setShowTheme((v) => !v)}
+              className="h-8 px-3 text-[12px] font-medium rounded-[8px] border border-[var(--border)] hover:bg-[var(--bg-muted)] transition-colors flex items-center gap-1.5"
+              title="디자인 테마"
+            >
+              🎨 테마
+            </button>
+            {showTheme && (
+              <div className="absolute top-full right-0 mt-1 z-50 w-64 bg-white rounded-[12px] border border-[var(--border)] shadow-xl">
+                <ThemePanel onClose={() => setShowTheme(false)} />
+              </div>
+            )}
+          </div>
           <Button variant="ghost" size="sm" onClick={() => toast('공유 링크가 복사되었습니다', 'success')}>
             <Share2 size={14} />
             공유

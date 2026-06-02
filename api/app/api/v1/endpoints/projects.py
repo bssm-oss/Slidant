@@ -1,4 +1,5 @@
 from datetime import datetime
+from datetime import datetime as dt
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
@@ -60,6 +61,7 @@ async def list_projects(current_user: CurrentUser, uow: UoW):
             owner_id=p.owner_id,
             title=p.title,
             slide_count=count_map.get(p.id, 0),
+            theme=p.theme,
             created_at=p.created_at,
             updated_at=p.updated_at,
         )
@@ -159,3 +161,29 @@ async def restore_from_history_endpoint(project_id: UUID, slide_id: UUID, histor
     await project_service.get_slide(uow.projects, uow.slides, project_id, current_user.id, slide_id)
     from app.services.slide_history_service import restore_from_history
     await restore_from_history(uow, slide_id, history_id)
+
+
+class ProjectThemeUpdate(BaseModel):
+    theme: dict
+
+
+@router.patch("/{project_id}/theme", response_model=ProjectResponse)
+async def update_project_theme(
+    project_id: UUID, body: ProjectThemeUpdate, current_user: CurrentUser, uow: UoW
+):
+    project = await uow.projects.get_owned(project_id, current_user.id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    project.theme = body.theme
+    project.updated_at = dt.utcnow()
+    await uow.session.flush()
+    await uow.session.refresh(project)
+    count_result = await uow.session.execute(
+        select(func.count(Slide.id)).where(Slide.project_id == project_id)
+    )
+    slide_count = count_result.scalar() or 0
+    return ProjectResponse(
+        id=project.id, owner_id=project.owner_id, title=project.title,
+        slide_count=slide_count, theme=project.theme,
+        created_at=project.created_at, updated_at=project.updated_at,
+    )

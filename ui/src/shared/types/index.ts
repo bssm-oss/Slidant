@@ -18,11 +18,21 @@ export interface Slide {
   thumbnail?: string
 }
 
+export interface PresentationTheme {
+  palette: string
+  bg: string
+  accent: string
+  text: string
+  text2: string
+  font: string
+}
+
 export interface Presentation {
   id: string
   title: string
   slides: Slide[]
   slideCount?: number
+  theme?: PresentationTheme | null
   createdAt: string
   updatedAt: string
   ownerId: string

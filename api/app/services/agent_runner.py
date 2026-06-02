@@ -652,6 +652,7 @@ async def run_agent(
     provider: str = "anthropic",
     system_prompt: str | None = None,
     all_slides: list[dict] | None = None,
+    theme: dict | None = None,
     on_token: "Callable[[str], None] | None" = None,
     on_event: "Callable[[str, str], None] | None" = None,
     conversation_history: str = "",
@@ -664,6 +665,19 @@ async def run_agent(
     slide_context = build_slide_context(components)
     if all_slides:
         slide_context += "\n\n" + build_all_slides_context(all_slides)
+
+    if theme:
+        slide_context += f"""
+
+<presentation_theme>
+MANDATORY: Always use these exact colors and font for this presentation:
+  background: {theme.get('bg', '#0A0F1E')}
+  accent: {theme.get('accent', '#3B82F6')}
+  text_primary: {theme.get('text', '#F9FAFB')}
+  text_secondary: {theme.get('text2', '#9CA3AF')}
+  font: {theme.get('font', 'Pretendard')}
+Do NOT deviate from these values. All new components must use these colors.
+</presentation_theme>"""
 
     logger.info("agent_run  role=%s  components=%d  slides=%d  command=%r",
                 role, len(components), len(all_slides or []), command[:80])

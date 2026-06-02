@@ -17,6 +17,7 @@ function toPresentation(p: ProjectResponse, slides: Slide[] = []): Presentation 
     title: p.title,
     slides,
     slideCount: (p as any).slide_count ?? slides.length,
+    theme: (p as any).theme ?? null,
     createdAt: p.created_at,
     updatedAt: p.updated_at,
     ownerId: p.owner_id,

@@ -152,6 +152,8 @@ async def _run_agent_background_inner(
         slide = await uow.slides.get(body.slide_id)
         components = sc.list_components(slide) if slide else []
         all_slides = await uow.slides.list_by_project(body.project_id)
+        project = await uow.projects.get(body.project_id)
+        project_theme = project.theme if project else None
 
         # 에이전트별 최근 대화 10턴 조회 (세션 유지)
         recent_msgs = await uow.chat_messages.list_by_project(
@@ -212,6 +214,7 @@ async def _run_agent_background_inner(
                     "title": s.title,
                     "components": list(s.content or []),
                 } for s in all_slides],
+                theme=project_theme,
                 on_token=on_token,
                 on_event=on_event,
                 conversation_history=conversation_history,

@@ -17,6 +17,7 @@ class ProjectResponse(BaseModel):
     owner_id: UUID
     title: str
     slide_count: int = 0
+    theme: dict | None = None
     created_at: datetime
     updated_at: datetime
 
