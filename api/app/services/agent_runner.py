@@ -343,10 +343,6 @@ def build_agent_graph(
 ) -> StateGraph:
     from typing import Callable
     gen_prompt = system_prompt or SYSTEM_PROMPTS.get(role, SYSTEM_PROMPTS["content"])
-    # Anthropic provider: structured output via tool_use (with_structured_output)
-    # OpenRouter/openai provider: 기존 astream + _extract_json fallback 유지
-    _is_anthropic = isinstance(llm, ChatAnthropic)
-    llm_structured = llm.with_structured_output(SlidePatches, include_raw=True) if _is_anthropic else None
 
     # ── Node 1: planner — 자연어 계획, SSE push ──────────────────
     async def planner_node(state: AgentState) -> AgentState:
@@ -390,61 +386,24 @@ def build_agent_graph(
             f"Slide context:\n{state['slide_context']}"
         )
 
+        if isinstance(gen_prompt, str):
+            system_content = gen_prompt
+        else:
+            system_content = "\n".join(
+                block["text"] for block in gen_prompt
+                if isinstance(block, dict) and block.get("type") == "text"
+            )
+
+        messages = [
+            SystemMessage(content=system_content),
+            HumanMessage(content=human_text),
+        ]
+
+        raw_content = ""
         patches: list = []
         summary: str = ""
 
-        if llm_structured is not None:
-            # Anthropic: with_structured_output (tool_use) → 보장된 JSON Patch
-            messages = [
-                SystemMessage(content=gen_prompt),
-                HumanMessage(content=human_text),
-            ]
-            try:
-                result_raw = await llm_structured.ainvoke(messages)
-                parsed_model: SlidePatches | None = result_raw.get("parsed") if isinstance(result_raw, dict) else None
-                if parsed_model is None:
-                    # include_raw=True → {"raw": ..., "parsed": ..., "parsing_error": ...}
-                    parsing_error = result_raw.get("parsing_error") if isinstance(result_raw, dict) else None
-                    logger.warning("  [generator] structured output parse error: %s", parsing_error)
-                else:
-                    patches = _flatten_ops([op.model_dump(exclude_none=True) for op in parsed_model.ops])
-                    summary = parsed_model.summary
-            except Exception as exc:
-                logger.warning("  [generator] structured output failed (%s), falling back to astream", exc)
-                # fallback: raw stream + regex parse
-                messages_fallback = [
-                    SystemMessage(content=gen_prompt),
-                    HumanMessage(content=human_text),
-                ]
-                raw_content = ""
-                async for chunk in llm.astream(messages_fallback):
-                    raw = chunk.content if hasattr(chunk, "content") else ""
-                    if isinstance(raw, list):
-                        token = "".join(
-                            block.get("text", "") for block in raw
-                            if isinstance(block, dict) and block.get("type") == "text"
-                        )
-                    else:
-                        token = str(raw) if raw else ""
-                    if token:
-                        raw_content += token
-                parsed = _extract_json(raw_content)
-                if parsed is None:
-                    logger.warning("  [generator] parse fail  raw=%r", raw_content[:300])
-                elif isinstance(parsed, dict) and "ops" in parsed:
-                    patches = _flatten_ops(parsed["ops"] if isinstance(parsed["ops"], list) else [])
-                    summary = parsed.get("summary", "")
-                elif isinstance(parsed, list):
-                    patches = _flatten_ops(parsed)
-        else:
-            # OpenRouter / non-Anthropic: 기존 astream + _extract_json 방식
-            messages = [
-                SystemMessage(content=gen_prompt if isinstance(gen_prompt, str) else
-                              "\n".join(block["text"] for block in gen_prompt
-                                        if isinstance(block, dict) and block.get("type") == "text")),
-                HumanMessage(content=human_text),
-            ]
-            raw_content = ""
+        try:
             async for chunk in llm.astream(messages):
                 raw = chunk.content if hasattr(chunk, "content") else ""
                 if isinstance(raw, list):
@@ -456,6 +415,9 @@ def build_agent_graph(
                     token = str(raw) if raw else ""
                 if token:
                     raw_content += token
+                    if on_token:
+                        on_token(token)
+
             parsed = _extract_json(raw_content)
             if parsed is None:
                 logger.warning("  [generator] parse fail  raw=%r", raw_content[:300])
@@ -464,6 +426,8 @@ def build_agent_graph(
                 summary = parsed.get("summary", "")
             elif isinstance(parsed, list):
                 patches = _flatten_ops(parsed)
+        except Exception as exc:
+            logger.warning("  [generator] astream failed: %s", exc)
 
         if on_event: on_event("node_done", f"✅ {len(patches)}개 작업 생성")
         return {**state, "result_patches": patches, "result_summary": summary, "messages": []}
