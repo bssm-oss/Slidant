@@ -225,6 +225,8 @@ def build_slide_context(components: list[dict]) -> str:
 
 
 def _make_llm(api_key_plaintext: str, provider: str = "anthropic", json_mode: bool = False):
+    from app.core.config import settings
+
     if provider == "openrouter":
         extra: dict = {}
         if json_mode:
@@ -232,7 +234,7 @@ def _make_llm(api_key_plaintext: str, provider: str = "anthropic", json_mode: bo
         return ChatOpenAI(
             base_url=OPENROUTER_BASE_URL,
             api_key=api_key_plaintext,
-            model=OPENROUTER_DEFAULT_MODEL,
+            model=settings.OPENROUTER_MODEL,
             max_tokens=8192,          # 전체 토큰 버짓 증가
             model_kwargs={
                 "max_completion_tokens": 8192,
@@ -242,9 +244,9 @@ def _make_llm(api_key_plaintext: str, provider: str = "anthropic", json_mode: bo
         )
     # Anthropic: prompt caching 헤더 활성화 (betas 파라미터)
     return ChatAnthropic(
-        model="claude-sonnet-4-6",
+        model=settings.ANTHROPIC_MODEL,
         api_key=api_key_plaintext,
-        max_tokens=4096,
+        max_tokens=settings.AGENT_MAX_TOKENS,
         model_kwargs={
             "extra_headers": {"anthropic-beta": "prompt-caching-2024-07-31"},
         },
@@ -398,9 +400,11 @@ def build_agent_graph(
 
     # ── Node 2: generator ─────────────────────────────────────────
     async def generator_node(state: AgentState) -> AgentState:
+        from app.core.config import settings
+
         retry = state.get("retry_count", 0)
         logger.info("  [generator] JSON ops 생성 (retry=%d)", retry)
-        msg = "⚙️ 슬라이드 생성 중..." if retry == 0 else f"⚙️ 재시도 중... ({retry}/{MAX_RETRIES})"
+        msg = "⚙️ 슬라이드 생성 중..." if retry == 0 else f"⚙️ 재시도 중... ({retry}/{settings.AGENT_MAX_RETRIES})"
         if on_event: on_event("node_start", msg)
 
         human_text = (
@@ -539,9 +543,11 @@ def build_agent_graph(
 
     # ── Conditional: retry or done ────────────────────────────────
     def should_retry(state: AgentState) -> str:
+        from app.core.config import settings
+
         retry = state.get("retry_count", 0)
-        if not state.get("result_patches") and retry < MAX_RETRIES:
-            logger.info("  [validator] ops 없음 → generator 재시도 (%d/%d)", retry + 1, MAX_RETRIES)
+        if not state.get("result_patches") and retry < settings.AGENT_MAX_RETRIES:
+            logger.info("  [validator] ops 없음 → generator 재시도 (%d/%d)", retry + 1, settings.AGENT_MAX_RETRIES)
             return "retry"
         return "done"
 
