@@ -13,6 +13,7 @@ export interface SlideComponent {
 export interface Slide {
   id: string
   order: number
+  title?: string
   components: SlideComponent[]
   thumbnail?: string
 }
