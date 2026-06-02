@@ -3,7 +3,7 @@ import { useEditorStore } from '../store/editorStore'
 import { cn } from '@/shared/lib/utils'
 import { RotateCcw, Clock, ChevronRight } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/components/ui/dialog'
-import { fetchSlideVersions, restoreVersion, type SlideVersion } from '@/shared/lib/projectApi'
+import { fetchSlideHistory, restoreFromHistory, type SlideHistoryEntry } from '@/shared/lib/projectApi'
 
 function formatDate(iso: string) {
   const d = new Date(iso)
@@ -32,7 +32,7 @@ export default function HistoryPanel({ open, onClose }: Props) {
   const projectId = presentation?.id
   const currentSlide = presentation?.slides[currentSlideIndex]
 
-  const [versions, setVersions] = useState<SlideVersion[]>([])
+  const [versions, setVersions] = useState<SlideHistoryEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [restoring, setRestoring] = useState<string | null>(null)
 
@@ -40,7 +40,7 @@ export default function HistoryPanel({ open, onClose }: Props) {
     if (!projectId || !currentSlide) return
     setLoading(true)
     try {
-      const data = await fetchSlideVersions(projectId, currentSlide.id)
+      const data = await fetchSlideHistory(projectId, currentSlide.id)
       setVersions(data)
     } finally {
       setLoading(false)
@@ -55,7 +55,7 @@ export default function HistoryPanel({ open, onClose }: Props) {
     if (!projectId || !currentSlide) return
     setRestoring(versionId)
     try {
-      await restoreVersion(projectId, currentSlide.id, versionId)
+      await restoreFromHistory(projectId, currentSlide.id, versionId)
       await loadPresentation(projectId)
       onClose()
     } finally {
@@ -92,7 +92,7 @@ export default function HistoryPanel({ open, onClose }: Props) {
           ) : (
             <div className="flex flex-col divide-y divide-[var(--border)]">
               {versions.map((v) => {
-                const { agent, command } = parseAgentName(v.message)
+                const { agent, command } = parseAgentName(v.reason)
                 const isRestoring = restoring === v.id
                 return (
                   <div

@@ -31,7 +31,7 @@ function extractCompleteOps(text: string): any[] {
 }
 
 import { create } from 'zustand'
-import type { Presentation, Slide, Agent, AgentLog, AgentStatus, ChatMessage } from '@/shared/types'
+import type { Presentation, Slide, Agent, AgentLog, AgentStatus, ChatMessage, AgentProposal } from '@/shared/types'
 import { api } from '@/shared/lib/apiClient'
 import { runAgent } from '@/shared/lib/agentRunApi'
 import { sseClient } from '@/shared/lib/sseClient'
@@ -49,6 +49,7 @@ interface EditorState {
   overallStatus: AgentStatus          // 하위 호환용 (any running → 'running')
   activeRightTab: 'agent' | 'properties'
   isTitleEditing: boolean
+  proposals: AgentProposal[]
 
   loadPresentation: (id: string) => Promise<void>
   loadAgentLogs: (projectId: string) => Promise<void>
@@ -66,8 +67,11 @@ interface EditorState {
   saveTitle: (title: string) => Promise<void>
   updateTitle: (title: string) => void
   setTitleEditing: (v: boolean) => void
+  deleteComponent: (componentId?: string) => Promise<void>
   sendMessage: (command: string) => Promise<void>
   runAgent: (command: string, agentRole?: string, agentDefinitionId?: string) => Promise<void>
+  approveProposal: (id: string) => Promise<void>
+  rejectProposal: (id: string) => Promise<void>
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -83,6 +87,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   overallStatus: 'idle',
   activeRightTab: 'agent',
   isTitleEditing: false,
+  proposals: [],
 
   loadAgents: async (projectId) => {
     try {
@@ -172,11 +177,63 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         })
       }
 
+      if (type === 'agent_node_event') {
+        const eventType = msg.event_type as string
+        const message = msg.message as string
+        set((s) => {
+          const streamingAgent = s.agents.find((a) => a.status === 'running')
+          if (!streamingAgent) return s
+          const nodeId = `node-event-${streamingAgent.definitionId}`
+          const isStart = eventType === 'node_start'
+          // node_start → 새 상태 메시지, node_done → 기존 상태 메시지 업데이트
+          const existing = s.chatMessages.find((m) => m.id === nodeId)
+          if (existing) {
+            return {
+              chatMessages: s.chatMessages.map((m) =>
+                m.id === nodeId
+                  ? { ...m, content: message, type: isStart ? 'info' as const : 'success' as const }
+                  : m
+              ),
+            }
+          }
+          return {
+            chatMessages: [
+              ...s.chatMessages,
+              {
+                id: nodeId,
+                role: 'agent' as const,
+                content: message,
+                agentName: streamingAgent.name,
+                agentDefinitionId: streamingAgent.definitionId,
+                timestamp: new Date().toISOString(),
+                type: 'info' as const,
+              },
+            ],
+          }
+        })
+      }
+
       if (type === 'agent_token') {
         const accumulated = (msg.accumulated as string) ?? ''
 
         // 스트림 중 완성된 op 추출 → 슬라이드 preview 적용
         const streamOps = extractCompleteOps(accumulated)
+
+        // 스트리밍 텍스트 정제: JSON이면 action_plan 값만 추출
+        const displayText = (() => {
+          const t = accumulated.trim()
+          // 완성된 JSON이면 action_plan 추출
+          if (t.startsWith('{') && t.endsWith('}')) {
+            try {
+              const p = JSON.parse(t)
+              return p.action_plan ?? p.plan ?? p.summary ?? t
+            } catch {}
+          }
+          // 불완전한 JSON이면 action_plan 값 부분만 추출
+          const m = t.match(/"action_plan"\s*:\s*"([\s\S]*?)(?=",|\s*}|$)/)
+          if (m) return m[1].replace(/\\n/g, '\n')
+          return t
+        })()
 
         set((s) => {
           const streamingAgent = s.agents.find((a) => a.status === 'running')
@@ -186,13 +243,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           const streamId = `streaming-${streamingAgent.definitionId}`
           const existing = s.chatMessages.find((m) => m.id === streamId)
           const newMessages = existing
-            ? s.chatMessages.map((m) => m.id === streamId ? { ...m, content: accumulated } : m)
+            ? s.chatMessages.map((m) => m.id === streamId ? { ...m, content: displayText } : m)
             : [
                 ...s.chatMessages,
                 {
                   id: streamId,
                   role: 'agent' as const,
-                  content: accumulated,
+                  content: displayText,
                   agentName: streamingAgent.name,
                   agentDefinitionId: streamingAgent.definitionId,
                   timestamp: new Date().toISOString(),
@@ -266,6 +323,59 @@ export const useEditorStore = create<EditorState>((set, get) => ({
             } : null,
           }))
         }
+      }
+
+      if (type === 'agent_proposal') {
+        const doneAgentName = (msg.agent_name as string) ?? ''
+        const doneAgent = get().agents.find((a) => a.name === doneAgentName || a.status === 'running')
+
+        const newProposal: AgentProposal = {
+          id: msg.proposal_id as string,
+          slide_id: msg.slide_id as string,
+          agent_run_id: '',
+          agent_name: doneAgentName,
+          command: '',
+          patches: (msg.patches as any[]) ?? [],
+          summary: (msg.summary as string) ?? '',
+          status: 'pending',
+          created_at: new Date().toISOString(),
+        }
+
+        set((s) => {
+          const newRunningIds = new Set(s.runningAgentIds)
+          if (doneAgent?.definitionId) newRunningIds.delete(doneAgent.definitionId)
+
+          // streaming 임시 메시지 제거
+          const cleanedMessages = s.chatMessages.filter((m) =>
+            m.id !== `streaming-${doneAgent?.definitionId}` &&
+            !m.id.startsWith(`optimistic-agent-${doneAgent?.definitionId}`)
+          )
+
+          return {
+            proposals: [...s.proposals, newProposal],
+            runningAgentIds: newRunningIds,
+            overallStatus: newRunningIds.size > 0 ? 'running' : 'idle',
+            agents: s.agents.map((a) =>
+              a.name === doneAgentName
+                ? { ...a, status: 'idle', currentTask: undefined, taskProgress: 100 }
+                : a,
+            ),
+            chatMessages: [
+              ...cleanedMessages,
+              {
+                id: `proposal-${newProposal.id}`,
+                role: 'agent' as const,
+                content: newProposal.summary || '변경 제안이 준비되었습니다',
+                agentName: doneAgentName || 'Agent',
+                agentDefinitionId: doneAgent?.definitionId,
+                timestamp: new Date().toISOString(),
+                type: 'info' as const,
+              },
+            ],
+            activeRightTab: 'agent',
+          }
+        })
+        // proposal은 loadPresentation 안 함 (적용 전이므로)
       }
 
       if (type === 'agent_done') {
@@ -418,6 +528,35 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
   },
 
+  deleteComponent: async (componentId) => {
+    const { presentation, currentSlideIndex, selectedComponentId } = get()
+    const targetId = componentId ?? selectedComponentId
+    if (!targetId || !presentation) return
+    const slide = presentation.slides[currentSlideIndex]
+    if (!slide) return
+
+    // optimistic
+    set((s) => ({
+      selectedComponentId: null,
+      presentation: s.presentation ? {
+        ...s.presentation,
+        slides: s.presentation.slides.map((sl, i) =>
+          i === currentSlideIndex
+            ? { ...sl, components: sl.components.filter((c) => c.id !== targetId) }
+            : sl
+        ),
+      } : null,
+    }))
+
+    try {
+      await api.delete(`/projects/${presentation.id}/slides/${slide.id}/components/${targetId}`)
+    } catch (e) {
+      console.error('deleteComponent failed', e)
+      // revert on error
+      get().loadPresentation(presentation.id)
+    }
+  },
+
   addSlide: async () => {
     const ppt = get().presentation
     if (!ppt) return
@@ -551,6 +690,30 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }))
 
     await get().runAgent(command, selectedAgent?.role ?? 'content', selectedAgentDefinitionId ?? undefined)
+  },
+
+  approveProposal: async (id: string) => {
+    const ppt = get().presentation
+    const currentSlide = ppt?.slides[get().currentSlideIndex]
+    if (!ppt || !currentSlide) return
+    try {
+      const { approveProposal: apiApprove } = await import('@/shared/lib/proposalApi')
+      await apiApprove(id)
+      set((s) => ({ proposals: s.proposals.filter((p) => p.id !== id) }))
+      await get().loadPresentation(ppt.id)
+    } catch (e) {
+      console.error('approveProposal failed', e)
+    }
+  },
+
+  rejectProposal: async (id: string) => {
+    try {
+      const { rejectProposal: apiReject } = await import('@/shared/lib/proposalApi')
+      await apiReject(id)
+      set((s) => ({ proposals: s.proposals.filter((p) => p.id !== id) }))
+    } catch (e) {
+      console.error('rejectProposal failed', e)
+    }
   },
 
   runAgent: async (command, agentRole = 'content', agentDefinitionId?) => {

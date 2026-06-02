@@ -2,10 +2,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import AsyncSessionLocal
 from app.repositories.agent import AgentDefinitionRepository, AgentRunRepository, LlmLogRepository
+from app.repositories.agent_proposal import AgentProposalRepository
 from app.repositories.api_key import ApiKeyRepository, ApiKeyUsageLogRepository
 from app.repositories.chat import ChatMessageRepository
 from app.repositories.project import ProjectRepository
 from app.repositories.slide import SlideRepository
+from app.repositories.slide_history import SlideHistoryRepository
 from app.repositories.user import UserRepository
 from app.repositories.version import VersionRepository
 
@@ -17,6 +19,8 @@ class UnitOfWork:
     users: UserRepository
     projects: ProjectRepository
     slides: SlideRepository
+    slide_history: SlideHistoryRepository
+    proposals: AgentProposalRepository
     api_keys: ApiKeyRepository
     api_key_usage_logs: ApiKeyUsageLogRepository
     agent_definitions: AgentDefinitionRepository
@@ -30,6 +34,8 @@ class UnitOfWork:
         self.users = UserRepository(self.session)
         self.projects = ProjectRepository(self.session)
         self.slides = SlideRepository(self.session)
+        self.slide_history = SlideHistoryRepository(self.session)
+        self.proposals = AgentProposalRepository(self.session)
         self.api_keys = ApiKeyRepository(self.session)
         self.api_key_usage_logs = ApiKeyUsageLogRepository(self.session)
         self.agent_definitions = AgentDefinitionRepository(self.session)

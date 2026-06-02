@@ -134,6 +134,19 @@ async def _run_agent_background_inner(
         components = sc.list_components(slide) if slide else []
         all_slides = await uow.slides.list_by_project(body.project_id)
 
+        # 에이전트별 최근 대화 10턴 조회 (세션 유지)
+        recent_msgs = await uow.chat_messages.list_by_project(
+            body.project_id, agent_definition_id=agent_def_id, limit=20
+        )
+        conversation_history = ""
+        if recent_msgs:
+            lines = []
+            for m in recent_msgs[-10:]:  # 마지막 10개
+                role_label = "User" if m.role == "user" else "Agent"
+                lines.append(f"{role_label}: {m.content}")
+            conversation_history = "\n".join(lines)
+            logger.info("   history: %d turns", len(lines))
+
         logger.info("   context: components=%d  slides=%d", len(components), len(all_slides))
         logger.info("   → LLM 호출 시작 (%s)", provider)
         t0 = _time.perf_counter()
@@ -142,20 +155,30 @@ async def _run_agent_background_inner(
             # 스트리밍 토큰 → SSE agent_token 이벤트
             token_buf: list[str] = []
 
-            def on_token(token: str) -> None:
-                token_buf.append(token)
-                # 비동기 broadcast를 동기 콜백에서 실행
+            def _fire(payload: dict) -> None:
                 import asyncio as _asyncio
                 try:
                     loop = _asyncio.get_running_loop()
-                    loop.create_task(_broadcast(str(body.project_id), {
-                        "type": "agent_token",
-                        "agent_run_id": str(agent_run_id),
-                        "token": token,
-                        "accumulated": "".join(token_buf),
-                    }))
+                    loop.create_task(_broadcast(str(body.project_id), payload))
                 except RuntimeError:
                     pass
+
+            def on_token(token: str) -> None:
+                token_buf.append(token)
+                _fire({
+                    "type": "agent_token",
+                    "agent_run_id": str(agent_run_id),
+                    "token": token,
+                    "accumulated": "".join(token_buf),
+                })
+
+            def on_event(event_type: str, message: str) -> None:
+                _fire({
+                    "type": "agent_node_event",
+                    "agent_run_id": str(agent_run_id),
+                    "event_type": event_type,   # node_start | node_done
+                    "message": message,
+                })
 
             patches, _, llm_summary = await run_agent(
                 role=agent_def_role,
@@ -166,6 +189,8 @@ async def _run_agent_background_inner(
                 system_prompt=system_prompt,
                 all_slides=[{"id": str(s.id), "order": s.order, "title": s.title} for s in all_slides],
                 on_token=on_token,
+                on_event=on_event,
+                conversation_history=conversation_history,
             )
             elapsed = (_time.perf_counter() - t0) * 1000
 
@@ -182,36 +207,42 @@ async def _run_agent_background_inner(
             comp_ops  = [op for op in patches if not op.get("path", "").startswith("/slides/")]
             logger.info("   comp_ops=%d  slide_ops=%d", len(comp_ops), len(slide_ops))
 
-            # 패치 적용 전 슬라이드 스냅샷 저장
+            # comp_ops → AgentProposal로 저장 (즉시 적용 안 함, 사용자 승인 대기)
+            proposal_id = None
             if comp_ops:
-                from app.models.version import Version
-                _slide_before = await uow.slides.get(body.slide_id)
-                if _slide_before:
-                    uow.versions.add(Version(
-                        slide_id=body.slide_id,
-                        message=f"{agent_def_name}: {body.command[:120]}",
-                        snapshot={"content": list(_slide_before.content or [])},
-                    ))
-
-            # 컴포넌트 패치 적용
-            await agent_service.apply_patches(uow.slides, body.slide_id, comp_ops)
+                from app.models.agent_proposal import AgentProposal
+                proposal = AgentProposal(
+                    slide_id=body.slide_id,
+                    agent_run_id=agent_run.id,
+                    agent_name=agent_def_name,
+                    command=body.command[:500],
+                    patches=comp_ops,
+                    summary=llm_summary or '',
+                    status='pending',
+                )
+                uow.proposals.add(proposal)
+                proposal_id = str(proposal.id)
 
             # 새 슬라이드 생성 op 처리
             new_slides = []
             if slide_ops:
                 from app.services.project_service import create_slide_with_components
-                for op in slide_ops:
+                for op in slide_ops[:5]:  # 한 번에 최대 5장
                     if op.get("op") == "add":
                         value = op.get("value", {})
+                        components = value.get("components") or []
+                        if not components:
+                            logger.warning("   슬라이드 op에 components 없음 — 건너뜀: title=%r", value.get("title"))
+                            continue
                         new_slide = await create_slide_with_components(
                             uow.slides,
                             project_id=body.project_id,
                             title=value.get("title"),
-                            components=value.get("components", []),
+                            components=components,
                         )
                         new_slides.append(new_slide)
                         logger.info("   슬라이드 추가: id=%s  title=%r  components=%d",
-                                    new_slide.id, value.get("title"), len(value.get("components", [])))
+                                    new_slide.id, value.get("title"), len(components))
 
             await agent_service.finalize_agent_run(
                 uow.agent_runs, uow.llm_logs, agent_run, body.command, patches
@@ -242,19 +273,22 @@ async def _run_agent_background_inner(
             uow.chat_messages.add(agent_msg)
 
             broadcast_payload: dict = {
-                "type": "agent_done",
+                "type": "agent_proposal" if proposal_id else "agent_done",
                 "agent_run_id": str(agent_run.id),
                 "agent_name": agent_def_name,
-                "patches": comp_ops,
-                "affected_component_ids": affected_ids,
                 "summary": agent_content,
+                "slide_id": str(body.slide_id),
             }
+            if proposal_id:
+                broadcast_payload["proposal_id"] = proposal_id
+                broadcast_payload["patches"] = comp_ops  # diff 미리보기용
             if new_slides:
                 broadcast_payload["new_slides"] = [
                     {"id": str(s.id), "order": s.order, "title": s.title, "components": s.content}
                     for s in new_slides
                 ]
 
+            await uow.commit()  # broadcast 전에 먼저 커밋 — 클라이언트가 즉시 조회할 수 있도록
             logger.info("━━ DONE  agent_run=%s  affected=%s", agent_run_id, affected_ids)
             await _broadcast(str(body.project_id), broadcast_payload)
 
@@ -273,6 +307,7 @@ async def _run_agent_background_inner(
                 agent_name=agent_def_name,
             )
             uow.chat_messages.add(error_msg)
+            await uow.commit()
             await _broadcast(str(body.project_id), {
                 "type": "agent_error",
                 "agent_run_id": str(agent_run.id),

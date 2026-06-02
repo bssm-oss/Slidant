@@ -30,13 +30,15 @@ export default function EditPage() {
       const target = e.target as HTMLElement
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return
 
-      const { selectedComponentId, presentation, currentSlideIndex, deleteSlide, setCurrentSlide } =
+      const { selectedComponentId, presentation, currentSlideIndex, deleteSlide, deleteComponent, setCurrentSlide } =
         useEditorStore.getState()
       const slideCount = presentation?.slides.length ?? 0
 
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (!selectedComponentId) {
-          e.preventDefault()
+        e.preventDefault()
+        if (selectedComponentId) {
+          deleteComponent()
+        } else {
           deleteSlide()
         }
       }

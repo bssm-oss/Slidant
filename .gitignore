@@ -26,3 +26,5 @@ build/
 
 # Logs
 *.log
+
+pptagent/**

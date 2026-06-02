@@ -2,11 +2,41 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useEditorStore } from '../store/editorStore'
 import { cn } from '@/shared/lib/utils'
-import { Maximize2, Send, Loader2, Settings, ChevronDown } from 'lucide-react'
+import { api } from '@/shared/lib/apiClient'
+import { Maximize2, Send, Loader2, Settings, ChevronDown, Zap } from 'lucide-react'
 import type { Agent, ChatMessage } from '@/shared/types'
 import AgentManagerPanel from './AgentManagerPanel'
+import ProposalPanel from './ProposalPanel'
 
 // ── Chat bubble ──────────────────────────────────────────────────────────────
+function formatContent(content: string, isUser: boolean): React.ReactNode {
+  if (isUser) return <span>{content}</span>
+
+  const trimmed = content.trim()
+
+  // JSON 감지 → action_plan 추출
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed)
+      const plan: string = parsed.action_plan ?? parsed.plan ?? parsed.summary ?? ''
+      if (plan) {
+        return plan.split(/\n+/).filter(Boolean).map((line, i) => (
+          <span key={i} className="block leading-relaxed">{line}</span>
+        ))
+      }
+    } catch {}
+  }
+
+  // 이모지 줄 포함 시 줄 단위로 나눠서 렌더링
+  if (/\n/.test(trimmed)) {
+    return trimmed.split('\n').filter(Boolean).map((line, i) => (
+      <span key={i} className="block leading-relaxed">{line}</span>
+    ))
+  }
+
+  return <span>{trimmed}</span>
+}
+
 function ChatBubble({ msg }: { msg: ChatMessage }) {
   const isUser = msg.role === 'user'
   return (
@@ -17,9 +47,11 @@ function ChatBubble({ msg }: { msg: ChatMessage }) {
           ? 'bg-[var(--accent)] text-white rounded-br-[4px]'
           : msg.type === 'error'
             ? 'bg-red-50 text-red-600 border border-red-100 rounded-bl-[4px]'
-            : 'bg-[var(--bg-muted)] text-[var(--text)] rounded-bl-[4px]',
+            : msg.type === 'info'
+              ? 'bg-[var(--accent-subtle)] text-[var(--accent)] border border-purple-100 rounded-bl-[4px]'
+              : 'bg-[var(--bg-muted)] text-[var(--text)] rounded-bl-[4px]',
       )}>
-        {msg.content}
+        {formatContent(msg.content, isUser)}
       </div>
     </div>
   )
@@ -184,37 +216,99 @@ function AgentTab() {
 
 // ── Properties tab ────────────────────────────────────────────────────────────
 function PropertiesTab() {
-  const { presentation, currentSlideIndex, selectedComponentId } = useEditorStore()
+  const { presentation, currentSlideIndex, selectedComponentId, deleteComponent } = useEditorStore()
   const comp = presentation?.slides[currentSlideIndex]?.components.find((c) => c.id === selectedComponentId)
+  const [imageUrl, setImageUrl] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  // selectedComponentId 바뀌면 현재 src로 초기화
+  useEffect(() => {
+    const props = comp?.props as Record<string, unknown> | undefined
+    setImageUrl((props?.src as string) ?? (props?.url as string) ?? '')
+  }, [selectedComponentId])
+
+  const handleApplyUrl = async () => {
+    if (!presentation || !comp) return
+    const slide = presentation.slides[currentSlideIndex]
+    setSaving(true)
+    try {
+      await api.patch(
+        `/projects/${presentation.id}/slides/${slide.id}/components/${comp.id}`,
+        { properties: { ...(comp.props as object), src: imageUrl, placeholder: false } }
+      )
+      // presentation 재로드
+      const { fetchProjectWithSlides } = await import('@/shared/lib/projectApi')
+      const updated = await fetchProjectWithSlides(presentation.id)
+      useEditorStore.setState({ presentation: updated })
+    } catch (e) {
+      console.error('Failed to update image URL', e)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   if (!comp) return (
-    <div className="flex flex-col items-center justify-center h-40 gap-2">
-      <p className="text-[12px] text-[var(--text-disabled)]">컴포넌트를 선택하세요</p>
+    <div className='flex flex-col items-center justify-center h-40 gap-2'>
+      <p className='text-[12px] text-[var(--text-disabled)]'>컴포넌트를 선택하세요</p>
     </div>
   )
 
   return (
-    <div className="p-4 flex flex-col gap-4">
+    <div className='p-4 flex flex-col gap-4'>
       {[
         { label: '타입', value: comp.type },
-        { label: '위치', value: `x: ${comp.position.x},  y: ${comp.position.y}` },
-        { label: '크기', value: `w: ${comp.size.w},  h: ${comp.size.h}` },
+        { label: '위치', value: `x: ${Math.round(comp.position.x)},  y: ${Math.round(comp.position.y)}` },
+        { label: '크기', value: `w: ${Math.round(comp.size.w)},  h: ${Math.round(comp.size.h)}` },
       ].map(({ label, value }) => (
-        <div key={label} className="flex flex-col gap-0.5">
-          <p className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wide">{label}</p>
-          <p className="text-[13px] text-[var(--text)]">{value}</p>
+        <div key={label} className='flex flex-col gap-0.5'>
+          <p className='text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wide'>{label}</p>
+          <p className='text-[13px] text-[var(--text)]'>{value}</p>
         </div>
       ))}
+
+      {comp.type === 'image' && (
+        <div className='flex flex-col gap-1.5 pt-2 border-t border-[var(--border)]'>
+          <p className='text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wide'>이미지 URL</p>
+          <input
+            className='w-full h-8 px-2.5 text-[12px] border border-[var(--border)] rounded-[6px] outline-none focus:border-[var(--accent)] bg-white'
+            value={imageUrl}
+            onChange={(e) => setImageUrl(e.target.value)}
+            placeholder='https://...'
+            onKeyDown={(e) => { if (e.key === 'Enter') handleApplyUrl() }}
+          />
+          <button
+            onClick={handleApplyUrl}
+            disabled={saving || !imageUrl.trim()}
+            className='h-8 px-3 text-[12px] font-medium bg-[var(--accent)] text-white rounded-[6px] disabled:opacity-40 hover:opacity-90 transition-opacity'
+          >
+            {saving ? '적용 중...' : '적용'}
+          </button>
+        </div>
+      )}
+
+      <div className="pt-2 border-t border-[var(--border)]">
+        <button
+          onClick={() => deleteComponent()}
+          className="w-full h-8 text-xs font-medium text-red-500 hover:bg-red-50 border border-red-200 rounded-[8px] transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+        >
+          🗑 컴포넌트 삭제
+        </button>
+        <p className="text-[10px] text-[var(--text-disabled)] text-center mt-1.5">또는 선택 후 Delete 키</p>
+      </div>
     </div>
   )
 }
 
 // ── Root ─────────────────────────────────────────────────────────────────────
 export default function RightPanel() {
-  const { activeRightTab, setActiveRightTab } = useEditorStore()
+  const { activeRightTab, setActiveRightTab, proposals, presentation, currentSlideIndex } = useEditorStore()
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const [showManager, setShowManager] = useState(false)
+  const [showProposal, setShowProposal] = useState(false)
+
+  const currentSlide = presentation?.slides[currentSlideIndex]
+  const pendingCount = proposals.filter((p) => p.status === 'pending' && p.slide_id === currentSlide?.id).length
 
   return (
     <div className="w-80 border-l border-[var(--border)] bg-white flex flex-col shrink-0 overflow-hidden">
@@ -254,10 +348,21 @@ export default function RightPanel() {
 
       {/* Content */}
       <div className="flex-1 overflow-hidden flex flex-col">
+        {activeRightTab === 'agent' && pendingCount > 0 && (
+          <button
+            onClick={() => setShowProposal(true)}
+            className='mx-3 mt-2 flex items-center gap-2 px-3 py-2 rounded-[8px] bg-[var(--accent-subtle)] border border-purple-200 text-[var(--accent)] text-[12px] font-medium hover:bg-purple-100 transition-colors w-auto'
+          >
+            <Zap size={13} />
+            변경 제안 {pendingCount}건 검토 필요
+            <span className='ml-auto text-[11px] underline'>보기</span>
+          </button>
+        )}
         {activeRightTab === 'agent' ? <AgentTab /> : <PropertiesTab />}
       </div>
 
       <AgentManagerPanel open={showManager} onClose={() => setShowManager(false)} />
+      {showProposal && <ProposalPanel open={showProposal} onClose={() => setShowProposal(false)} />}
     </div>
   )
 }

@@ -69,3 +69,24 @@ export interface ComponentDiff {
   agentId: string
   agentName: string
 }
+
+// JSON Patch / Proposal 타입
+export interface JsonPatchOp {
+  op: 'add' | 'replace' | 'remove'
+  path: string
+  value?: unknown
+}
+
+export type ProposalStatus = 'pending' | 'approved' | 'rejected'
+
+export interface AgentProposal {
+  id: string
+  slide_id: string
+  agent_run_id: string
+  agent_name: string
+  command: string
+  patches: JsonPatchOp[]
+  summary: string
+  status: ProposalStatus
+  created_at: string
+}
