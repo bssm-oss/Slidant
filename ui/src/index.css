@@ -3,32 +3,33 @@
 
 /* shadcn/ui Tailwind v4 token mapping */
 @theme inline {
-  --color-background:           #FFFFFF;
-  --color-foreground:           #1A1523;
+  --color-background:           #F6F7F9;
+  --color-foreground:           #17202A;
   --color-card:                 #FFFFFF;
-  --color-card-foreground:      #1A1523;
+  --color-card-foreground:      #17202A;
   --color-popover:              #FFFFFF;
-  --color-popover-foreground:   #1A1523;
-  --color-primary:              #7C3AED;
+  --color-popover-foreground:   #17202A;
+  --color-primary:              #2563EB;
   --color-primary-foreground:   #FFFFFF;
-  --color-secondary:            #F1EFF9;
-  --color-secondary-foreground: #1A1523;
-  --color-muted:                #F1EFF9;
-  --color-muted-foreground:     #6B6580;
-  --color-accent:               #F1EFF9;
-  --color-accent-foreground:    #1A1523;
+  --color-secondary:            #EEF2F6;
+  --color-secondary-foreground: #17202A;
+  --color-muted:                #EEF2F6;
+  --color-muted-foreground:     #64748B;
+  --color-accent:               #EAF2FF;
+  --color-accent-foreground:    #17202A;
   --color-destructive:          #EF4444;
   --color-destructive-foreground: #FFFFFF;
-  --color-border:               #E5E2F0;
-  --color-input:                #E5E2F0;
-  --color-ring:                 #7C3AED;
+  --color-border:               #D8DEE8;
+  --color-input:                #D8DEE8;
+  --color-ring:                 #2563EB;
   --radius-sm:                  6px;
   --radius-md:                  8px;
-  --radius-lg:                  12px;
+  --radius-lg:                  10px;
 }
 
 * {
   box-sizing: border-box;
+  letter-spacing: 0 !important;
   margin: 0;
   padding: 0;
 }
@@ -36,27 +37,28 @@
 @layer base {
   :root {
     /* 배경 */
-    --bg:        #F8F7FF;
+    --bg:        #F6F7F9;
     --bg-subtle: #FFFFFF;
-    --bg-muted:  #F1EFF9;
+    --bg-muted:  #EEF2F6;
+    --bg-raised: #FBFCFE;
 
     /* 테두리 */
-    --border:       #E5E2F0;
-    --border-strong: #C9C4DC;
+    --border:       #D8DEE8;
+    --border-strong: #B8C2D2;
 
     /* 텍스트 */
-    --text:          #1A1523;
-    --text-muted:    #6B6580;
-    --text-disabled: #A89FC0;
+    --text:          #17202A;
+    --text-muted:    #64748B;
+    --text-disabled: #94A3B8;
 
-    /* 메인 accent — Violet */
-    --accent:        #7C3AED;
-    --accent-hover:  #6D28D9;
-    --accent-subtle: #EDE9FE;
-    --accent-text:   #5B21B6;
+    /* 메인 accent */
+    --accent:        #2563EB;
+    --accent-hover:  #1D4ED8;
+    --accent-subtle: #EAF2FF;
+    --accent-text:   #1E40AF;
 
     /* 포인트 컬러들 */
-    --pink:        #EC4899;
+    --pink:        #DB2777;
     --pink-subtle: #FDF2F8;
     --pink-text:   #BE185D;
 
@@ -81,13 +83,16 @@
     --warning: #F59E0B;
     --error:   #EF4444;
 
-    --radius: 12px;
+    --radius: 8px;
+    --shadow-soft: 0 1px 2px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.04);
   }
 
   body {
     background-color: var(--bg);
     color: var(--text);
     font-family: 'Pretendard', sans-serif;
+    font-kerning: normal;
+    text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
   }
 }

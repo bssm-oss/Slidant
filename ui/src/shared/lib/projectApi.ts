@@ -76,6 +76,7 @@ export async function fetchProjectWithSlides(id: string): Promise<Presentation> 
   const slides: Slide[] = slidesRaw.map((s) => ({
     id: s.id,
     order: s.order,
+    html_content: s.html_content ?? null,
     components: (s.components ?? []).map((c: any) => ({
       id: c.id,
       type: c.type,

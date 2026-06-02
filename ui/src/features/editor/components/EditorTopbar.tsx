@@ -1,7 +1,9 @@
 import { useRef, useState } from 'react'
+import { Palette } from 'lucide-react'
 import { useEditorStore } from '../store/editorStore'
 import ThemePanel from '@/features/presentation/components/ThemePanel'
 import type { AgentStatus } from '@/shared/types'
+import BrandMark from '@/shared/components/layout/BrandMark'
 
 const statusMap: Record<AgentStatus, { color: string; label: string }> = {
   idle: { color: '#22c55e', label: '대기' },
@@ -27,7 +29,9 @@ export default function EditorTopbar() {
     const val = e.target.value.trim()
     if (val) {
       try { await saveTitle(val) }
-      catch {}
+      catch {
+        // Title edits are optimistic; keep the existing title if the save request fails.
+      }
     }
     setTitleEditing(false)
   }
@@ -38,10 +42,10 @@ export default function EditorTopbar() {
       <div className="flex items-center gap-3 min-w-0 flex-1">
         <a
           href="/drive"
-          className="w-7 h-7 rounded-[8px] bg-gradient-to-br from-[var(--accent)] to-[#A855F7] flex items-center justify-center shadow-sm shrink-0 hover:opacity-80 transition-opacity"
+          className="transition-opacity hover:opacity-85"
           title="드라이브로 이동"
         >
-          <span className="text-white text-[11px] font-bold">S</span>
+          <BrandMark size="sm" />
         </a>
 
         {/* Title area */}
@@ -78,10 +82,10 @@ export default function EditorTopbar() {
         <div className="relative">
           <button
             onClick={() => setShowTheme((v) => !v)}
-            className="w-8 h-8 flex items-center justify-center rounded-[8px] text-[var(--text-disabled)] hover:text-[var(--text-muted)] hover:bg-[var(--bg-muted)] transition-colors text-[16px]"
+            className="w-8 h-8 flex items-center justify-center rounded-[8px] text-[var(--text-muted)] hover:text-[var(--accent-text)] hover:bg-[var(--accent-subtle)] transition-colors"
             title="디자인 테마"
           >
-            🎨
+            <Palette size={16} />
           </button>
           {showTheme && (
             <div className="absolute top-full right-0 mt-1 z-50 w-64 bg-white rounded-[12px] border border-[var(--border)] shadow-xl">

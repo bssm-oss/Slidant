@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useProposalStore } from '../store/proposalStore'
 import { useEditorStore } from '../store/editorStore'
 import { cn } from '@/shared/lib/utils'
 import { CheckCircle, XCircle, ChevronLeft, ChevronRight } from 'lucide-react'
@@ -11,7 +12,8 @@ interface Props {
 }
 
 export default function ProposalPanel({ open, onClose }: Props) {
-  const { proposals, approveProposal, rejectProposal, presentation, currentSlideIndex } = useEditorStore()
+  const { proposals, approveProposal, rejectProposal } = useProposalStore()
+  const { presentation, currentSlideIndex } = useEditorStore()
   const [currentIdx, setCurrentIdx] = useState(0)
   const [loading, setLoading] = useState(false)
 

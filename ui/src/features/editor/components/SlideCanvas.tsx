@@ -236,6 +236,33 @@ export default function SlideCanvas() {
     x: comp.position.x, y: comp.position.y, w: comp.size.w, h: comp.size.h,
   }
 
+  // HTML 모드 렌더링 (html_content 있으면 iframe 사용)
+  if (currentSlide?.html_content) {
+    const iframeSrc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{width:960px;height:540px;overflow:hidden;}</style></head><body>${currentSlide.html_content}</body></html>`
+    return (
+      <div ref={containerRef}
+        className="flex-1 flex items-center justify-center bg-[var(--bg-muted)] overflow-hidden">
+        <div
+          className="relative rounded-[8px] shadow-[0_8px_40px_rgba(0,0,0,0.18)] overflow-hidden shrink-0"
+          style={{ width: SLIDE_W * scale, height: SLIDE_H * scale }}>
+          <iframe
+            srcDoc={iframeSrc}
+            style={{
+              width: SLIDE_W,
+              height: SLIDE_H,
+              border: 'none',
+              transform: `scale(${scale})`,
+              transformOrigin: 'top left',
+              display: 'block',
+            }}
+            sandbox="allow-same-origin"
+            title="slide"
+          />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <>
     <div ref={containerRef}

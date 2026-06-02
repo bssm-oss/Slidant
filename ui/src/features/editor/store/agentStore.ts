@@ -38,6 +38,12 @@ import { useSlideStore } from './slideStore'
 import { useProposalStore } from './proposalStore'
 import { useSessionStore } from './sessionStore'
 
+export interface AgentStep {
+  id: string
+  label: string
+  status: 'pending' | 'active' | 'done'
+}
+
 interface AgentState {
   agents: Agent[]
   agentLogs: AgentLog[]
@@ -47,6 +53,7 @@ interface AgentState {
   conflictComponentIds: Set<string>
   overallStatus: AgentStatus
   activeRightTab: 'agent' | 'properties'
+  agentSteps: AgentStep[]
 
   loadAgents: (projectId?: string) => Promise<void>
   loadChatHistory: (projectId: string) => Promise<void>
@@ -67,6 +74,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   conflictComponentIds: new Set(),
   overallStatus: 'idle',
   activeRightTab: 'agent',
+  agentSteps: [],
 
   loadAgents: async (projectId) => {
     try {
@@ -149,32 +157,63 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       if (type === 'agent_node_event') {
         const eventType = msg.event_type as string
         const message = msg.message as string
+
+        // steps_init: 단계 목록 초기화
+        if (eventType === 'steps_init') {
+          try {
+            const raw = JSON.parse(message) as {id: string, label: string}[]
+            const steps: AgentStep[] = raw.map((s, i) => ({
+              ...s,
+              status: i === 0 ? 'active' : 'pending',
+            }))
+            set({ agentSteps: steps })
+          } catch {}
+          return
+        }
+
+        // step_done: 해당 단계 완료, 다음 단계 active
+        if (eventType === 'step_done') {
+          set((s) => {
+            const idx = s.agentSteps.findIndex((st) => st.id === message)
+            if (idx === -1) return s
+            return {
+              agentSteps: s.agentSteps.map((st, i) => {
+                if (i === idx) return { ...st, status: 'done' }
+                if (i === idx + 1) return { ...st, status: 'active' }
+                return st
+              }),
+            }
+          })
+          return
+        }
+
+        // node_start/node_done/slide_progress → 각각 별도 로그 메시지로 누적
         set((s) => {
           const streamingAgent = s.agents.find((a) => a.status === 'running')
           if (!streamingAgent) return s
-          const nodeId = `node-event-${streamingAgent.definitionId}`
-          const isStart = eventType === 'node_start'
-          const existing = s.chatMessages.find((m) => m.id === nodeId)
-          if (existing) {
-            return {
-              chatMessages: s.chatMessages.map((m) =>
-                m.id === nodeId
-                  ? { ...m, content: message, type: isStart ? 'info' as const : 'success' as const }
-                  : m
-              ),
-            }
-          }
+
+          const updatedAgents = s.agents.map((a) =>
+            a.definitionId === streamingAgent.definitionId
+              ? { ...a, currentTask: message }
+              : a
+          )
+
+          // node_start / node_done / slide_progress 모두 새 메시지로 누적
+          const logId = `log-${eventType}-${Date.now()}`
+          const isDone = eventType === 'node_done'
+          const isProgress = eventType === 'slide_progress'
           return {
+            agents: updatedAgents,
             chatMessages: [
               ...s.chatMessages,
               {
-                id: nodeId,
+                id: logId,
                 role: 'agent' as const,
                 content: message,
                 agentName: streamingAgent.name,
                 agentDefinitionId: streamingAgent.definitionId,
                 timestamp: new Date().toISOString(),
-                type: 'info' as const,
+                type: isDone ? 'success' as const : isProgress ? 'info' as const : 'info' as const,
               },
             ],
           }
@@ -202,6 +241,14 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           const streamingAgent = s.agents.find((a) => a.status === 'running')
           if (!streamingAgent) return s
 
+          // currentTask를 플래너 스트리밍 텍스트 첫 줄로 업데이트 (상태 바 표시용)
+          const firstLine = displayText.split('\n')[0].slice(0, 40)
+          const updatedAgents = s.agents.map((a) =>
+            a.definitionId === streamingAgent.definitionId
+              ? { ...a, currentTask: firstLine || a.currentTask }
+              : a
+          )
+
           const streamId = `streaming-${streamingAgent.definitionId}`
           const existing = s.chatMessages.find((m) => m.id === streamId)
           const newMessages = existing
@@ -221,7 +268,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
 
           // 슬라이드 preview: slideStore에서 직접 업데이트
           if (streamOps.length === 0) {
-            return { chatMessages: newMessages }
+            return { agents: updatedAgents, chatMessages: newMessages }
           }
 
           const slideState = useSlideStore.getState()
@@ -378,6 +425,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             runningAgentIds: newRunningIds,
             overallStatus: newRunningIds.size > 0 ? 'running' : 'idle',
             conflictComponentIds: newConflicts,
+            agentSteps: [],
             agents: s.agents.map((a) =>
               a.name === doneAgentName
                 ? { ...a, status: newConflicts.size > 0 ? 'conflict' : 'done', currentTask: undefined, taskProgress: 100 }
@@ -415,6 +463,19 @@ export const useAgentStore = create<AgentState>((set, get) => ({
 
         const ppt = useSlideStore.getState().presentation
         if (ppt) {
+          // html_content 즉시 반영 (loadPresentation 전에 먼저 캐시 업데이트)
+          const htmlContent = msg.html_content as string | undefined
+          const slideId = msg.slide_id as string | undefined
+          if (htmlContent && slideId && ppt) {
+            useSlideStore.setState((s) => ({
+              presentation: s.presentation ? {
+                ...s.presentation,
+                slides: s.presentation.slides.map((sl) =>
+                  sl.id === slideId ? { ...sl, html_content: htmlContent } : sl
+                ),
+              } : null,
+            }))
+          }
           useSlideStore.getState().loadPresentation(ppt.id)
           get().loadChatHistory(ppt.id)
         }

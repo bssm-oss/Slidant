@@ -1,9 +1,24 @@
-import { useEffect, useRef, useState } from 'react'
+import { type CSSProperties, useEffect, useRef, useState } from 'react'
 import { api } from '@/shared/lib/apiClient'
 import type { SlideComponent } from '@/shared/types'
 
 const SLIDE_W = 960
 const SLIDE_H = 540
+
+type RawSlideComponent = {
+  id: string
+  type: SlideComponent['type']
+  properties?: {
+    position?: SlideComponent['position']
+    size?: SlideComponent['size']
+    [key: string]: unknown
+  }
+  order?: number
+}
+
+type RawSlide = {
+  components?: RawSlideComponent[]
+}
 
 function ThumbnailComp({ comp }: { comp: SlideComponent }) {
   const props = comp.props as Record<string, unknown>
@@ -14,7 +29,7 @@ function ThumbnailComp({ comp }: { comp: SlideComponent }) {
         fontSize: (props.fontSize as number) ?? 16,
         fontWeight: (props.fontWeight as number) ?? 400,
         color: (props.color as string) ?? '#1A1523',
-        textAlign: (props.align as any) ?? 'left',
+        textAlign: (props.align as CSSProperties['textAlign']) ?? 'left',
         lineHeight: (props.lineHeight as number) ?? 1.4,
         whiteSpace: 'pre-wrap',
         wordBreak: 'break-word',
@@ -45,12 +60,12 @@ function ThumbnailComp({ comp }: { comp: SlideComponent }) {
       return (
         <div style={{
           width: '100%', height: '100%',
-          background: 'rgba(124,58,237,0.07)',
+          background: '#EAF2FF',
           borderRadius: (props.borderRadius as number) ?? 0,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
-            stroke="rgba(124,58,237,0.3)" strokeWidth="1.5">
+            stroke="#93B4F6" strokeWidth="1.5">
             <rect x="3" y="3" width="18" height="18" rx="2"/>
             <circle cx="8.5" cy="8.5" r="1.5"/>
             <path d="M21 15l-5-5L5 21"/>
@@ -61,7 +76,7 @@ function ThumbnailComp({ comp }: { comp: SlideComponent }) {
     return (
       <img src={src} alt="" style={{
         width: '100%', height: '100%',
-        objectFit: (props.objectFit as any) ?? 'cover',
+        objectFit: (props.objectFit as CSSProperties['objectFit']) ?? 'cover',
         borderRadius: (props.borderRadius as number) ?? 0,
         opacity: (props.opacity as number) ?? 1,
         display: 'block',
@@ -73,8 +88,8 @@ function ThumbnailComp({ comp }: { comp: SlideComponent }) {
   return null
 }
 
-function parseComponents(rawComponents: any[]): SlideComponent[] {
-  return rawComponents.map((c: any) => ({
+function parseComponents(rawComponents: RawSlideComponent[]): SlideComponent[] {
+  return rawComponents.map((c) => ({
     id: c.id,
     type: c.type,
     position: c.properties?.position ?? { x: 0, y: 0 },
@@ -115,7 +130,7 @@ export default function SlideThumbnail({ projectId }: Props) {
       if (!entry.isIntersecting || fetchedRef.current) return
       fetchedRef.current = true
 
-      api.get<any[]>(`/projects/${projectId}/slides`).then((slides) => {
+      api.get<RawSlide[]>(`/projects/${projectId}/slides`).then((slides) => {
         const first = slides?.[0]
         if (!first || !first.components?.length) { setStatus('empty'); return }
         setComponents(parseComponents(first.components))

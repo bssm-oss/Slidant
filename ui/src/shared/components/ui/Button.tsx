@@ -9,7 +9,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         primary:
-          'bg-gradient-to-r from-[var(--accent)] to-[#A855F7] hover:from-[var(--accent-hover)] hover:to-[#9333EA] text-white shadow-[0_2px_8px_rgba(124,58,237,0.3)] hover:shadow-[0_4px_12px_rgba(124,58,237,0.4)]',
+          'bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white shadow-sm hover:shadow',
         secondary:
           'bg-white hover:bg-[var(--bg-muted)] text-[var(--text)] border border-[var(--border)] hover:border-[var(--border-strong)]',
         ghost:
@@ -20,9 +20,9 @@ const buttonVariants = cva(
           'border border-[var(--border)] bg-transparent hover:bg-[var(--bg-muted)] text-[var(--text)]',
       },
       size: {
-        sm: 'h-8 px-3 text-[12px] leading-none rounded-[8px]',
-        md: 'h-9 px-4 text-[13px] leading-none rounded-[10px]',
-        lg: 'h-10 px-5 text-[14px] leading-none rounded-[12px]',
+        sm: 'h-8 px-3 text-[12px] leading-normal rounded-[8px]',
+        md: 'h-9 px-4 text-[13px] leading-normal rounded-[10px]',
+        lg: 'h-10 px-5 text-[14px] leading-normal rounded-[12px]',
         icon: 'h-8 w-8 rounded-[8px]',
       },
     },
@@ -53,5 +53,5 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 )
 Button.displayName = 'Button'
 
-export { Button, buttonVariants }
+export { Button }
 export default Button

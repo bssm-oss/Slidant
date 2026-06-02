@@ -44,6 +44,7 @@ class SlideResponse(BaseModel):
     order: int
     title: str | None
     components: list[ComponentResponse]
+    html_content: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -57,6 +58,7 @@ class SlideResponse(BaseModel):
             order=slide.order,
             title=slide.title,
             components=[ComponentResponse(**c) for c in (slide.content or [])],
+            html_content=getattr(slide, "html_content", None),
             created_at=slide.created_at,
             updated_at=slide.updated_at,
         )

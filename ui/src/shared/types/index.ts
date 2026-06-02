@@ -15,6 +15,7 @@ export interface Slide {
   order: number
   title?: string
   components: SlideComponent[]
+  html_content?: string | null
   thumbnail?: string
 }
 

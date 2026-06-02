@@ -11,7 +11,7 @@ from app.core.deps import CurrentUser, UoW
 from app.models.chat import ChatMessage
 from app.schemas.agent import AgentRunRequest, AgentRunResponse
 from app.services import agent_service
-from app.services.agent_runner import run_agent
+from app.services.agent_runner import build_slide_context_from_html, run_agent
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 logger = logging.getLogger("slidant.agent")
@@ -168,7 +168,14 @@ async def _run_agent_background_inner(
             conversation_history = "\n".join(lines)
             logger.info("   history: %d turns", len(lines))
 
-        logger.info("   context: components=%d  slides=%d", len(components), len(all_slides))
+        # html_content 있으면 HTML 컨텍스트 사용
+        if slide and slide.html_content:
+            slide_context_override = build_slide_context_from_html(slide.html_content)
+        else:
+            slide_context_override = None
+
+        logger.info("   context: components=%d  slides=%d  html_ctx=%s",
+                    len(components), len(all_slides), bool(slide_context_override))
         logger.info("   → LLM 호출 시작 (%s)", provider)
         t0 = _time.perf_counter()
 
@@ -204,7 +211,7 @@ async def _run_agent_background_inner(
             import re as _re
             slide_scope_locked = bool(_re.search(r'@슬라이드\d+', body.command))
 
-            patches, _, llm_summary = await run_agent(
+            run_kwargs = dict(
                 role=agent_def_role,
                 command=body.command,
                 components=components,
@@ -222,10 +229,13 @@ async def _run_agent_background_inner(
                 on_token=on_token,
                 on_event=on_event,
                 conversation_history=conversation_history,
+                html_mode=True,
             )
+            patches, _, llm_summary, html_output, html_slides = await run_agent(**run_kwargs)
             elapsed = (_time.perf_counter() - t0) * 1000
 
-            logger.info("   ← LLM 완료  %.0fms  patches=%d", elapsed, len(patches))
+            logger.info("   ← LLM 완료  %.0fms  patches=%d  html=%d  html_slides=%d",
+                        elapsed, len(patches), len(html_output), len(html_slides))
             if llm_summary:
                 logger.info("   summary: %s", llm_summary)
             for i, op in enumerate(patches[:5]):
@@ -238,42 +248,81 @@ async def _run_agent_background_inner(
             comp_ops  = [op for op in patches if not op.get("path", "").startswith("/slides/")]
             logger.info("   comp_ops=%d  slide_ops=%d", len(comp_ops), len(slide_ops))
 
-            # comp_ops → AgentProposal로 저장 (즉시 적용 안 함, 사용자 승인 대기)
-            proposal_id = None
-            if comp_ops:
-                from app.models.agent_proposal import AgentProposal
-                proposal = AgentProposal(
-                    slide_id=body.slide_id,
-                    agent_run_id=agent_run.id,
-                    agent_name=agent_def_name,
-                    command=body.command[:500],
-                    patches=comp_ops,
-                    summary=llm_summary or '',
-                    status='pending',
+            # HTML 모드: html_output으로 슬라이드 직접 업데이트
+            if html_output and slide:
+                from app.services import slide_history_service
+                reason = f'{agent_def_name}: {body.command[:120]}'
+                await slide_history_service.archive_and_apply(
+                    uow, body.slide_id, list(slide.content or []),
+                    reason, agent_name=agent_def_name, html_content=html_output
                 )
-                uow.proposals.add(proposal)
-                proposal_id = str(proposal.id)
+                logger.info("   HTML 즉시 적용: %d chars → slide %s", len(html_output), body.slide_id)
+            elif comp_ops and slide:
+                # 기존 JSON patch fallback
+                from app.services.slide_content import apply_patches
+                from app.services import slide_history_service
+                class _Target:
+                    def __init__(self, content): self.content = content
+                target = _Target(list(slide.content or []))
+                apply_patches(target, comp_ops)
+                reason = f'{agent_def_name}: {body.command[:120]}'
+                await slide_history_service.archive_and_apply(
+                    uow, body.slide_id, target.content, reason, agent_name=agent_def_name
+                )
+                logger.info("   comp_ops 즉시 적용: %d ops → slide %s", len(comp_ops), body.slide_id)
 
-            # 새 슬라이드 생성 op 처리
+            # 새 슬라이드 생성 처리
             new_slides = []
-            if slide_ops:
+            if html_slides:
+                from app.models.slide import Slide as SlideModel
+                from app.services import slide_history_service
+                specs = html_slides[:5]
+                # 첫 번째 슬라이드 → 현재 슬라이드에 적용 (빈 슬라이드 덮어씀)
+                if specs and slide:
+                    first = specs[0]
+                    reason = f'{agent_def_name}: {body.command[:120]}'
+                    await slide_history_service.archive_and_apply(
+                        uow, body.slide_id, list(slide.content or []),
+                        reason, agent_name=agent_def_name, html_content=first.get("html", "")
+                    )
+                    if first.get("title") and not slide.title:
+                        slide.title = first["title"]
+                    logger.info("   HTML[0] → 현재 슬라이드 적용: title=%r  html=%d chars",
+                                first.get("title"), len(first.get("html", "")))
+                # 나머지 슬라이드 → 신규 생성 (edit 명령이면 건너뜀)
+                edit_keywords = ("수정", "변경", "바꿔", "적용", "고쳐", "다시")
+                is_edit_cmd = any(k in body.command for k in edit_keywords)
+                if is_edit_cmd:
+                    logger.info("   edit 명령 감지 → 추가 슬라이드 생성 건너뜀 (%d개)", len(specs) - 1)
+                for slide_spec in ([] if is_edit_cmd else specs[1:]):
+                    new_slide = SlideModel(
+                        project_id=body.project_id,
+                        title=slide_spec.get("title", ""),
+                        html_content=slide_spec.get("html", ""),
+                        content=[],
+                    )
+                    uow.slides.add(new_slide)
+                    new_slides.append(new_slide)
+                    logger.info("   HTML 슬라이드 추가: title=%r  html=%d chars",
+                                slide_spec.get("title"), len(slide_spec.get("html", "")))
+            elif slide_ops:
                 from app.services.project_service import create_slide_with_components
                 for op in slide_ops[:5]:  # 한 번에 최대 5장
                     if op.get("op") == "add":
                         value = op.get("value", {})
-                        components = value.get("components") or []
-                        if not components:
+                        op_components = value.get("components") or []
+                        if not op_components:
                             logger.warning("   슬라이드 op에 components 없음 — 건너뜀: title=%r", value.get("title"))
                             continue
                         new_slide = await create_slide_with_components(
                             uow.slides,
                             project_id=body.project_id,
                             title=value.get("title"),
-                            components=components,
+                            components=op_components,
                         )
                         new_slides.append(new_slide)
                         logger.info("   슬라이드 추가: id=%s  title=%r  components=%d",
-                                    new_slide.id, value.get("title"), len(components))
+                                    new_slide.id, value.get("title"), len(op_components))
 
             await agent_service.finalize_agent_run(
                 uow.agent_runs, uow.llm_logs, agent_run, body.command, patches
@@ -305,18 +354,18 @@ async def _run_agent_background_inner(
             uow.chat_messages.add(agent_msg)
 
             broadcast_payload: dict = {
-                "type": "agent_proposal" if proposal_id else "agent_done",
+                "type": "agent_done",
                 "agent_run_id": str(agent_run.id),
                 "agent_name": agent_def_name,
                 "summary": agent_content,
                 "slide_id": str(body.slide_id),
             }
-            if proposal_id:
-                broadcast_payload["proposal_id"] = proposal_id
-                broadcast_payload["patches"] = comp_ops  # diff 미리보기용
+            if html_output:
+                broadcast_payload["html_content"] = html_output
             if new_slides:
                 broadcast_payload["new_slides"] = [
-                    {"id": str(s.id), "order": s.order, "title": s.title, "components": s.content}
+                    {"id": str(s.id), "order": s.order, "title": s.title,
+                     "components": s.content, "html_content": s.html_content}
                     for s in new_slides
                 ]
 

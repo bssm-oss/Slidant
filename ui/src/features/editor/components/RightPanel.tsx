@@ -1,37 +1,105 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useEditorStore } from '../store/editorStore'
+import { useAgentStore, type AgentStep } from '../store/agentStore'
 import { useSlideStore } from '../store/slideStore'
 import { cn } from '@/shared/lib/utils'
-import { Maximize2, Send, Loader2, Settings, ChevronDown, Zap } from 'lucide-react'
+import { Maximize2, Send, Loader2, Settings, ChevronDown, Zap, CheckCircle2, Circle, Loader } from 'lucide-react'
 import type { Agent, ChatMessage } from '@/shared/types'
 import AgentManagerPanel from './AgentManagerPanel'
 import ProposalPanel from './ProposalPanel'
 
+// ── 단계별 체크리스트 ─────────────────────────────────────────────────────────
+function StepsChecklist({ steps }: { steps: AgentStep[] }) {
+  return (
+    <div className="mx-3 my-2 rounded-[8px] border border-[var(--border)] bg-[var(--bg-muted)] px-3 py-2.5 flex flex-col gap-1.5">
+      {steps.map((step) => (
+        <div key={step.id} className="flex items-center gap-2">
+          {step.status === 'done' ? (
+            <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
+          ) : step.status === 'active' ? (
+            <Loader size={14} className="text-[var(--accent)] shrink-0 animate-spin" />
+          ) : (
+            <Circle size={14} className="text-[var(--text-disabled)] shrink-0" />
+          )}
+          <span className={cn(
+            'text-[12px]',
+            step.status === 'done' && 'text-[var(--text-muted)] line-through',
+            step.status === 'active' && 'text-[var(--text)] font-medium',
+            step.status === 'pending' && 'text-[var(--text-disabled)]',
+          )}>
+            {step.label}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ── Chat bubble ───────────────────────────────────────────────────────────────
+function shouldCollapseLines(lines: string[]) {
+  if (lines.length >= 4) return true
+  return lines.some((line) =>
+    /\[PRESENTATION\]|^슬라이드\s*\d+[:：]|^\[[A-Z_]+\]/.test(line.trim()),
+  )
+}
+
+function renderLines(lines: string[], className = 'block leading-relaxed') {
+  return lines.map((line, i) => (
+    <span key={i} className={className}>{line}</span>
+  ))
+}
+
+function renderCollapsible(lines: string[]) {
+  const [summaryLine, ...detailLines] = lines
+  if (!detailLines.length) return renderLines(lines)
+
+  return (
+    <div className="space-y-2">
+      <span className="block leading-relaxed">{summaryLine}</span>
+      <details className="group rounded-[8px] border border-[var(--border)] bg-white/70 px-2.5 py-2">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-[12px] font-medium text-[var(--text-muted)] transition-colors hover:text-[var(--accent-text)]">
+          <span>로그</span>
+          <ChevronDown size={13} className="transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="mt-2 space-y-1 border-t border-[var(--border)] pt-2 text-[12px] text-[var(--text-muted)]">
+          {renderLines(detailLines)}
+        </div>
+      </details>
+    </div>
+  )
+}
+
 function formatContent(content: string, isUser: boolean): React.ReactNode {
   if (isUser) return <span>{content}</span>
 
   const trimmed = content.trim()
 
-  // JSON 감지 → action_plan 추출
-  if (trimmed.startsWith('{')) {
+  // JSON 감지 → action_plan 추출 또는 예쁘게 포맷팅
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
     try {
       const parsed = JSON.parse(trimmed)
       const plan: string = parsed.action_plan ?? parsed.plan ?? parsed.summary ?? ''
       if (plan) {
-        return plan.split(/\n+/).filter(Boolean).map((line, i) => (
-          <span key={i} className="block leading-relaxed">{line}</span>
-        ))
+        const lines = plan.split(/\n+/).map((line) => line.trim()).filter(Boolean)
+        return shouldCollapseLines(lines) ? renderCollapsible(lines) : renderLines(lines)
       }
-    } catch {}
+      // 특정 필드가 없는 일반 JSON인 경우 예쁘게 출력
+      const formattedJson = JSON.stringify(parsed, null, 2)
+      return (
+        <pre className="whitespace-pre-wrap font-mono text-[11px] leading-tight opacity-90 py-1 overflow-x-auto">
+          {formattedJson}
+        </pre>
+      )
+    } catch {
+      // Fall through to plain text rendering.
+    }
   }
 
   // 줄바꿈이 있으면 줄 단위로 렌더링
   if (/\n/.test(trimmed)) {
-    return trimmed.split('\n').filter(Boolean).map((line, i) => (
-      <span key={i} className="block leading-relaxed">{line}</span>
-    ))
+    const lines = trimmed.split('\n').map((line) => line.trim()).filter(Boolean)
+    return shouldCollapseLines(lines) ? renderCollapsible(lines) : renderLines(lines)
   }
 
   return <span>{trimmed}</span>
@@ -106,6 +174,7 @@ function AgentSelector({ agents, selectedId, onSelect }: {
 export default function RightPanel() {
   const { agents, chatMessages, runningAgentIds, sendMessage, selectChatAgent,
           selectedAgentDefinitionId, proposals } = useEditorStore()
+  const { agentSteps } = useAgentStore()
   const { presentation } = useSlideStore()
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
@@ -120,21 +189,12 @@ export default function RightPanel() {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const pickerRef = useRef<HTMLDivElement>(null)
 
-  // Init agent selection
-  useEffect(() => {
-    if (agents.length > 0 && !localSelectedId) {
-      const first = agents[0].definitionId ?? agents[0].id
-      setLocalSelectedId(first)
-      selectChatAgent(first)
-    }
-  }, [agents])
-
   const handleSelectAgent = (id: string) => {
     setLocalSelectedId(id)
     selectChatAgent(id)
   }
 
-  const activeId = localSelectedId ?? selectedAgentDefinitionId
+  const activeId = localSelectedId ?? selectedAgentDefinitionId ?? agents[0]?.definitionId ?? null
   const activeAgent = agents.find((a) => a.definitionId === activeId) ?? agents[0]
 
   const msgs = activeAgent
@@ -170,11 +230,14 @@ export default function RightPanel() {
     if (inputRef.current) inputRef.current.style.height = '72px'
     setShowSlidePicker(false)
     if (activeAgent) selectChatAgent(activeAgent.definitionId ?? null)
-    try { await sendMessage(cmd) } catch {}
+    try { await sendMessage(cmd) }
+    catch {
+      // sendMessage pushes its own error message into the chat state.
+    }
   }
 
   const handleSlideSelect = (slide: { id: string; title: string; order: number }) => {
-    const mention = `@슬라이드${slide.order + 1}(${slide.title || '제목 없음'}) `
+    const mention = `@슬라이드${slide.order + 1} `
     setInput((prev) => prev + mention)
     setShowSlidePicker(false)
     inputRef.current?.focus()
@@ -231,6 +294,9 @@ export default function RightPanel() {
         </button>
       )}
 
+      {/* 단계별 진행 체크리스트 */}
+      {agentSteps.length > 0 && <StepsChecklist steps={agentSteps} />}
+
       {/* Chat messages */}
       <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2.5 min-h-0">
         {msgs.length === 0 ? (
@@ -247,9 +313,9 @@ export default function RightPanel() {
         )}
         {isRunning && (
           <div className="flex justify-start">
-            <div className="bg-[var(--bg-muted)] px-3 py-2 rounded-[12px] rounded-bl-[4px] text-[12px] text-[var(--text-muted)] flex items-center gap-1.5">
-              <Loader2 size={10} className="animate-spin" />
-              처리 중...
+            <div className="bg-[var(--bg-muted)] px-3 py-2 rounded-[12px] rounded-bl-[4px] text-[12px] text-[var(--text-muted)] flex items-center gap-1.5 shadow-sm border border-[var(--border)] max-w-[90%]">
+              <Loader2 size={10} className="animate-spin shrink-0" />
+              <span className="truncate">{activeAgent?.currentTask || '처리 중...'}</span>
             </div>
           </div>
         )}

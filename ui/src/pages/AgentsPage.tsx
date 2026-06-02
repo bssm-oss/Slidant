@@ -128,16 +128,16 @@ export default function AgentsPage() {
           <div className="px-10 py-8 flex flex-col gap-10">
 
             {/* 탭 바 */}
-            <div className="flex border-b border-[var(--border)] -mb-4">
+            <div className="flex w-fit items-center gap-1.5 rounded-[10px] border border-[var(--border)] bg-[var(--bg-muted)] p-1 -mb-4">
               {(['agents', 'pipelines'] as const).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
                   className={cn(
-                    'px-5 py-3 text-[13px] font-semibold transition-colors',
+                    'min-w-[104px] rounded-[8px] px-4 py-2.5 text-[13px] font-semibold transition-colors',
                     activeTab === tab
-                      ? 'text-[var(--accent)] border-b-2 border-[var(--accent)]'
-                      : 'text-[var(--text-muted)] hover:text-[var(--text)]',
+                      ? 'bg-white text-[var(--accent-text)] shadow-sm'
+                      : 'text-[var(--text-muted)] hover:bg-white/70 hover:text-[var(--text)]',
                   )}
                 >
                   {tab === 'agents' ? '에이전트' : '파이프라인'}

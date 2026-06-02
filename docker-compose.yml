@@ -39,7 +39,7 @@ services:
       FERNET_KEY: ${FERNET_KEY:-nXW4KWszBYNONjbVjcQ76Phn27XWsbVdxfxjoRyhNqY=}
       MOCK_AGENT: ${MOCK_AGENT:-false}
       APP_ENV: production
-      CORS_ORIGINS: http://localhost,http://localhost:80,http://localhost:3002,http://localhost:5173,${EXTRA_CORS_ORIGINS:-}
+      CORS_ORIGINS: http://localhost,http://localhost:80,http://localhost:3000,http://localhost:3002,http://localhost:5173,${EXTRA_CORS_ORIGINS:-}
     ports:
       - "8000:8000"
     depends_on:
