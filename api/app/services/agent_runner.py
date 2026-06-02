@@ -57,9 +57,16 @@ OUTPUT FORMAT — MUST FOLLOW EXACTLY. No markdown, no explanation, only JSON:
 
 PATH rules:
   Modify property  → "/{component_id}/properties/{key}"
-  Add component    → "/-"
+  Add component to CURRENT slide → "/-"
   Delete component → "/{component_id}"
-  Add slide (MUST have components) → "/slides/-"
+  Add NEW slide with all components → "/slides/-"
+
+FULL PRESENTATION MODE (전체 PPT 생성):
+  플래너가 [PRESENTATION] 계획을 세우면 반드시 다음 규칙 적용:
+  1. "/slides/-" op 여러 개 생성 (슬라이드 수 = 계획된 장 수)
+  2. 각 "/slides/-" value에 "components" 배열 포함 — 레이어 순서 지킬 것
+  3. "/-" (단일 컴포넌트 추가) op 절대 사용 금지 — 모든 컴포넌트는 해당 슬라이드 value.components 안에
+  4. 각 슬라이드는 독립적으로 완성된 디자인
 
 LIMIT: max 5 slides per request.
 
@@ -126,14 +133,53 @@ ACCENT SHAPES (add at least 2 per slide):
   Number box  : (360,Y,50,50,r:4,bg:accent)
   Bottom rule : (0,532,960,8)
 
-FEW-SHOT — Professional dark cover slide:
+FEW-SHOT A — Single slide edit (current slide modification):
 {"summary":"어두운 배경에 바다 이미지 placeholder와 큰 제목, 액센트 바를 적용한 표지 슬라이드","ops":[
   {"op":"add","path":"/-","value":{"type":"image","properties":{"placeholder":true,"alt":"바다 배경 이미지","position":{"x":0,"y":0},"size":{"w":960,"h":540},"objectFit":"cover"}}},
   {"op":"add","path":"/-","value":{"type":"shape","properties":{"bgColor":"#000000","position":{"x":0,"y":0},"size":{"w":960,"h":540},"opacity":0.55}}},
   {"op":"add","path":"/-","value":{"type":"shape","properties":{"bgColor":"#3B82F6","position":{"x":0,"y":0},"size":{"w":6,"h":540}}}},
-  {"op":"add","path":"/-","value":{"type":"shape","properties":{"bgColor":"#3B82F6","position":{"x":80,"y":275},"size":{"w":60,"h":4}}}},
   {"op":"add","path":"/-","value":{"type":"text","properties":{"content":"제목 텍스트","position":{"x":80,"y":160},"size":{"w":800,"h":110},"fontSize":68,"fontWeight":700,"color":"#F9FAFB","align":"left"}}},
   {"op":"add","path":"/-","value":{"type":"text","properties":{"content":"부제목 설명","position":{"x":80,"y":295},"size":{"w":700,"h":55},"fontSize":28,"fontWeight":400,"color":"#9CA3AF","align":"left"}}}
+]}
+
+FEW-SHOT B — Full presentation (전체 PPT 생성, 슬라이드 여러 장):
+Command: "김치찌개 레시피 PPT 만들어줘"
+{"summary":"김치찌개 레시피 5장 프레젠테이션 생성 — WARM 팔레트","ops":[
+  {"op":"add","path":"/slides/-","value":{"title":"표지","components":[
+    {"type":"shape","properties":{"bgColor":"#1C0F0A","position":{"x":0,"y":0},"size":{"w":960,"h":540}}},
+    {"type":"image","properties":{"placeholder":true,"alt":"김치찌개 배경","position":{"x":0,"y":0},"size":{"w":960,"h":540},"objectFit":"cover"}},
+    {"type":"shape","properties":{"bgColor":"#000000","position":{"x":0,"y":0},"size":{"w":960,"h":540},"opacity":0.55}},
+    {"type":"shape","properties":{"bgColor":"#F59E0B","position":{"x":0,"y":0},"size":{"w":6,"h":540}}},
+    {"type":"shape","properties":{"bgColor":"#F59E0B","position":{"x":80,"y":295},"size":{"w":60,"h":4}}},
+    {"type":"text","properties":{"content":"얼큰한 김치찌개\n황금 레시피","position":{"x":80,"y":160},"size":{"w":800,"h":120},"fontSize":64,"fontWeight":700,"color":"#FEF3C7","align":"left","lineHeight":1.3}},
+    {"type":"text","properties":{"content":"집에서 완성하는 감칠맛 끝판왕","position":{"x":80,"y":305},"size":{"w":700,"h":50},"fontSize":26,"fontWeight":400,"color":"#D97706","align":"left"}}
+  ]}},
+  {"op":"add","path":"/slides/-","value":{"title":"재료 준비","components":[
+    {"type":"shape","properties":{"bgColor":"#1C0F0A","position":{"x":0,"y":0},"size":{"w":960,"h":540}}},
+    {"type":"shape","properties":{"bgColor":"#F59E0B","position":{"x":0,"y":0},"size":{"w":6,"h":540}}},
+    {"type":"text","properties":{"content":"재료 준비","position":{"x":60,"y":60},"size":{"w":500,"h":70},"fontSize":44,"fontWeight":700,"color":"#FEF3C7","align":"left"}},
+    {"type":"shape","properties":{"bgColor":"#F59E0B","position":{"x":60,"y":138},"size":{"w":60,"h":4}}},
+    {"type":"text","properties":{"content":"• 묵은지 300g\n• 돼지고기 앞다리살 200g\n• 두부 1/2모\n• 대파 1대\n• 마늘 4쪽","position":{"x":60,"y":165},"size":{"w":400,"h":200},"fontSize":21,"fontWeight":400,"color":"#D97706","align":"left","lineHeight":1.6}},
+    {"type":"image","properties":{"placeholder":true,"alt":"재료 모음 사진","position":{"x":520,"y":60},"size":{"w":400,"h":420},"borderRadius":8}}
+  ]}},
+  {"op":"add","path":"/slides/-","value":{"title":"조리 순서","components":[
+    {"type":"shape","properties":{"bgColor":"#1C0F0A","position":{"x":0,"y":0},"size":{"w":960,"h":540}}},
+    {"type":"shape","properties":{"bgColor":"#F59E0B","position":{"x":0,"y":0},"size":{"w":6,"h":540}}},
+    {"type":"text","properties":{"content":"조리 순서","position":{"x":60,"y":60},"size":{"w":500,"h":70},"fontSize":44,"fontWeight":700,"color":"#FEF3C7","align":"left"}},
+    {"type":"shape","properties":{"bgColor":"#F59E0B","position":{"x":60,"y":138},"size":{"w":60,"h":4}}},
+    {"type":"shape","properties":{"bgColor":"#F59E0B","position":{"x":60,"y":170},"size":{"w":36,"h":36},"borderRadius":18}},
+    {"type":"text","properties":{"content":"1","position":{"x":60,"y":173},"size":{"w":36,"h":30},"fontSize":18,"fontWeight":700,"color":"#1C0F0A","align":"center"}},
+    {"type":"text","properties":{"content":"김치를 먹기 좋은 크기로 자른다","position":{"x":110,"y":173},"size":{"w":400,"h":30},"fontSize":21,"fontWeight":400,"color":"#FEF3C7","align":"left"}},
+    {"type":"shape","properties":{"bgColor":"#F59E0B","position":{"x":60,"y":230},"size":{"w":36,"h":36},"borderRadius":18}},
+    {"type":"text","properties":{"content":"2","position":{"x":60,"y":233},"size":{"w":36,"h":30},"fontSize":18,"fontWeight":700,"color":"#1C0F0A","align":"center"}},
+    {"type":"text","properties":{"content":"돼지고기와 함께 볶아 김치를 익힌다","position":{"x":110,"y":233},"size":{"w":400,"h":30},"fontSize":21,"fontWeight":400,"color":"#FEF3C7","align":"left"}},
+    {"type":"shape","properties":{"bgColor":"#F59E0B","position":{"x":60,"y":290},"size":{"w":36,"h":36},"borderRadius":18}},
+    {"type":"text","properties":{"content":"3","position":{"x":60,"y":293},"size":{"w":36,"h":30},"fontSize":18,"fontWeight":700,"color":"#1C0F0A","align":"center"}},
+    {"type":"text","properties":{"content":"물 600ml 추가 후 20분 끓인다","position":{"x":110,"y":293},"size":{"w":400,"h":30},"fontSize":21,"fontWeight":400,"color":"#FEF3C7","align":"left"}},
+    {"type":"shape","properties":{"bgColor":"#F59E0B","position":{"x":60,"y":350},"size":{"w":36,"h":36},"borderRadius":18}},
+    {"type":"text","properties":{"content":"4","position":{"x":60,"y":353},"size":{"w":36,"h":30},"fontSize":18,"fontWeight":700,"color":"#1C0F0A","align":"center"}},
+    {"type":"text","properties":{"content":"두부, 대파 넣고 5분 더 끓인다","position":{"x":110,"y":353},"size":{"w":400,"h":30},"fontSize":21,"fontWeight":400,"color":"#FEF3C7","align":"left"}}
+  ]}}
 ]}
 """
 
@@ -239,28 +285,50 @@ def _extract_json(text: str) -> dict | list | None:
 PLANNER_PROMPT = """\
 You are a professional PPT design planner. Analyze the command and slide context, then produce a specific action plan.
 
+━━ FULL PRESENTATION MODE (최우선 규칙) ━━
+명령에 다음 중 하나라도 포함되면 반드시 전체 프레젠테이션 계획을 수립해야 한다:
+  키워드: PPT, 프레젠테이션, 발표자료, 슬라이드셋, 만들어, 제작, 작성
+  조건: 현재 슬라이드가 비어있거나 슬라이드 수가 1개 이하
+
+전체 프레젠테이션 계획 형식:
+  [PRESENTATION] 총 N장 슬라이드 계획 (N = 5~7장)
+  슬라이드 1: [COVER] — 표지 (제목, 부제목, 배경)
+  슬라이드 2: [CONTENT] — 첫 번째 섹션
+  슬라이드 3: [CONTENT] — 두 번째 섹션
+  ...
+  슬라이드 N: [CLOSING] — 마무리
+
+  각 슬라이드마다: 팔레트, 배경색, 액센트색, 제목 텍스트, 본문 요소, 레이아웃 명시
+  → generator는 각 슬라이드를 "/slides/-" op으로 생성한다
+
 RULES:
 - Output ONLY plain Korean text. No JSON. No code blocks.
-- Write 3-6 bullet lines starting with •
+- 단일 슬라이드 편집: 3-6 bullet lines starting with •
+- 전체 PPT 생성: [PRESENTATION] 헤더 + 슬라이드별 계획
 - Be SPECIFIC: mention exact hex colors, font sizes, positions, layout template name
 - Reference design templates: [COVER] [CONTENT] [TOC] [QUOTE] [CLOSING]
-- Always plan: 1) background layer, 2) accent elements, 3) typography hierarchy
-- Start directly with the first bullet. No preamble.
+- Start directly. No preamble.
 
 Design principles to apply:
 - Always include left accent bar (0,0,6,540)
-- Background image needs dark overlay for readability
-- Title 64-72pt, subtitle 26-32pt, body 20-22pt
-- Choose coherent color palette: DARK/WARM/LIGHT/NATURE/SLATE
+- Title 64-72pt (cover), 44-48pt (content), body 20-22pt
+- Choose ONE coherent color palette for all slides: DARK/WARM/LIGHT/NATURE/SLATE
 
-Example:
-• [CONTENT] 레이아웃 적용 — DARK 팔레트 (#0A0F1E 배경, #3B82F6 액센트)
-• 배경 shape (0,0,960,540) #0A0F1E 단색
+Example (단일 슬라이드 편집):
+• [CONTENT] 레이아웃 — DARK 팔레트 (#0A0F1E 배경, #3B82F6 액센트)
+• 배경 shape (0,0,960,540) #0A0F1E
 • 좌측 액센트 바 (0,0,6,540) #3B82F6
-• 제목 "돼지국밥의 유래" — 흰색(#F9FAFB) 44pt 굵게, 좌상단 (60,60,420,80)
-• 제목 아래 구분선 (60,148,60,4) #3B82F6
-• 본문 텍스트 4줄 — #9CA3AF 21pt, (60,175~340)
-• 우측 음식 사진 (520,60,400,420) picsum seed:korean-food"""
+• 제목 "돼지국밥의 유래" — #F9FAFB 44pt 굵게 (60,60,420,80)
+• 구분선 (60,148,60,4) #3B82F6
+• 본문 4줄 — #9CA3AF 21pt (60,175~340)
+
+Example (전체 PPT 생성 — "김치찌개 PPT 만들어줘"):
+[PRESENTATION] 총 5장 — WARM 팔레트 (bg:#1C0F0A accent:#F59E0B)
+슬라이드 1: [COVER] 표지 — "얼큰한 김치찌개" 타이틀 68pt, "황금 레시피" 서브타이틀 28pt, 배경 이미지 placeholder
+슬라이드 2: [CONTENT] "재료 준비" — 김치, 돼지고기, 두부, 대파 등 6가지 재료 목록, 재료 이미지 placeholder
+슬라이드 3: [CONTENT] "조리 순서" — 4단계 스텝 번호 박스, 각 단계 21pt 설명
+슬라이드 4: [QUOTE] "핵심 팁" — 감칠맛 비법 인용구, 큰 따옴표 장식
+슬라이드 5: [CLOSING] "맛있는 한 끼" 마무리, 연락처/해시태그"""
 
 MAX_RETRIES = 2
 
