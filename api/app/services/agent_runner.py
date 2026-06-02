@@ -1,5 +1,6 @@
 import json
 import logging
+import operator
 import re
 import time
 from datetime import datetime, timezone
@@ -49,12 +50,18 @@ class AgentState(TypedDict):
     result_summary: str     # 사람이 읽을 수 있는 작업 요약
     retry_count: int        # layout_composer 재시도 횟수
     # Pipeline state (세분화된 노드 간 공유):
-    mode: str               # "single_edit" | "full_presentation"
+    mode: str               # "single_edit" | "full_presentation" | "edit" | "create"
     component_map: dict     # {id: {id, type, properties}}
     design_tokens: dict     # {palette, bg, accent, text, text2, sizes}
     component_specs: list   # layout_composer 출력 (components or slides)
     html_output: str        # html_composer 출력 (단일 슬라이드)
-    html_slides: list       # html_composer 출력 (전체 PPT)
+    html_slides: Annotated[list, operator.add]  # Send API 병렬 append용 reducer
+    # html_mode 신규 필드
+    slide_specs: list       # content_planner 출력: [{title, layout, key_points, image_needed}]
+    slide_index: int        # Send API: 현재 슬라이드 인덱스 (기본 0)
+    current_slide_spec: dict  # Send API: 현재 슬라이드 스펙
+    search_queries: list    # search_router 출력
+    search_results: list    # web_searcher 출력
 
 
 _SHARED_RULES = """
@@ -203,6 +210,52 @@ TYPOGRAPHY SCALE: cover_title:64-72  slide_title:44-48  subtitle:26-32  body:20-
 
 Output ONLY JSON (no markdown):
 {"palette":"DARK","bg":"#0A0F1E","accent":"#3B82F6","text":"#F9FAFB","text2":"#9CA3AF","cover_title_size":68,"slide_title_size":44,"subtitle_size":28,"body_size":21}
+"""
+
+CONTENT_PLANNER_PROMPT = """\
+You are ContentPlanner for Slidant. Given the command and action plan, specify the content for each slide.
+
+Output ONLY JSON (no markdown):
+{"slides":[
+  {"title":"슬라이드 제목","layout":"COVER|TOC|CONTENT|QUOTE|CLOSING","key_points":["핵심 내용1","핵심 내용2"],"image_needed":true}
+]}
+
+Max 6 slides. Be specific about key_points (actual text content, not descriptions).
+layout types: COVER(표지), TOC(목차), CONTENT(본문), QUOTE(인용), CLOSING(마무리)
+"""
+
+SLIDE_COMPOSER_PROMPT = """\
+You are SlideComposer for Slidant. Generate HTML for ONE specific slide.
+
+CANVAS: 960×540px. ONE SLIDE ONLY.
+
+OUTPUT FORMAT (JSON ONLY, no markdown):
+{"html":"<style>...</style><div class=\"slide\">...</div>"}
+
+RULES:
+• <div class="slide"> must have: width:960px;height:540px;position:relative;overflow:hidden;font-family:system-ui,sans-serif;
+• Every element: position:absolute; data-component-id="[unique-kebab-id]"
+• Use design_tokens from input for ALL colors and font sizes
+• No external resources. No <script> tags.
+
+LAYER ORDER (z-index): bg(1) → overlay(2) → accent-bars(3) → shapes(4) → text(10)
+
+LAYOUT TEMPLATES:
+[COVER]   bg(0,0,960,540) → overlay-gradient → accent-bar(left,6×540) → title(80,170,fs:cover_title_size,fw:700) → subtitle(80,300,fs:subtitle_size)
+[TOC]     bg → accent-bar → title(60,60,fs:slide_title_size) → divider(60,140) → numbered items(60,175+55n)
+[CONTENT] bg → accent-bar → title(60,60,fs:slide_title_size) → divider(60,140) → body-items(60,165+45n,fs:body_size) → [right-image if needed]
+[QUOTE]   bg → top-bar + bottom-bar → quote-symbol(fs:96) → quote-text(80,180,fs:34) → author(80,370)
+[CLOSING] bg → dual-bars → center-circle(op:0.15) → main(center,fs:64) → sub(center,fs:26)
+
+IMAGE PLACEHOLDER (NO src/url):
+<div data-component-id="img-X" class="img-placeholder" data-alt="설명" style="position:absolute;...;border:2px dashed rgba(255,255,255,0.3);display:flex;align-items:center;justify-content:center;">
+  <span style="color:rgba(255,255,255,0.4);font-size:13px;">이미지</span>
+</div>
+
+TEXT SAFE ZONE: left≥80px right≤880px. Never fontSize<18.
+
+FEW-SHOT (COVER, DARK palette):
+{"html":"<style>.slide{width:960px;height:540px;position:relative;overflow:hidden;font-family:system-ui,sans-serif;}</style><div class=\\"slide\\"><div data-component-id=\\"bg\\" style=\\"position:absolute;inset:0;background:#0A0F1E;z-index:1\\"></div><div data-component-id=\\"overlay\\" style=\\"position:absolute;left:0;bottom:0;width:960px;height:280px;background:linear-gradient(transparent,rgba(0,0,0,0.7));z-index:2\\"></div><div data-component-id=\\"accent\\" style=\\"position:absolute;left:0;top:0;width:6px;height:540px;background:#3B82F6;z-index:3\\"></div><div data-component-id=\\"title\\" style=\\"position:absolute;left:80px;top:170px;width:800px;font-size:68px;font-weight:700;color:#F9FAFB;z-index:10;line-height:1.2\\">슬라이드 제목</div><div data-component-id=\\"sub\\" style=\\"position:absolute;left:80px;top:295px;width:700px;font-size:28px;color:#9CA3AF;z-index:10\\">부제목</div></div>"}
 """
 
 LAYOUT_COMPOSER_PROMPT = """\
@@ -473,62 +526,6 @@ Example (전체 PPT 생성 — "김치찌개 PPT 만들어줘"):
 슬라이드 5: [CLOSING] "맛있는 한 끼" 마무리, 연락처/해시태그"""
 
 
-HTML_COMPOSER_PROMPT = """\
-You are SlideAgent for Slidant. Generate or modify HTML for a 960×540px presentation slide.
-
-━━ OUTPUT FORMAT (JSON ONLY, no markdown) ━━
-Single slide:
-{"summary":"한국어 1-2문장 요약","html":"<style>...</style><div class=\"slide\">...</div>"}
-
-Full presentation (max 5 slides):
-{"summary":"한국어 요약","slides":[{"title":"슬라이드 제목","html":"<style>...</style><div class=\"slide\">...</div>"},...]}
-
-━━ HTML RULES ━━
-• <div class="slide"> must have: width:960px;height:540px;position:relative;overflow:hidden;font-family:system-ui,sans-serif;
-• Every element inside slide: position:absolute; data-component-id="[unique-kebab-id]"
-• No external resources. No <script> tags.
-• CSS: embed in <style> tag. CSS custom properties welcome.
-
-━━ IMAGE PLACEHOLDER ━━
-<div data-component-id="img-hero" class="img-placeholder" data-alt="이미지 설명"
-     style="position:absolute;left:520px;top:60px;width:400px;height:420px;
-            border:2px dashed rgba(255,255,255,0.3);border-radius:8px;
-            display:flex;align-items:center;justify-content:center;
-            background:rgba(255,255,255,0.05);">
-  <span style="color:rgba(255,255,255,0.4);font-size:13px;">이미지</span>
-</div>
-
-━━ LAYER ORDER (z-index) ━━
-1 background shape  2 bg-image/overlay  3 accent bars  4 content shapes  10+ text
-
-━━ TYPOGRAPHY ━━
-Cover title: 64-72px 700  Slide title: 44-48px 700  Body: 20-22px 400  Never <18px.
-Safe zone: left≥80px; right≤880px.  Multi-line: line-height:1.3
-
-━━ PALETTES ━━
-DARK  : bg#0A0F1E  accent#3B82F6  text#F9FAFB  muted#9CA3AF
-WARM  : bg#1C0F0A  accent#F59E0B  text#FEF3C7  muted#D97706
-LIGHT : bg#F8FAFC  accent#7C3AED  text#0F172A  muted#475569
-NATURE: bg#0D1F1A  accent#34D399  text#ECFDF5  muted#6EE7B7
-SLATE : bg#1E293B  accent#F1F5F9  text#F8FAFC  muted#94A3B8
-
-━━ LAYOUT PATTERNS ━━
-[COVER]   bg → overlay(bottom 240px, rgba gradient) → accent-bar(left 6×540) → title(80,170) → subtitle(80,300)
-[CONTENT] bg → accent-bar → title(60,60) → h-rule(60,148,60px×4px) → body-items → right-image(520,60,400×420)
-[CLOSING] bg → dual accent bars → center circle → main-text(center,64px) → sub-text → contact
-[QUOTE]   bg → top+bottom bars → big-quote-char(60,80,96px) → quote-text(80,180,34px) → author(80,370,22px)
-
-━━ MODIFICATION MODE ━━
-When given existing HTML: preserve structure and data-component-id values. Only change what is explicitly requested.
-
-━━ FEW-SHOT A — single_edit ━━
-{"summary":"DARK 표지 — 파란 액센트, 바다 이미지 placeholder","html":"<style>.slide{width:960px;height:540px;position:relative;overflow:hidden;font-family:system-ui,sans-serif;}</style><div class=\\"slide\\"><div data-component-id=\\"bg\\" style=\\"position:absolute;inset:0;background:#0A0F1E;z-index:1\\"></div><div data-component-id=\\"overlay\\" style=\\"position:absolute;left:0;bottom:0;width:960px;height:280px;background:linear-gradient(transparent,rgba(0,0,0,0.75));z-index:2\\"></div><div data-component-id=\\"accent-bar\\" style=\\"position:absolute;left:0;top:0;width:6px;height:540px;background:#3B82F6;z-index:3\\"></div><div data-component-id=\\"title\\" style=\\"position:absolute;left:80px;top:170px;width:800px;font-size:68px;font-weight:700;color:#F9FAFB;z-index:10;line-height:1.2;\\">슬라이드 제목</div><div data-component-id=\\"subtitle\\" style=\\"position:absolute;left:80px;top:295px;width:700px;font-size:28px;color:#9CA3AF;z-index:10;\\">부제목 설명</div></div>"}
-
-━━ FEW-SHOT B — full_presentation ━━
-{"summary":"김치찌개 3장 PPT — WARM","slides":[{"title":"표지","html":"<style>.slide{width:960px;height:540px;position:relative;overflow:hidden;font-family:system-ui,sans-serif;}</style><div class=\\"slide\\"><div data-component-id=\\"bg\\" style=\\"position:absolute;inset:0;background:#1C0F0A;z-index:1\\"></div><div data-component-id=\\"accent-bar\\" style=\\"position:absolute;left:0;top:0;width:6px;height:540px;background:#F59E0B;z-index:3\\"></div><div data-component-id=\\"title\\" style=\\"position:absolute;left:80px;top:170px;width:800px;font-size:64px;font-weight:700;color:#FEF3C7;z-index:10;line-height:1.3;\\">얼큰한 김치찌개<br>황금 레시피</div><div data-component-id=\\"subtitle\\" style=\\"position:absolute;left:80px;top:310px;width:700px;font-size:26px;color:#D97706;z-index:10;\\">집에서 완성하는 감칠맛 끝판왕</div></div>"},{"title":"재료","html":"<style>.slide{width:960px;height:540px;position:relative;overflow:hidden;font-family:system-ui,sans-serif;}</style><div class=\\"slide\\"><div data-component-id=\\"bg\\" style=\\"position:absolute;inset:0;background:#1C0F0A;z-index:1\\"></div><div data-component-id=\\"accent-bar\\" style=\\"position:absolute;left:0;top:0;width:6px;height:540px;background:#F59E0B;z-index:3\\"></div><div data-component-id=\\"title\\" style=\\"position:absolute;left:60px;top:60px;width:500px;font-size:44px;font-weight:700;color:#FEF3C7;z-index:10;\\">재료 준비</div><div data-component-id=\\"divider\\" style=\\"position:absolute;left:60px;top:118px;width:60px;height:4px;background:#F59E0B;z-index:4\\"></div><div data-component-id=\\"body\\" style=\\"position:absolute;left:60px;top:145px;width:400px;font-size:21px;color:#D97706;z-index:10;line-height:1.8;\\">• 묵은지 300g<br>• 돼지고기 200g<br>• 두부 1/2모<br>• 대파 1대</div><div data-component-id=\\"img-hero\\" class=\\"img-placeholder\\" data-alt=\\"재료 사진\\" style=\\"position:absolute;left:520px;top:60px;width:400px;height:420px;border:2px dashed rgba(245,158,11,0.3);border-radius:8px;display:flex;align-items:center;justify-content:center;background:rgba(245,158,11,0.05);z-index:4;\\"><span style=\\"color:rgba(245,158,11,0.5);font-size:13px;\\">재료 이미지</span></div></div>"}]}
-"""
-
-
 def _check_design_rules(add_ops: list[dict]) -> list[str]:
     """디자인 룰 위반 경고 수집 (로깅 전용)."""
     warnings = []
@@ -592,9 +589,7 @@ def build_agent_graph(
             if token:
                 plan += token
         logger.info("  [planner] 계획: %r", plan[:200])
-        if on_event:
-            on_event("step_done", "plan")
-            on_event("node_done", "✅ 계획 완료")
+        if on_event: on_event("node_done", "✅ 계획 완료")
         return {**state, "plan": plan, "messages": []}
 
     # ── Node 2: intent_router — planner 결과 파싱 → 모드 분기 ────
@@ -757,7 +752,15 @@ def build_agent_graph(
         patches = state.get("result_patches", [])
         llm_summary = state.get("result_summary", "")
 
+        # html_mode: html_slides 기반 통계
         if not patches:
+            html_slides = state.get("html_slides", [])
+            html_out = state.get("html_output", "")
+            if html_slides or html_out:
+                if llm_summary:
+                    return {**state, "result_summary": llm_summary.strip()}
+                cnt = len(html_slides) if html_slides else 1
+                return {**state, "result_summary": f"{cnt}장 슬라이드 생성 완료"}
             return state
 
         # 변경 수 통계 (세부 목록 없이 숫자만)
@@ -795,53 +798,170 @@ def build_agent_graph(
     def increment_retry(state: AgentState) -> AgentState:
         return {**state, "retry_count": state.get("retry_count", 0) + 1}
 
-    # ── HTML mode nodes ───────────────────────────────────────────
-    async def html_composer_node(state: AgentState) -> AgentState:
-        from app.core.config import settings
-        retry = state.get("retry_count", 0)
+    # ── HTML mode nodes (신규 파이프라인) ─────────────────────────
 
-        # 플랜에서 슬라이드 제목 목록 추출 (진행상황 표시용)
+    async def intent_analyzer_node(state: AgentState) -> AgentState:
         plan = state.get("plan", "")
+        is_edit = "[EDIT]" in plan or "[PRESENTATION]" not in plan
+        mode = "edit" if is_edit else "create"
+        # search_queries는 [SEARCH: ...] 파싱
+        sq_matches = re.findall(r'\[SEARCH:\s*(.*?)\]', plan)
+        queries = []
+        for m in sq_matches:
+            queries.extend([q.strip() for q in m.split(',') if q.strip()])
+
+        if on_event:
+            on_event("node_start", f"🔍 {'수정' if is_edit else '생성'} 모드 감지")
+
+        # steps_init emit (검색 포함 여부 반영)
         slide_titles = re.findall(r'슬라이드\s*\d+\s*[:：]\s*(?:\[\w+\]\s*)?(.*?)(?:\n|$)', plan)
         slide_titles = [t.strip() for t in slide_titles if t.strip()]
-        total_slides = len(slide_titles) if slide_titles else 0
+        total = len(slide_titles) if slide_titles and not is_edit else (0 if is_edit else 1)
 
-        if retry == 0:
-            start_msg = f"✏️ {total_slides}장 슬라이드 생성 중..." if total_slides > 1 else "✏️ 슬라이드 생성 중..."
-        else:
-            start_msg = f"✏️ 재시도... ({retry}/{settings.AGENT_MAX_RETRIES})"
+        steps = [{"id": "plan", "label": "계획 수립"}]
+        if queries:
+            steps.append({"id": "search", "label": f"웹 검색 ({len(queries)}개)"})
+        if not is_edit:
+            steps.append({"id": "content", "label": "콘텐츠 기획"})
+        steps.append({"id": "design", "label": "디자인 확정"})
+        for i, t in enumerate(slide_titles[:6]):
+            steps.append({"id": f"slide-{i}", "label": t[:20] or f"슬라이드 {i+1}"})
+        if not steps[-1]["id"].startswith("slide"):
+            steps.append({"id": "slide-0", "label": "슬라이드 생성"})
+
         if on_event:
-            on_event("node_start", start_msg)
-            # 단계 목록 초기화 — 프론트 체크리스트 렌더링용
-            steps = [{"id": "plan", "label": "계획 수립"}]
-            if total_slides > 1:
-                for i, t in enumerate(slide_titles):
-                    steps.append({"id": f"slide-{i}", "label": t[:20] or f"슬라이드 {i+1}"})
-            else:
-                steps.append({"id": "slide-0", "label": "슬라이드 생성"})
             on_event("steps_init", json.dumps(steps, ensure_ascii=False))
+            on_event("step_done", "plan")
+            on_event("node_done", f"✅ {'수정' if is_edit else '생성'} 모드")
 
-        composer_system = HTML_COMPOSER_PROMPT
+        return {**state, "mode": mode, "search_queries": queries}
+
+    def search_router_node(state: AgentState) -> AgentState:
+        # 단순 라우터, 실제 분기는 conditional_edge로
+        return state
+
+    async def web_searcher_node(state: AgentState) -> AgentState:
+        from app.core.config import settings
+        if on_event:
+            on_event("node_start", f"🔍 웹 검색 중 ({len(state.get('search_queries', []))}개)...")
+        results = []
+        tavily_key = getattr(settings, "TAVILY_API_KEY", "")
+        if tavily_key:
+            try:
+                from tavily import TavilyClient
+                client = TavilyClient(api_key=tavily_key)
+                for q in state.get("search_queries", [])[:3]:
+                    resp = client.search(q, max_results=5)
+                    results.append({
+                        "query": q,
+                        "results": [
+                            {"title": r["title"], "url": r["url"], "snippet": r.get("content", "")[:300]}
+                            for r in resp.get("results", [])
+                        ],
+                    })
+            except Exception as e:
+                logger.warning("web_searcher failed: %s", e)
+        if on_event:
+            on_event("step_done", "search")
+            on_event("node_done", f"✅ {len(results)}개 검색 완료")
+        return {**state, "search_results": results}
+
+    async def content_planner_node(state: AgentState) -> AgentState:
+        if on_event:
+            on_event("node_start", "📋 콘텐츠 기획 중...")
+
+        search_ctx = ""
+        if state.get("search_results"):
+            search_ctx = "\n\nWeb Search Results:\n"
+            for sr in state["search_results"]:
+                search_ctx += f"Query: {sr['query']}\n"
+                for r in sr["results"][:3]:
+                    search_ctx += f"- {r['title']}: {r['snippet']}\n"
+
+        messages = [
+            SystemMessage(content=CONTENT_PLANNER_PROMPT),
+            HumanMessage(content=f"Command: {state['command']}\n\nPlan:\n{state.get('plan', '')}{search_ctx}"),
+        ]
+        raw = ""
+        async for chunk in llm_plain.astream(messages):
+            raw_c = chunk.content if hasattr(chunk, "content") else ""
+            if isinstance(raw_c, list):
+                token = "".join(b.get("text", "") for b in raw_c if isinstance(b, dict) and b.get("type") == "text")
+            else:
+                token = str(raw_c) if raw_c else ""
+            raw += token
+
+        parsed = _extract_json(raw)
+        slide_specs = []
+        if isinstance(parsed, dict) and "slides" in parsed:
+            slide_specs = parsed["slides"]
+
+        if on_event:
+            on_event("step_done", "content")
+            on_event("node_done", f"✅ {len(slide_specs)}장 콘텐츠 기획 완료")
+        return {**state, "slide_specs": slide_specs}
+
+    async def design_resolver_node_html(state: AgentState) -> AgentState:
+        if on_event:
+            on_event("node_start", "🎨 디자인 확정 중...")
+        messages = [
+            SystemMessage(content=DESIGN_RESOLVER_PROMPT),
+            HumanMessage(content=f"Plan:\n{state.get('plan', '')}\nMode: {state.get('mode', 'create')}"),
+        ]
+        raw = ""
+        async for chunk in llm_plain.astream(messages):
+            raw_c = chunk.content if hasattr(chunk, "content") else ""
+            if isinstance(raw_c, list):
+                token = "".join(b.get("text", "") for b in raw_c if isinstance(b, dict) and b.get("type") == "text")
+            else:
+                token = str(raw_c) if raw_c else ""
+            raw += token
+        parsed = _extract_json(raw)
+        design_tokens = parsed if isinstance(parsed, dict) and "bg" in parsed else {
+            "palette": "DARK", "bg": "#0A0F1E", "accent": "#3B82F6", "text": "#F9FAFB", "text2": "#9CA3AF",
+            "cover_title_size": 68, "slide_title_size": 44, "subtitle_size": 28, "body_size": 21,
+        }
+        if on_event:
+            on_event("step_done", "design")
+            on_event("node_done", f"✅ {design_tokens.get('palette', 'DARK')} 팔레트 확정")
+        return {**state, "design_tokens": design_tokens}
+
+    async def slide_composer_node(state: AgentState) -> dict:
+        idx = state.get("slide_index", 0)
+        spec = state.get("current_slide_spec") or (state.get("slide_specs") or [{}])[0]
+        design_tokens = state.get("design_tokens", {})
+
+        if on_event:
+            on_event("node_start", f"✏️ 슬라이드 {idx+1} 생성 중...")
+
+        is_edit = state.get("mode") == "edit"
+        format_hint = (
+            "\n\nOUTPUT: single-slide modification — preserve data-component-id values."
+            if is_edit else ""
+        )
+
+        search_ctx = ""
+        if state.get("search_results"):
+            search_ctx = "\n\nRelevant search results:\n"
+            for sr in state["search_results"]:
+                for r in sr["results"][:2]:
+                    search_ctx += f"- {r['title']}: {r['snippet']}\n"
+
+        human_text = (
+            f"Slide spec: {json.dumps(spec, ensure_ascii=False)}\n\n"
+            f"Design tokens: {json.dumps(design_tokens, ensure_ascii=False)}\n\n"
+            f"Slide index: {idx} (0-based)\n\n"
+            f"Current slide HTML (for reference/edit):\n{state.get('slide_context', '(empty)')}"
+            f"{search_ctx}{format_hint}"
+        )
+
+        composer_system = SLIDE_COMPOSER_PROMPT
         if isinstance(gen_prompt, str):
             composer_system = gen_prompt
 
-        is_edit = "[EDIT]" in plan or "[PRESENTATION]" not in plan
-        format_hint = (
-            "\n\nOUTPUT: single-slide modification — use {\"summary\":\"...\",\"html\":\"...\"} format ONLY. "
-            "Do NOT output slides array. Preserve existing data-component-id values."
-            if is_edit else
-            "\n\nOUTPUT: full presentation — use {\"summary\":\"...\",\"slides\":[...]} format."
-        )
-        human_text = (
-            f"Command: {state['command']}\n\n"
-            f"Plan:\n{plan}\n\n"
-            f"Current slide HTML:\n{state['slide_context']}"
-            f"{format_hint}"
-        )
         messages = [SystemMessage(content=composer_system), HumanMessage(content=human_text)]
 
         raw = ""
-        emitted_count = 0  # 진행상황 emit된 슬라이드 수
         try:
             async for chunk in llm.astream(messages):
                 raw_c = chunk.content if hasattr(chunk, "content") else ""
@@ -849,74 +969,122 @@ def build_agent_graph(
                     token = "".join(b.get("text", "") for b in raw_c if isinstance(b, dict) and b.get("type") == "text")
                 else:
                     token = str(raw_c) if raw_c else ""
-                if not token:
-                    continue
                 raw += token
-
-                # HTML 완성 감지: "html": 패턴 누적 수 → 슬라이드 진행상황 emit
-                # (on_token 대신 on_event로 진행상황만 전달)
-                if on_event:
-                    completed = raw.count('"html"')
-                    if completed > emitted_count:
-                        emitted_count = completed
-                        if total_slides > 1:
-                            idx = min(emitted_count, total_slides)
-                            title = slide_titles[idx - 1] if idx - 1 < len(slide_titles) else f"슬라이드 {idx}"
-                            on_event("slide_progress", f"📄 {idx}/{total_slides}  {title[:20]}")
-                            on_event("step_done", f"slide-{idx - 1}")
-        except Exception as exc:
-            logger.warning("  [html_composer] astream failed: %s", exc)
+        except Exception as e:
+            logger.warning("slide_composer[%d] failed: %s", idx, e)
 
         parsed = _extract_json(raw)
-        html_out = ""
-        html_slides_out = []
-        summary = ""
-
+        html = ""
         if isinstance(parsed, dict):
-            summary = parsed.get("summary", "")
-            if "slides" in parsed:
-                html_slides_out = [s for s in parsed["slides"] if isinstance(s, dict) and s.get("html")]
-            elif "html" in parsed:
-                html_out = parsed["html"]
+            html = parsed.get("html", "")
 
-        done_msg = f"✅ {len(html_slides_out)}장 생성 완료" if html_slides_out else "✅ 슬라이드 생성 완료"
-        logger.info("  [html_composer] html=%d chars  slides=%d", len(html_out), len(html_slides_out))
-        if on_event: on_event("node_done", done_msg)
-        return {**state, "html_output": html_out, "html_slides": html_slides_out, "result_summary": summary, "messages": []}
+        title = spec.get("title", f"슬라이드 {idx+1}")
 
-    def html_validator_node(state: AgentState) -> AgentState:
-        html = state.get("html_output", "")
+        # 완성 즉시 SSE emit (프론트 즉시 렌더링)
+        if on_event and html:
+            on_event("slide_ready", json.dumps({"index": idx, "title": title, "html": html}, ensure_ascii=False))
+            on_event("step_done", f"slide-{idx}")
+            on_event("node_done", f"✅ {title[:15]} 완성")
+
+        logger.info("  [slide_composer] idx=%d html=%d chars", idx, len(html))
+        return {"html_slides": [{"index": idx, "title": title, "html": html}]}
+
+    def html_aggregator_node(state: AgentState) -> AgentState:
+        slides = sorted(state.get("html_slides", []), key=lambda s: s.get("index", 0))
+        valid = [s for s in slides if s.get("html")]
+
+        # EDIT 모드: html_output에 단일 결과 저장
+        if state.get("mode") == "edit" and valid:
+            return {**state, "html_slides": valid, "html_output": valid[0]["html"], "result_summary": "슬라이드 수정 완료"}
+
+        summary = f"{len(valid)}장 슬라이드 생성 완료"
+        return {**state, "html_slides": valid, "result_summary": summary}
+
+    def html_validator_node_new(state: AgentState) -> AgentState:
         slides = state.get("html_slides", [])
-        valid = (bool(html) and "<div" in html) or bool(slides)
+        html_out = state.get("html_output", "")
+        valid = bool(slides) or (bool(html_out) and "<div" in html_out)
         if not valid:
-            logger.warning("  [html_validator] HTML 없음 또는 파싱 실패")
+            logger.warning("  [html_validator] 결과 없음")
         return state
 
-    def should_retry_html(state: AgentState) -> str:
+    def should_retry_html_new(state: AgentState) -> str:
         from app.core.config import settings
         retry = state.get("retry_count", 0)
-        html = state.get("html_output", "")
         slides = state.get("html_slides", [])
-        has_output = (bool(html) and "<div" in html) or bool(slides)
+        html_out = state.get("html_output", "")
+        has_output = bool(slides) or bool(html_out)
         if not has_output and retry < settings.AGENT_MAX_RETRIES:
-            logger.info("  [html_validator] HTML 없음 → 재시도 (%d/%d)", retry + 1, settings.AGENT_MAX_RETRIES)
             return "retry"
         return "done"
 
-    # ── HTML mode graph ───────────────────────────────────────────
+    # ── Send API dispatch functions ───────────────────────────────
+    def dispatch_slides(state: AgentState):
+        from langgraph.constants import Send
+        specs = state.get("slide_specs", [])
+        if not specs:
+            # content_planner 실패 시 폴백: 플랜 기반 단순 스펙 생성
+            plan = state.get("plan", "")
+            titles = re.findall(r'슬라이드\s*\d+\s*[:：]\s*(?:\[\w+\]\s*)?(.*?)(?:\n|$)', plan)
+            specs = [
+                {"title": t.strip(), "layout": "CONTENT", "key_points": [], "image_needed": False}
+                for t in titles[:6] if t.strip()
+            ]
+        if not specs:
+            specs = [{"title": "슬라이드", "layout": "COVER", "key_points": [], "image_needed": False}]
+
+        return [
+            Send("slide_composer", {
+                **state,
+                "slide_index": i,
+                "current_slide_spec": spec,
+                "html_slides": [],  # 각 Send는 독립 상태 시작
+            })
+            for i, spec in enumerate(specs)
+        ]
+
+    def should_search(state: AgentState) -> str:
+        return "search" if state.get("search_queries") else "skip"
+
+    def route_by_mode(state: AgentState) -> str:
+        return "edit" if state.get("mode") == "edit" else "create"
+
+    # ── HTML mode graph (신규 파이프라인) ─────────────────────────
     if html_mode:
         graph = StateGraph(AgentState)
         graph.add_node("planner", planner_node)
-        graph.add_node("html_composer", html_composer_node)
-        graph.add_node("html_validator", html_validator_node)
+        graph.add_node("intent_analyzer", intent_analyzer_node)
+        graph.add_node("search_router", search_router_node)
+        graph.add_node("web_searcher", web_searcher_node)
+        graph.add_node("content_planner", content_planner_node)
+        graph.add_node("design_resolver", design_resolver_node_html)
+        graph.add_node("slide_composer", slide_composer_node)
+        graph.add_node("html_aggregator", html_aggregator_node)
+        graph.add_node("html_validator", html_validator_node_new)
         graph.add_node("formatter", formatter_node)
         graph.add_node("retry_inc", increment_retry)
 
         graph.add_edge(START, "planner")
-        graph.add_edge("planner", "html_composer")
-        graph.add_edge("html_composer", "html_validator")
-        graph.add_conditional_edges("html_validator", should_retry_html, {"retry": "retry_inc", "done": "formatter"})
-        graph.add_edge("retry_inc", "html_composer")
+        graph.add_edge("planner", "intent_analyzer")
+        graph.add_conditional_edges("intent_analyzer", route_by_mode, {
+            "edit": "design_resolver",
+            "create": "search_router",
+        })
+        graph.add_conditional_edges("search_router", should_search, {
+            "search": "web_searcher",
+            "skip": "content_planner",
+        })
+        graph.add_edge("web_searcher", "content_planner")
+        graph.add_edge("content_planner", "design_resolver")
+        # Send API fan-out: design_resolver → N×slide_composer
+        graph.add_conditional_edges("design_resolver", dispatch_slides)
+        graph.add_edge("slide_composer", "html_aggregator")
+        graph.add_edge("html_aggregator", "html_validator")
+        graph.add_conditional_edges("html_validator", should_retry_html_new, {
+            "retry": "retry_inc",
+            "done": "formatter",
+        })
+        graph.add_edge("retry_inc", "slide_composer")
         graph.add_edge("formatter", END)
         return graph.compile()
 
@@ -1014,7 +1182,7 @@ async def run_agent(
     html_mode: bool = False,
 ) -> tuple[list[dict], str, str, str, list]:
     """
-    Returns: (patch_ops, agent_response_text)
+    Returns: (patch_ops, slide_context, summary, html_output, html_slides)
     """
     from app.core.config import settings
 
@@ -1088,6 +1256,11 @@ CRITICAL — SCOPE LOCKED TO CURRENT SLIDE:
             "component_specs": [],
             "html_output": "",
             "html_slides": [],
+            "slide_specs": [],
+            "slide_index": 0,
+            "current_slide_spec": {},
+            "search_queries": [],
+            "search_results": [],
         })
         patches = result.get("result_patches", [])
         summary = result.get("result_summary", "")

@@ -154,6 +154,32 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         })
       }
 
+      // slide_ready: 슬라이드 완성 즉시 UI에 반영 (옵티미스틱)
+      if (type === 'agent_node_event' && (msg.event_type as string) === 'slide_ready') {
+        try {
+          const data = JSON.parse(msg.message as string) as { index: number; title: string; html: string }
+          useSlideStore.setState((s) => {
+            if (!s.presentation) return s
+            const slides = [...s.presentation.slides]
+            const existingIdx = slides.findIndex((_, i) => i === data.index)
+            if (existingIdx >= 0) {
+              slides[existingIdx] = { ...slides[existingIdx], html_content: data.html, title: data.title || slides[existingIdx].title }
+            } else {
+              // 인덱스 위치에 삽입
+              slides.splice(data.index, 0, {
+                id: `preview-slide-${data.index}-${Date.now()}`,
+                order: data.index,
+                title: data.title,
+                html_content: data.html,
+                components: [],
+              })
+            }
+            return { presentation: { ...s.presentation, slides } }
+          })
+        } catch {}
+        return
+      }
+
       if (type === 'agent_node_event') {
         const eventType = msg.event_type as string
         const message = msg.message as string
@@ -187,35 +213,17 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           return
         }
 
-        // node_start/node_done/slide_progress → 각각 별도 로그 메시지로 누적
+        // node_start/node_done/slide_progress → currentTask만 업데이트, 채팅 버블 추가 안 함
+        // (StepsChecklist가 파이프라인 시각화 전담)
         set((s) => {
           const streamingAgent = s.agents.find((a) => a.status === 'running')
           if (!streamingAgent) return s
-
-          const updatedAgents = s.agents.map((a) =>
-            a.definitionId === streamingAgent.definitionId
-              ? { ...a, currentTask: message }
-              : a
-          )
-
-          // node_start / node_done / slide_progress 모두 새 메시지로 누적
-          const logId = `log-${eventType}-${Date.now()}`
-          const isDone = eventType === 'node_done'
-          const isProgress = eventType === 'slide_progress'
           return {
-            agents: updatedAgents,
-            chatMessages: [
-              ...s.chatMessages,
-              {
-                id: logId,
-                role: 'agent' as const,
-                content: message,
-                agentName: streamingAgent.name,
-                agentDefinitionId: streamingAgent.definitionId,
-                timestamp: new Date().toISOString(),
-                type: isDone ? 'success' as const : isProgress ? 'info' as const : 'info' as const,
-              },
-            ],
+            agents: s.agents.map((a) =>
+              a.definitionId === streamingAgent.definitionId
+                ? { ...a, currentTask: message }
+                : a
+            ),
           }
         })
       }
@@ -363,7 +371,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
 
           const cleanedMessages = s.chatMessages.filter((m) =>
             m.id !== `streaming-${doneAgent?.definitionId}` &&
-            !m.id.startsWith(`optimistic-agent-${doneAgent?.definitionId}`)
+            !m.id.startsWith(`optimistic-agent-${doneAgent?.definitionId}`) &&
+            !m.id.startsWith('log-')
           )
 
           return {

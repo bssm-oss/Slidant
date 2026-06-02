@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     AGENT_MAX_RETRIES: int = 2
     AGENT_MAX_TOKENS: int = 4096
 
+    TAVILY_API_KEY: str = ""
+
     @property
     def is_production(self) -> bool:
         return self.APP_ENV == "production"

@@ -4,34 +4,63 @@ import { useEditorStore } from '../store/editorStore'
 import { useAgentStore, type AgentStep } from '../store/agentStore'
 import { useSlideStore } from '../store/slideStore'
 import { cn } from '@/shared/lib/utils'
-import { Maximize2, Send, Loader2, Settings, ChevronDown, Zap, CheckCircle2, Circle, Loader } from 'lucide-react'
+import { Maximize2, Send, Loader2, Settings, ChevronDown, Zap, GitBranch } from 'lucide-react'
 import type { Agent, ChatMessage } from '@/shared/types'
 import AgentManagerPanel from './AgentManagerPanel'
 import ProposalPanel from './ProposalPanel'
+import { fetchPipelines, type Pipeline } from '@/shared/lib/pipelineApi'
 
 // ── 단계별 체크리스트 ─────────────────────────────────────────────────────────
 function StepsChecklist({ steps }: { steps: AgentStep[] }) {
   return (
-    <div className="mx-3 my-2 rounded-[8px] border border-[var(--border)] bg-[var(--bg-muted)] px-3 py-2.5 flex flex-col gap-1.5">
-      {steps.map((step) => (
-        <div key={step.id} className="flex items-center gap-2">
-          {step.status === 'done' ? (
-            <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
-          ) : step.status === 'active' ? (
-            <Loader size={14} className="text-[var(--accent)] shrink-0 animate-spin" />
-          ) : (
-            <Circle size={14} className="text-[var(--text-disabled)] shrink-0" />
-          )}
-          <span className={cn(
-            'text-[12px]',
-            step.status === 'done' && 'text-[var(--text-muted)] line-through',
-            step.status === 'active' && 'text-[var(--text)] font-medium',
-            step.status === 'pending' && 'text-[var(--text-disabled)]',
-          )}>
-            {step.label}
-          </span>
-        </div>
-      ))}
+    <div className="mx-3 my-2 px-3 py-2.5">
+      {steps.map((step, i) => {
+        const isLast = i === steps.length - 1
+        const isDone = step.status === 'done'
+        const isActive = step.status === 'active'
+        const isPending = step.status === 'pending'
+        return (
+          <div key={step.id} className="flex gap-3">
+            {/* 노드 + 연결선 */}
+            <div className="flex flex-col items-center shrink-0">
+              {/* 노드 원 */}
+              <div className={cn(
+                'w-[18px] h-[18px] rounded-full flex items-center justify-center shrink-0 transition-all duration-300',
+                isDone && 'bg-emerald-500',
+                isActive && 'bg-[var(--accent)] ring-4 ring-[var(--accent)] ring-opacity-20',
+                isPending && 'border-2 border-[var(--border)] bg-[var(--bg-muted)]',
+              )}>
+                {isDone && (
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                    <path d="M2 5l2.5 2.5L8 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                )}
+                {isActive && (
+                  <div className="w-[6px] h-[6px] rounded-full bg-white animate-pulse" />
+                )}
+              </div>
+              {/* 연결선 */}
+              {!isLast && (
+                <div className={cn(
+                  'w-px flex-1 my-0.5 min-h-[12px] transition-all duration-500',
+                  isDone ? 'bg-emerald-400' : 'bg-[var(--border)]',
+                )} />
+              )}
+            </div>
+
+            {/* 레이블 */}
+            <div className={cn(
+              'pb-3 pt-0.5 text-[12px] leading-[18px] transition-all duration-300',
+              isLast && 'pb-0',
+              isDone && 'text-[var(--text-muted)]',
+              isActive && 'text-[var(--text)] font-semibold',
+              isPending && 'text-[var(--text-disabled)]',
+            )}>
+              {step.label}
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -126,44 +155,104 @@ function ChatBubble({ msg }: { msg: ChatMessage }) {
 }
 
 // ── Agent selector pill ───────────────────────────────────────────────────────
-function AgentSelector({ agents, selectedId, onSelect }: {
+const DEFAULT_PIPELINE_ID = '__default__'
+
+function AgentSelector({ agents, onSelect, projectId }: {
   agents: Agent[]
-  selectedId: string | null
-  onSelect: (id: string) => void
+  selectedId?: string | null
+  onSelect: (id: string, type: 'agent' | 'pipeline', pipelineId?: string) => void
+  projectId?: string
 }) {
   const [open, setOpen] = useState(false)
-  const selected = agents.find((a) => a.definitionId === selectedId) ?? agents[0]
+  const [pipelines, setPipelines] = useState<Pipeline[]>([])
+  const [selectedPipelineId, setSelectedPipelineId] = useState<string>(DEFAULT_PIPELINE_ID)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!projectId || !open) return
+    fetchPipelines(projectId).then(setPipelines).catch(() => {})
+  }, [projectId, open])
+
+  useEffect(() => {
+    if (!open) return
+    const handle = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [open])
 
   if (agents.length === 0) return null
 
+  const customPipeline = pipelines.find((p) => p.id === selectedPipelineId)
+  const displayName = selectedPipelineId === DEFAULT_PIPELINE_ID
+    ? '기본 파이프라인'
+    : (customPipeline?.name ?? '기본 파이프라인')
+
   return (
-    <div className="relative">
+    <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-2 px-3 py-2 rounded-[10px] bg-[var(--accent-subtle)] text-[var(--accent)] text-[13px] font-semibold hover:bg-purple-100 transition-colors"
       >
-        <span className="w-2 h-2 rounded-full bg-[var(--accent)] shrink-0" />
-        <span className="max-w-[120px] truncate">{selected?.name ?? '에이전트'}</span>
+        <GitBranch size={13} className="shrink-0" />
+        <span className="max-w-[130px] truncate">{displayName}</span>
         <ChevronDown size={12} />
       </button>
       {open && (
-        <div className="absolute left-0 top-full mt-1 z-30 bg-white border border-[var(--border)] rounded-[10px] shadow-lg py-1 min-w-[180px]">
-          {agents.map((a) => (
+        <div className="absolute left-0 top-full mt-1 z-30 bg-white border border-[var(--border)] rounded-[10px] shadow-lg min-w-[220px] overflow-hidden">
+          <div className="px-3 pt-2.5 pb-1">
+            <span className="text-[10px] font-semibold text-[var(--text-disabled)] uppercase tracking-wide">파이프라인</span>
+          </div>
+
+          {/* 기본 파이프라인 */}
+          <button
+            onClick={() => {
+              setSelectedPipelineId(DEFAULT_PIPELINE_ID)
+              const firstAgent = agents[0]
+              if (firstAgent) onSelect(firstAgent.definitionId ?? firstAgent.id, 'agent')
+              setOpen(false)
+            }}
+            className={cn(
+              'w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] text-left transition-colors hover:bg-[var(--bg-muted)]',
+              selectedPipelineId === DEFAULT_PIPELINE_ID && 'text-[var(--accent)] font-semibold bg-[var(--accent-subtle)]',
+            )}
+          >
+            <span className={cn(
+              'w-2 h-2 rounded-full shrink-0',
+              selectedPipelineId === DEFAULT_PIPELINE_ID ? 'bg-[var(--accent)]' : 'bg-[var(--border)]',
+            )} />
+            <div className="flex-1 min-w-0">
+              <span className="block">기본 파이프라인</span>
+              <span className="text-[10px] text-[var(--text-disabled)] font-normal">계획 → 디자인 → 슬라이드 생성</span>
+            </div>
+          </button>
+
+          {/* 사용자 정의 파이프라인 */}
+          {pipelines.map((p) => (
             <button
-              key={a.id}
-              onClick={() => { onSelect(a.definitionId ?? a.id); setOpen(false) }}
+              key={p.id}
+              onClick={() => {
+                setSelectedPipelineId(p.id)
+                onSelect(p.id, 'pipeline', p.id)
+                setOpen(false)
+              }}
               className={cn(
                 'w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] text-left transition-colors hover:bg-[var(--bg-muted)]',
-                a.definitionId === selectedId && 'text-[var(--accent)] font-semibold',
+                selectedPipelineId === p.id && 'text-[var(--accent)] font-semibold bg-[var(--accent-subtle)]',
               )}
             >
               <span className={cn(
                 'w-2 h-2 rounded-full shrink-0',
-                a.definitionId === selectedId ? 'bg-[var(--accent)]' : 'bg-[var(--border)]',
+                selectedPipelineId === p.id ? 'bg-[var(--accent)]' : 'bg-[var(--border)]',
               )} />
-              {a.name}
+              <div className="flex-1 min-w-0">
+                <span className="block truncate">{p.name}</span>
+                <span className="text-[10px] text-[var(--text-disabled)] font-normal">{p.steps.length}단계 커스텀</span>
+              </div>
             </button>
           ))}
+          <div className="h-1.5" />
         </div>
       )}
     </div>
@@ -252,7 +341,8 @@ export default function RightPanel() {
           <AgentSelector
             agents={agents}
             selectedId={activeId}
-            onSelect={handleSelectAgent}
+            onSelect={(id, _type) => handleSelectAgent(id)}
+            projectId={presentation?.id}
           />
         ) : (
           <span className="text-[12px] text-[var(--text-disabled)]">에이전트 로딩 중...</span>
@@ -294,11 +384,14 @@ export default function RightPanel() {
         </button>
       )}
 
-      {/* 단계별 진행 체크리스트 */}
-      {agentSteps.length > 0 && <StepsChecklist steps={agentSteps} />}
-
       {/* Chat messages */}
       <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2.5 min-h-0">
+        {/* 파이프라인 진행 시각화 — 실행 중일 때 채팅 최상단 고정 */}
+        {agentSteps.length > 0 && (
+          <div className="sticky top-0 z-10 -mx-4 px-1 pt-1 pb-2 bg-[var(--bg-muted)] border-b border-[var(--border)] mb-1">
+            <StepsChecklist steps={agentSteps} />
+          </div>
+        )}
         {msgs.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-center">
             <div className="w-10 h-10 rounded-full bg-[var(--accent-subtle)] flex items-center justify-center">
