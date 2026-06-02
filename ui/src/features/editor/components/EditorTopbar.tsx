@@ -1,8 +1,5 @@
 import { useRef, useState } from 'react'
 import { useEditorStore } from '../store/editorStore'
-import { useToastStore } from '@/shared/components/ui/Toast'
-import { Button } from '@/shared/components/ui'
-import { Save } from 'lucide-react'
 import ThemePanel from '@/features/presentation/components/ThemePanel'
 import type { AgentStatus } from '@/shared/types'
 
@@ -16,7 +13,6 @@ const statusMap: Record<AgentStatus, { color: string; label: string }> = {
 
 export default function EditorTopbar() {
   const { presentation, overallStatus, saveTitle, isTitleEditing, setTitleEditing } = useEditorStore()
-  const toast = useToastStore((s) => s.push)
   const inputRef = useRef<HTMLInputElement>(null)
   const [showTheme, setShowTheme] = useState(false)
 
@@ -30,14 +26,10 @@ export default function EditorTopbar() {
   const handleTitleBlur = async (e: React.FocusEvent<HTMLInputElement>) => {
     const val = e.target.value.trim()
     if (val) {
-      try { await saveTitle(val); toast('저장됨', 'success') }
-      catch { toast('제목 저장 실패', 'error') }
+      try { await saveTitle(val) }
+      catch {}
     }
     setTitleEditing(false)
-  }
-
-  const handleSave = () => {
-    toast('저장되었습니다', 'success')
   }
 
   return (
@@ -81,16 +73,15 @@ export default function EditorTopbar() {
         </div>
       </div>
 
-      {/* Right: Theme + Save */}
-      <div className="flex items-center gap-2 shrink-0">
-        {/* Theme button + panel */}
+      {/* Right: Theme (icon only) */}
+      <div className="flex items-center shrink-0">
         <div className="relative">
           <button
             onClick={() => setShowTheme((v) => !v)}
-            className="h-8 px-3 text-[12px] font-medium rounded-[8px] hover:bg-[var(--bg-muted)] transition-colors flex items-center gap-1.5"
+            className="w-8 h-8 flex items-center justify-center rounded-[8px] text-[var(--text-disabled)] hover:text-[var(--text-muted)] hover:bg-[var(--bg-muted)] transition-colors text-[16px]"
             title="디자인 테마"
           >
-            🎨 테마
+            🎨
           </button>
           {showTheme && (
             <div className="absolute top-full right-0 mt-1 z-50 w-64 bg-white rounded-[12px] border border-[var(--border)] shadow-xl">
@@ -98,16 +89,6 @@ export default function EditorTopbar() {
             </div>
           )}
         </div>
-
-        {/* Save button */}
-        <Button
-          variant="primary"
-          onClick={handleSave}
-          className="h-8 px-4 text-[12px] leading-none"
-        >
-          <Save size={13} />
-          저장
-        </Button>
       </div>
     </div>
   )
