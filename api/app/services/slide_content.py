@@ -72,7 +72,11 @@ def remove_component(slide: Slide, component_id: str) -> bool:
     return True
 
 
-def apply_patches(slide: Slide, ops: list[dict]) -> None:
+def apply_patches(slide, ops: list[dict]) -> None:
+    """RFC 6902 ops를 slide.content에 in-place 적용.
+
+    slide: .content 리스트 속성을 가진 객체 (Slide 모델 또는 duck-typed object).
+    """
     content = list(slide.content or [])
     comp_map: dict[str, dict] = {c["id"]: dict(c) for c in content}
     order_counter = max((c.get("order", 0) for c in content), default=-1) + 1
