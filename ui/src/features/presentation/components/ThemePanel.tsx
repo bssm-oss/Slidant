@@ -11,7 +11,7 @@ const PRESETS: { name: string; theme: PresentationTheme }[] = [
   { name: 'SLATE', theme: { palette: 'SLATE', bg: '#1E293B', accent: '#F1F5F9', text: '#F8FAFC', text2: '#94A3B8', font: 'Pretendard' } },
 ]
 
-export default function ThemePanel({ onClose }: { onClose: () => void }) {
+export default function ThemePanel({ onClose: _onClose }: { onClose: () => void }) {
   const { presentation, loadPresentation } = useSlideStore()
   const [saving, setSaving] = useState(false)
   const current = presentation?.theme

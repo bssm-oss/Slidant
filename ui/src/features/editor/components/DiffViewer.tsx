@@ -114,7 +114,7 @@ function applyPatchPreview(
   current: Record<string, unknown>[],
   patches: JsonPatchOp[]
 ): Record<string, unknown>[] {
-  const comps = current.map((c) => ({ ...c, properties: { ...(c.properties as object) } }))
+  const comps: Record<string, unknown>[] = current.map((c) => ({ ...c, properties: { ...(c.properties as Record<string, unknown>) } }))
   const compMap: Record<string, Record<string, unknown>> = {}
   comps.forEach((c) => { compMap[c.id as string] = c })
   let orderCounter = Math.max(...comps.map((c) => (c.order as number) ?? 0), -1) + 1

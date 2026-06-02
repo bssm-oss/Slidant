@@ -244,7 +244,7 @@ export default function AgentsPage() {
               <div className="max-w-2xl">
                 <PipelineBuilder
                   agents={allAgents}
-                  onRun={async (pipelineName, steps, vars) => {
+                  onRun={async (_pipelineName, steps, vars) => {
                     for (const step of steps) {
                       const command = Object.entries(vars).reduce(
                         (cmd, [k, v]) => cmd.replace(`{${k}}`, v),
