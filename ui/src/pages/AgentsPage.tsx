@@ -7,9 +7,6 @@ import { cn } from '@/shared/lib/utils'
 import { Bot, Plus, Settings2, Trash2, Zap } from 'lucide-react'
 import { fetchAgents, createAgent, deleteAgent, type AgentDefinition } from '@/shared/lib/agentApi'
 import { isLoggedIn } from '@/shared/lib/auth'
-import PipelineBuilder from '@/features/pipeline/components/PipelineBuilder'
-import { createPipeline } from '@/shared/lib/pipelineApi'
-
 type AgentRole = 'content' | 'design' | 'layout' | 'custom'
 
 const roleConfig: Record<string, { label: string; color: 'violet' | 'sky' | 'mint' | 'pink' | 'orange' }> = {
@@ -64,7 +61,7 @@ function AgentCard({ agent, onDelete }: { agent: AgentDefinition; onDelete?: () 
 export default function AgentsPage() {
   const toast = useToastStore((s) => s.push)
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState<'agents' | 'pipelines'>('agents')
+  const [activeTab] = useState<'agents'>('agents')
   const [systemAgents, setSystemAgents] = useState<AgentDefinition[]>([])
   const [customAgents, setCustomAgents] = useState<AgentDefinition[]>([])
   const [loading, setLoading] = useState(true)
@@ -117,8 +114,6 @@ export default function AgentsPage() {
     }
   }
 
-  const allAgents = [...systemAgents, ...customAgents]
-
   return (
     <DashboardLayout>
       <div className="flex-1 overflow-y-auto">
@@ -126,24 +121,6 @@ export default function AgentsPage() {
           <div className="flex items-center justify-center h-64"><Spinner size="lg" /></div>
         ) : (
           <div className="px-10 py-8 flex flex-col gap-10">
-
-            {/* 탭 바 */}
-            <div className="flex w-fit items-center gap-1.5 rounded-[10px] border border-[var(--border)] bg-[var(--bg-muted)] p-1 -mb-4">
-              {(['agents', 'pipelines'] as const).map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={cn(
-                    'min-w-[104px] rounded-[8px] px-4 py-2.5 text-[13px] font-semibold transition-colors',
-                    activeTab === tab
-                      ? 'bg-white text-[var(--accent-text)] shadow-sm'
-                      : 'text-[var(--text-muted)] hover:bg-white/70 hover:text-[var(--text)]',
-                  )}
-                >
-                  {tab === 'agents' ? '에이전트' : '파이프라인'}
-                </button>
-              ))}
-            </div>
 
             {activeTab === 'agents' && (
               <>
@@ -238,33 +215,6 @@ export default function AgentsPage() {
                   )}
                 </section>
               </>
-            )}
-
-            {activeTab === 'pipelines' && (
-              <div className="max-w-2xl">
-                <PipelineBuilder
-                  agents={allAgents}
-                  onRun={async (_pipelineName, steps, vars) => {
-                    for (const step of steps) {
-                      const command = Object.entries(vars).reduce(
-                        (cmd, [k, v]) => cmd.replace(`{${k}}`, v),
-                        step.command_template,
-                      )
-                      // TODO: integrate with agentStore.sendMessage
-                      console.log('Pipeline step:', step.step_order, command)
-                      await new Promise((r) => setTimeout(r, 500))
-                    }
-                  }}
-                  onSave={async (pipelineName, steps) => {
-                    const projectId = window.location.pathname.split('/').find(
-                      (_, i, arr) => arr[i - 1] === 'projects',
-                    ) ?? ''
-                    if (projectId) {
-                      await createPipeline(projectId, pipelineName, steps)
-                    }
-                  }}
-                />
-              </div>
             )}
 
           </div>

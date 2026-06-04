@@ -2,7 +2,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import AsyncSessionLocal
 from app.repositories.agent import AgentDefinitionRepository, AgentRunRepository, LlmLogRepository
-from app.repositories.agent_pipeline import AgentPipelineRepository, PipelineStepRepository
 from app.repositories.agent_proposal import AgentProposalRepository
 from app.repositories.api_key import ApiKeyRepository, ApiKeyUsageLogRepository
 from app.repositories.chat import ChatMessageRepository
@@ -33,9 +32,6 @@ class UnitOfWork:
     chat_sessions: ChatSessionRepository
     chat_messages: ChatMessageRepository
     versions: VersionRepository
-    pipelines: AgentPipelineRepository
-    pipeline_steps: PipelineStepRepository
-
     async def __aenter__(self) -> "UnitOfWork":
         self.session = AsyncSessionLocal()
         self.users = UserRepository(self.session)
@@ -52,8 +48,6 @@ class UnitOfWork:
         self.chat_sessions = ChatSessionRepository(self.session)
         self.chat_messages = ChatMessageRepository(self.session)
         self.versions = VersionRepository(self.session)
-        self.pipelines = AgentPipelineRepository(self.session)
-        self.pipeline_steps = PipelineStepRepository(self.session)
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
