@@ -152,12 +152,32 @@ def make_ops_dispatcher(ctx: NodeContext):
     def ops_dispatcher_node(state: AgentState) -> AgentState:
         queue = list(state.get("ops_queue", []))
         if not queue:
-            return {**state, "current_op": {}}
+            return {**state, "current_op": {}, "html_slides": []}
 
         op = queue.pop(0)
         op_type = op.get("type", "create")
         slide_idx = op.get("slide_index", 0)
 
+        # create: 연속된 create op 전부 꺼내서 slide_specs로 묶어 병렬 Send
+        if op_type == "create":
+            create_ops = [op]
+            while queue and queue[0].get("type") == "create":
+                create_ops.append(queue.pop(0))
+            slide_specs = [
+                co.get("spec", {"title": f"슬라이드 {i+1}", "layout": "CONTENT", "key_points": []})
+                for i, co in enumerate(create_ops)
+            ]
+            logger.info("[ops_dispatcher] create batch=%d queue_left=%d", len(create_ops), len(queue))
+            return {
+                **state,
+                "ops_queue": queue,
+                "current_op": op,
+                "slide_specs": slide_specs,
+                "mode": "create",
+                "html_slides": [],
+            }
+
+        # edit/delete/component: 단일 op 처리, 타겟 슬라이드 컨텍스트 설정
         all_slides = state.get("all_slides_context", [])
         target = next(
             (s for s in all_slides if s.get("order") == slide_idx),
@@ -165,7 +185,7 @@ def make_ops_dispatcher(ctx: NodeContext):
         )
         slide_ctx = target.get("html_content", "") or state.get("slide_context", "")
 
-        if ctx.on_event and op_type != "create":
+        if ctx.on_event:
             ctx.on_event("node_start", f"📌 슬라이드 {slide_idx+1} 타겟팅...")
 
         logger.info("[ops_dispatcher] op=%s slide_idx=%d queue_left=%d", op_type, slide_idx, len(queue))
@@ -175,6 +195,7 @@ def make_ops_dispatcher(ctx: NodeContext):
             "current_op": op,
             "slide_context": slide_ctx,
             "mode": op_type,
+            "html_slides": [],
         }
     return ops_dispatcher_node
 
