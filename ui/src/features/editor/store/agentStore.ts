@@ -232,6 +232,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       if (type === 'agent_started') {
         const role = (msg.role as string) ?? 'content'
         const agentName = (msg.agent_name as string) ?? `${role.charAt(0).toUpperCase()}${role.slice(1)}Agent`
+        const isResumed = !!(msg.resumed)
         set((s) => {
           const runningAgent = s.agents.find((a) => a.name === agentName)
           const newRunningIds = new Set(s.runningAgentIds)
@@ -241,7 +242,12 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             runningAgentIds: newRunningIds,
             agents: s.agents.map((a) =>
               a.name === agentName
-                ? { ...a, status: 'running', currentTask: msg.command as string, taskProgress: 0 }
+                ? {
+                    ...a,
+                    status: 'running',
+                    currentTask: isResumed ? '실행 중 (복구됨)...' : (msg.command as string),
+                    taskProgress: 0,
+                  }
                 : a,
             ),
           }

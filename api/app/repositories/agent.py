@@ -49,6 +49,16 @@ class AgentDefinitionRepository(BaseRepository[AgentDefinition]):
 class AgentRunRepository(BaseRepository[AgentRun]):
     model = AgentRun
 
+    async def list_running_by_project(self, project_id: UUID) -> list[AgentRun]:
+        from uuid import UUID as _UUID
+        result = await self.session.execute(
+            select(AgentRun)
+            .where(AgentRun.project_id == _UUID(str(project_id)),
+                   AgentRun.status == "running")
+            .order_by(AgentRun.started_at.desc())
+        )
+        return list(result.scalars().all())
+
     async def list_by_project(self, project_id: UUID, limit: int = 50) -> list[AgentRun]:
         result = await self.session.execute(
             select(AgentRun)

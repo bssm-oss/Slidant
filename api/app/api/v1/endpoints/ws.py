@@ -167,6 +167,27 @@ async def ws_endpoint(
     full_upd = crdt_svc.make_full_update(project_id)
     await manager._safe_send_bytes(websocket, full_upd)
 
+    # 새로고침 복구: 실행 중인 agent run 있으면 agent_started 재전송
+    try:
+        async with AsyncSessionLocal() as session:
+            from app.repositories.agent import AgentRunRepository, AgentDefinitionRepository
+            run_repo = AgentRunRepository(session)
+            def_repo = AgentDefinitionRepository(session)
+            running_runs = await run_repo.list_running_by_project(project_id)
+            for run in running_runs:
+                agent_def = await def_repo.get(run.agent_definition_id)
+                agent_name = agent_def.name if agent_def else "Agent"
+                await manager.send_json(websocket, {
+                    "type": "agent_started",
+                    "agent_run_id": str(run.id),
+                    "agent_name": agent_name,
+                    "role": agent_def.role if agent_def else "content",
+                    "command": "",
+                    "resumed": True,  # 새로고침 복구임을 표시
+                })
+    except Exception as e:
+        logger.warning("ws_resume_check failed: %s", e)
+
     try:
         while True:
             msg = await websocket.receive()
