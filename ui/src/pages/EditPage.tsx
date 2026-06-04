@@ -3,7 +3,9 @@ import { useParams } from 'react-router-dom'
 import { useEditorStore } from '@/features/editor/store/editorStore'
 import { useSlideStore } from '@/features/editor/store/slideStore'
 import { useSessionStore } from '@/features/editor/store/sessionStore'
-import { sseClient } from '@/shared/lib/sseClient'
+import { useAgentStore } from '@/features/editor/store/agentStore'
+import { wsClient } from '@/shared/lib/wsClient'
+import { crdtStore } from '@/shared/lib/crdtStore'
 import { AppShell } from '@/shared/components/layout'
 import EditorTopbar from '@/features/editor/components/EditorTopbar'
 import SlideListPanel from '@/features/editor/components/SlideListPanel'
@@ -11,6 +13,7 @@ import SlideCanvas from '@/features/editor/components/SlideCanvas'
 import RightPanel from '@/features/editor/components/RightPanel'
 import PresentationMode from '@/features/editor/components/PresentationMode'
 import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-react'
+import { fetchSlideHistory, restoreFromHistory } from '@/shared/lib/projectApi'
 
 export default function EditPage() {
   const { id } = useParams<{ id: string }>()
@@ -19,21 +22,40 @@ export default function EditPage() {
 
   useEffect(() => {
     if (!id) return
+
+    const initialPrompt = localStorage.getItem(`slidant_initial_prompt_${id}`)
+    if (initialPrompt) localStorage.removeItem(`slidant_initial_prompt_${id}`)
+
     ;(async () => {
-      loadPresentation(id)
-      loadAgentLogs(id)
-      loadAgents(id)
-      const { loadSessions, createSession } = useSessionStore.getState()
-      await loadSessions(id)
-      if (useSessionStore.getState().sessions.length === 0) {
-        await createSession(id, '기본 세션')
+      // 병렬 로드 후 순서 보장
+      await Promise.all([
+        loadPresentation(id),
+        loadAgents(id),
+        loadAgentLogs(id),
+        (async () => {
+          const { loadSessions, createSession } = useSessionStore.getState()
+          await loadSessions(id)
+          if (useSessionStore.getState().sessions.length === 0) {
+            await createSession(id, '기본 세션')
+          }
+        })(),
+      ])
+      await loadChatHistory(id)
+
+      // 모든 초기 데이터 로드 완료 후 초기 프롬프트 전송
+      if (initialPrompt) {
+        const { sendMessage, agents } = useAgentStore.getState()
+        const { presentation } = useSlideStore.getState()
+        if (agents.length && presentation?.slides.length) {
+          sendMessage(initialPrompt).catch(() => {})
+        }
       }
-      loadChatHistory(id)
     })()
+
     const unsubscribe = connectWs(id)
     return () => {
       unsubscribe()
-      sseClient.disconnect()
+      wsClient.disconnect()
     }
   }, [id])
 
@@ -75,11 +97,68 @@ export default function EditPage() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
 
+  // presence: 슬라이드 이동 시 전송
+  useEffect(() => {
+    crdtStore.updatePresence(currentSlideIndex)
+  }, [currentSlideIndex])
+
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
   const [presenting, setPresenting] = useState(false)
+  // historyOffset: 0 = 현재, 1 = 1단계 전, ... (undo 할수록 증가)
+  const [historyOffset, setHistoryOffset] = useState(0)
 
   const handlePresent = () => setPresenting(true)
+
+  const handleUndo = async () => {
+    const slide = presentation?.slides[currentSlideIndex]
+    if (!id || !slide) return
+    try {
+      const histories = await fetchSlideHistory(id, slide.id)
+      const target = histories[historyOffset]
+      if (!target) return
+      await restoreFromHistory(id, slide.id, target.id)
+      setHistoryOffset((o) => o + 1)
+      await useSlideStore.getState().loadPresentation(id)
+    } catch {
+      // silent fail — history might be empty
+    }
+  }
+
+  const handleRedo = async () => {
+    if (historyOffset <= 0) return
+    const slide = presentation?.slides[currentSlideIndex]
+    if (!id || !slide) return
+    try {
+      const histories = await fetchSlideHistory(id, slide.id)
+      const newOffset = historyOffset - 2
+      const target = newOffset >= 0 ? histories[newOffset] : undefined
+      if (target) {
+        await restoreFromHistory(id, slide.id, target.id)
+      }
+      setHistoryOffset((o) => Math.max(0, o - 1))
+      await useSlideStore.getState().loadPresentation(id)
+    } catch {
+      // silent fail
+    }
+  }
+
+  const handleShare = async () => {
+    if (!id) return
+    try {
+      const token = localStorage.getItem('access_token')
+      const res = await fetch(`/api/v1/projects/${id}/share`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
+      const url = `${window.location.origin}/share/${data.share_token}`
+      await navigator.clipboard.writeText(url)
+      alert('공유 링크가 복사되었습니다!')
+    } catch {
+      alert('공유 링크 생성 실패')
+    }
+  }
 
   const handleExport = () => {
     const exportSlides = presentation?.slides ?? []
@@ -111,7 +190,15 @@ ${exportSlides.map(s => s.html_content ? `<div class="slide-page">${s.html_conte
         />
       )}
       <div className="flex flex-col h-screen overflow-hidden">
-        <EditorTopbar onPresent={handlePresent} onExport={handleExport} />
+        <EditorTopbar
+          onPresent={handlePresent}
+          onExport={handleExport}
+          onShare={handleShare}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          canUndo={true}
+          canRedo={historyOffset > 0}
+        />
         <div className="flex flex-1 overflow-hidden relative">
           {/* 좌측 슬라이드 패널 */}
           <div className={`transition-all duration-200 shrink-0 ${leftOpen ? 'w-52' : 'w-0'} overflow-hidden`}>
