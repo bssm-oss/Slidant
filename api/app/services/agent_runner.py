@@ -1478,7 +1478,6 @@ def build_agent_graph(
             if on_event: on_event("node_done", "✅ 계획 완료")
             return {**state, "plan": raw, "mode": "create", "design_tokens": {}, "slide_specs": [], "search_queries": [], "result_summary": ""}
 
-        mode = parsed.get("mode", "create")
         design_tokens = parsed.get("design_tokens", {})
         if not design_tokens or "bg" not in design_tokens:
             design_tokens = {
@@ -1486,19 +1485,49 @@ def build_agent_graph(
                 "text": "#F9FAFB", "text2": "#9CA3AF",
                 "cover_title_size": 68, "slide_title_size": 44, "subtitle_size": 28, "body_size": 21,
             }
-        slide_specs = parsed.get("slides", [])
         search_queries = [q for q in parsed.get("search_queries", []) if isinstance(q, str) and q.strip()]
         summary = parsed.get("summary", "")
+
+        # operations 파싱 (신규) vs 레거시 slides 배열
+        operations = parsed.get("operations", [])
+        slide_specs = []
+        mode = "create"
+
+        if operations:
+            # 신규: operations 배열 → ops_queue + mode 결정
+            ops_queue = []
+            for op in operations:
+                op_type = op.get("type", "create")
+                ops_queue.append(op)
+            # 대표 mode: 첫 번째 op의 type
+            mode = operations[0].get("type", "create") if operations else "create"
+        else:
+            # 레거시: slides 배열 → 단일 mode
+            ops_queue = []
+            slide_specs = parsed.get("slides", [])
+            mode = parsed.get("mode", "create")
 
         # steps_init emit
         if on_event:
             steps = [{"id": "plan", "label": "계획 수립"}]
             if search_queries:
                 steps.append({"id": "search", "label": f"웹 검색 ({len(search_queries)}개)"})
-            for i, s in enumerate(slide_specs[:6]):
-                steps.append({"id": f"slide-{i}", "label": (s.get("title", "") or f"슬라이드 {i+1}")[:20]})
-            if not any(step["id"].startswith("slide") for step in steps):
-                steps.append({"id": "slide-0", "label": "슬라이드 생성"})
+            if ops_queue:
+                for i, op in enumerate(ops_queue):
+                    t = op.get("type", "")
+                    label = {
+                        "create": f"슬라이드 생성",
+                        "edit": f"슬라이드 {op.get('slide_index',0)+1} 수정",
+                        "component_edit": f"컴포넌트 수정 ({op.get('component_id','')})",
+                        "component_delete": f"컴포넌트 삭제 ({op.get('component_id','')})",
+                        "delete": f"슬라이드 {op.get('slide_index',0)+1} 삭제",
+                    }.get(t, f"작업 {i+1}")
+                    steps.append({"id": f"op-{i}", "label": label})
+            else:
+                for i, s in enumerate(slide_specs[:6]):
+                    steps.append({"id": f"slide-{i}", "label": (s.get("title", "") or f"슬라이드 {i+1}")[:20]})
+                if not any(step["id"].startswith("slide") for step in steps):
+                    steps.append({"id": "slide-0", "label": "슬라이드 생성"})
             on_event("steps_init", json.dumps(steps, ensure_ascii=False))
             on_event("step_done", "plan")
             on_event("node_done", "✅ 계획 완료")
@@ -1512,10 +1541,119 @@ def build_agent_graph(
             "mode": mode,
             "design_tokens": design_tokens,
             "slide_specs": slide_specs,
+            "ops_queue": ops_queue,
             "search_queries": search_queries,
             "result_summary": summary,
             "messages": [],
         }
+
+    # ── ops_dispatcher: 큐에서 op 꺼내 슬라이드 컨텍스트 설정 ─────────────────
+    def ops_dispatcher_node(state: AgentState) -> AgentState:
+        queue = list(state.get("ops_queue", []))
+        if not queue:
+            return {**state, "current_op": {}}
+
+        op = queue.pop(0)
+        op_type = op.get("type", "create")
+        slide_idx = op.get("slide_index", 0)
+
+        # 타겟 슬라이드 HTML 로드 (멀티 슬라이드 타겟팅 핵심)
+        all_slides = state.get("all_slides_context", [])
+        target = next(
+            (s for s in all_slides if s.get("order") == slide_idx),
+            all_slides[0] if all_slides else {},
+        )
+        slide_ctx = target.get("html_content", "") or state.get("slide_context", "")
+
+        if on_event and op_type != "create":
+            on_event("node_start", f"📌 슬라이드 {slide_idx+1} 타겟팅...")
+
+        logger.info("[ops_dispatcher] op=%s slide_idx=%d queue_left=%d", op_type, slide_idx, len(queue))
+        return {
+            **state,
+            "ops_queue": queue,
+            "current_op": op,
+            "slide_context": slide_ctx,
+            "mode": op_type,
+        }
+
+    def route_from_dispatcher(state: AgentState) -> str:
+        op = state.get("current_op", {})
+        if not op:
+            return "review"
+        return op.get("type", "create")  # edit | component_edit | component_delete | delete | create
+
+    # ── self_reviewer: LLM 자기 검토 ─────────────────────────────────────────
+    async def self_reviewer_node(state: AgentState) -> AgentState:
+        if on_event:
+            on_event("node_start", "🔍 결과 검토 중...")
+
+        ops_results = state.get("ops_results", [])
+        if not ops_results:
+            # 결과 없음 → 그냥 통과
+            if on_event: on_event("node_done", "✅ 검토 완료")
+            return {**state, "review_ok": True}
+
+        human_text = (
+            f"원래 명령: {state.get('command', '')}\n\n"
+            f"실행된 작업:\n" +
+            "\n".join(
+                f"- {r.get('type','?')}: {r.get('summary', r.get('component_id', ''))}"
+                for r in ops_results
+            ) +
+            "\n\n명령이 완전히 수행됐는지 평가하라. "
+            "문제 없으면 {\"ok\":true,\"summary\":\"완료 요약\"}. "
+            "문제 있으면 {\"ok\":false,\"corrections\":[{\"type\":\"edit\",\"slide_index\":0,\"instruction\":\"...\"}],\"summary\":\"문제 설명\"}."
+        )
+
+        messages = [
+            SystemMessage(content="You are a self-critic for slide editing. Output JSON only."),
+            HumanMessage(content=human_text),
+        ]
+        raw = ""
+        try:
+            async for chunk in llm_plain.astream(messages):
+                raw_c = chunk.content if hasattr(chunk, "content") else ""
+                if isinstance(raw_c, list):
+                    token = "".join(b.get("text", "") for b in raw_c if isinstance(b, dict) and b.get("type") == "text")
+                else:
+                    token = str(raw_c) if raw_c else ""
+                raw += token
+        except Exception as e:
+            logger.warning("self_reviewer failed: %s", e)
+            if on_event: on_event("node_done", "✅ 검토 완료")
+            return {**state, "review_ok": True}
+
+        parsed = _extract_json(raw)
+        ok = True
+        corrections = []
+        summary = state.get("result_summary", "")
+
+        if isinstance(parsed, dict):
+            ok = parsed.get("ok", True)
+            corrections = parsed.get("corrections", [])
+            summary = parsed.get("summary", summary)
+
+        if on_event:
+            on_event("node_done", "✅ 검토 완료" if ok else f"⚠️ 보정 필요: {summary[:30]}")
+
+        logger.info("[self_reviewer] ok=%s corrections=%d", ok, len(corrections))
+
+        new_queue = list(state.get("ops_queue", []))
+        if not ok and corrections:
+            new_queue = corrections + new_queue  # 보정 op를 큐 앞에 삽입
+
+        return {
+            **state,
+            "ops_queue": new_queue,
+            "review_ok": ok,
+            "result_summary": summary,
+        }
+
+    def route_from_reviewer(state: AgentState) -> str:
+        if state.get("review_ok", True) or not state.get("ops_queue"):
+            return "done"
+        return "dispatch"  # 보정 op 있으면 루프백
 
     # ── slide_dispatch 더미 노드 (Send API 트리거용) ──────────────
     def slide_dispatch_node(state: AgentState) -> AgentState:
@@ -1555,28 +1693,31 @@ def build_agent_graph(
     def route_by_mode(state: AgentState) -> str:
         return "edit" if state.get("mode") == "edit" else "create"
 
-    # ── HTML mode graph ───────────────────────────────────────────
-    # START → unified_planner → intent_router
-    #   (create/search) → [web_searcher →] slide_dispatch → N×slide_composer → html_aggregator → validator → formatter
-    #   (edit)          → html_editor → validator → formatter
-    #   (delete)        → slide_deleter → formatter
+    # ── HTML mode graph ───────────────────────────────────────────────────────
+    # START → unified_planner → [web_searcher →] ops_dispatcher (루프)
+    #   ops_dispatcher:
+    #     (create)           → slide_dispatch → N×slide_composer → html_aggregator → ops_dispatcher
+    #     (edit)             → html_editor    → ops_dispatcher
+    #     (component_edit)   → component_editor → ops_dispatcher
+    #     (component_delete) → component_deleter → ops_dispatcher
+    #     (delete)           → slide_deleter  → ops_dispatcher
+    #     (review)           → self_reviewer
+    #   self_reviewer:
+    #     (done)   → formatter → END
+    #     (dispatch) → ops_dispatcher (보정 루프)
     if html_mode:
         def route_after_planner_v2(state: AgentState) -> str:
-            mode = state.get("mode", "create")
-            if mode == "delete":
-                return "delete"
-            if mode == "component_edit":
-                return "component_edit"
-            if mode == "component_delete":
-                return "component_delete"
-            if mode == "edit":
-                return "edit"
-            # create: 검색 필요하면 search, 아니면 dispatch
-            return "search" if state.get("search_queries") else "dispatch"
+            if state.get("search_queries"):
+                return "search"
+            # ops_queue 있으면 dispatcher로, 없으면 레거시 dispatch
+            if state.get("ops_queue"):
+                return "dispatcher"
+            return "dispatch"
 
         graph = StateGraph(AgentState)
         graph.add_node("unified_planner", unified_planner_node)
         graph.add_node("web_searcher", web_searcher_node)
+        graph.add_node("ops_dispatcher", ops_dispatcher_node)
         graph.add_node("slide_dispatch", slide_dispatch_node)
         graph.add_node("slide_composer", slide_composer_node)
         graph.add_node("html_editor", html_editor_node)
@@ -1585,35 +1726,54 @@ def build_agent_graph(
         graph.add_node("slide_deleter", slide_deleter_node)
         graph.add_node("html_aggregator", html_aggregator_node)
         graph.add_node("html_validator", html_validator_node_new)
+        graph.add_node("self_reviewer", self_reviewer_node)
         graph.add_node("formatter", formatter_node)
         graph.add_node("retry_inc", increment_retry)
 
         graph.add_edge(START, "unified_planner")
         graph.add_conditional_edges("unified_planner", route_after_planner_v2, {
-            "search":            "web_searcher",
-            "dispatch":          "slide_dispatch",
-            "edit":              "html_editor",
-            "component_edit":    "component_editor",
-            "component_delete":  "component_deleter",
-            "delete":            "slide_deleter",
+            "search":     "web_searcher",
+            "dispatcher": "ops_dispatcher",   # ops_queue 루프
+            "dispatch":   "slide_dispatch",   # 레거시: 전체 슬라이드 create
         })
-        # create 경로
-        graph.add_edge("web_searcher", "slide_dispatch")
-        graph.add_conditional_edges("slide_dispatch", dispatch_slides, ["slide_composer"])
-        graph.add_edge("slide_composer", "html_aggregator")
-        graph.add_edge("html_aggregator", "html_validator")
-        # edit / component 경로
-        graph.add_edge("html_editor", "html_validator")
-        graph.add_edge("component_editor", "html_validator")
+        graph.add_edge("web_searcher", "ops_dispatcher")
+
+        # ops_dispatcher → 각 핸들러 (슬라이드 결정 후 라우팅)
+        graph.add_conditional_edges("ops_dispatcher", route_from_dispatcher, {
+            "create":           "slide_dispatch",
+            "edit":             "html_editor",
+            "component_edit":   "component_editor",
+            "component_delete": "component_deleter",
+            "delete":           "slide_deleter",
+            "review":           "self_reviewer",
+        })
+
+        # 각 핸들러 → validator → dispatcher 루프백
+        graph.add_edge("html_editor",       "html_validator")
+        graph.add_edge("component_editor",  "html_validator")
         graph.add_edge("component_deleter", "html_validator")
-        # 공통 validator → formatter
         graph.add_conditional_edges("html_validator", should_retry_html_new, {
             "retry": "retry_inc",
-            "done":  "formatter",
+            "done":  "ops_dispatcher",  # 다음 op 처리
         })
-        graph.add_edge("retry_inc", "slide_dispatch")
-        # delete → formatter 직행
-        graph.add_edge("slide_deleter", "formatter")
+        graph.add_edge("retry_inc", "ops_dispatcher")
+
+        # create 경로 (Send API 병렬)
+        graph.add_conditional_edges("slide_dispatch", dispatch_slides, ["slide_composer"])
+        graph.add_edge("slide_composer", "html_aggregator")
+        graph.add_edge("html_aggregator", "ops_dispatcher")  # 슬라이드 생성 완료 → 다음 op
+
+        # delete → 즉시 dispatcher 복귀
+        graph.add_edge("slide_deleter", "ops_dispatcher")
+
+        # 레거시 전체 create (ops_queue 없을 때)
+        # slide_dispatch는 이미 ops_dispatcher로 연결
+
+        # self_reviewer 결과 라우팅
+        graph.add_conditional_edges("self_reviewer", route_from_reviewer, {
+            "done":     "formatter",
+            "dispatch": "ops_dispatcher",
+        })
         graph.add_edge("formatter", END)
         return graph.compile()
 
@@ -1790,6 +1950,12 @@ CRITICAL — SCOPE LOCKED TO CURRENT SLIDE:
             "current_slide_spec": {},
             "search_queries": [],
             "search_results": [],
+            "ops_queue": [],
+            "ops_results": [],
+            "current_op": {},
+            "all_slides_context": all_slides or [],  # html_content 포함
+            "review_ok": True,
+            "delete_slide": False,
         })
         patches = result.get("result_patches", [])
         summary = result.get("result_summary", "")

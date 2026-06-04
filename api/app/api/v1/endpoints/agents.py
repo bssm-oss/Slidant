@@ -221,6 +221,7 @@ async def _run_agent_background_inner(
                     "order": s.order,
                     "title": s.title,
                     "components": list(s.content or []),
+                    "html_content": s.html_content or "",  # 멀티 슬라이드 타겟팅용
                 } for s in all_slides],
                 theme=project_theme,
                 slide_scope_locked=slide_scope_locked,
