@@ -294,6 +294,7 @@ CRITICAL — SCOPE LOCKED TO CURRENT SLIDE:
             "current_op": {},
             "all_slides_context": all_slides or [],
             "review_ok": True,
+            "review_count": 0,
             "delete_slide": False,
         })
         patches      = result.get("result_patches", [])

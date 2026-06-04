@@ -39,6 +39,10 @@ def make_should_retry_html(_ctx: NodeContext):
         slides = state.get("html_slides", [])
         html_out = state.get("html_output", "")
         has_output = bool(slides) or bool(html_out)
+        # ops_queue 비어있으면 retry해도 ops_dispatcher가 "review"로 가므로 무한루프
+        # → 출력 없어도 ops_queue 없으면 즉시 done
+        if not state.get("ops_queue") and not has_output:
+            return "done"
         if not has_output and retry < settings.AGENT_MAX_RETRIES:
             return "retry"
         return "done"

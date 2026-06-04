@@ -191,11 +191,19 @@ def make_self_reviewer(ctx: NodeContext):
         if ctx.on_event:
             ctx.on_event("node_start", "🔍 결과 검토 중...")
 
+        # 무한 루프 방지: 최대 1회 검토
+        review_count = state.get("review_count", 0)
+        if review_count >= 1:
+            logger.info("[self_reviewer] max review count reached, forcing done")
+            if ctx.on_event:
+                ctx.on_event("node_done", "✅ 검토 완료")
+            return {**state, "review_ok": True, "review_count": review_count + 1}
+
         ops_results = state.get("ops_results", [])
         if not ops_results:
             if ctx.on_event:
                 ctx.on_event("node_done", "✅ 검토 완료")
-            return {**state, "review_ok": True}
+            return {**state, "review_ok": True, "review_count": review_count + 1}
 
         human_text = (
             f"원래 명령: {state.get('command', '')}\n\n실행된 작업:\n"
@@ -242,7 +250,8 @@ def make_self_reviewer(ctx: NodeContext):
         if not ok and corrections:
             new_queue = corrections + new_queue
 
-        return {**state, "ops_queue": new_queue, "review_ok": ok, "result_summary": summary}
+        return {**state, "ops_queue": new_queue, "review_ok": ok,
+                "result_summary": summary, "review_count": review_count + 1}
     return self_reviewer_node
 
 

@@ -32,3 +32,4 @@ class AgentState(TypedDict):
     current_op: dict
     all_slides_context: list
     review_ok: bool
+    review_count: int  # self_reviewer 호출 횟수 (무한 루프 방지)
