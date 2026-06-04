@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
-import { Download, Palette, Play } from 'lucide-react'
+import { Download, Palette, Play, Share2, Undo2, Redo2 } from 'lucide-react'
 import { useEditorStore } from '../store/editorStore'
+import { useAgentStore } from '../store/agentStore'
 import ThemePanel from '@/features/presentation/components/ThemePanel'
 import type { AgentStatus } from '@/shared/types'
 import BrandMark from '@/shared/components/layout/BrandMark'
@@ -16,10 +17,16 @@ const statusMap: Record<AgentStatus, { color: string; label: string }> = {
 interface EditorTopbarProps {
   onPresent?: () => void
   onExport?: () => void
+  onShare?: () => void
+  onUndo?: () => void
+  onRedo?: () => void
+  canUndo?: boolean
+  canRedo?: boolean
 }
 
-export default function EditorTopbar({ onPresent, onExport }: EditorTopbarProps) {
+export default function EditorTopbar({ onPresent, onExport, onShare, onUndo, onRedo, canUndo, canRedo }: EditorTopbarProps) {
   const { presentation, overallStatus, saveTitle, isTitleEditing, setTitleEditing } = useEditorStore()
+  const { presenceUsers } = useAgentStore()
   const inputRef = useRef<HTMLInputElement>(null)
   const [showTheme, setShowTheme] = useState(false)
 
@@ -82,8 +89,43 @@ export default function EditorTopbar({ onPresent, onExport }: EditorTopbarProps)
         </div>
       </div>
 
-      {/* Right: Export + Present + Theme */}
+      {/* Right: Presence + Undo/Redo + Export + Present + Theme */}
       <div className="flex items-center gap-1 shrink-0">
+        {/* 접속 중인 사용자 아바타 */}
+        {presenceUsers.length > 0 && (
+          <div className="flex items-center gap-0.5 mr-2">
+            {presenceUsers.slice(0, 5).map((u) => (
+              <div
+                key={u.userId}
+                title={u.name}
+                style={{ background: u.color }}
+                className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-sm ring-2 ring-white"
+              >
+                {u.name[0]?.toUpperCase()}
+              </div>
+            ))}
+          </div>
+        )}
+        {(onUndo || onRedo) && (
+          <div className="flex items-center gap-0.5 mr-1">
+            <button
+              onClick={onUndo}
+              disabled={!canUndo}
+              className="p-1.5 rounded hover:bg-[var(--bg-muted)] text-[var(--text-disabled)] hover:text-[var(--text)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              title="실행 취소"
+            >
+              <Undo2 size={15} />
+            </button>
+            <button
+              onClick={onRedo}
+              disabled={!canRedo}
+              className="p-1.5 rounded hover:bg-[var(--bg-muted)] text-[var(--text-disabled)] hover:text-[var(--text)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              title="다시 실행"
+            >
+              <Redo2 size={15} />
+            </button>
+          </div>
+        )}
         {onExport && (
           <button
             onClick={onExport}
@@ -92,6 +134,16 @@ export default function EditorTopbar({ onPresent, onExport }: EditorTopbarProps)
           >
             <Download size={13} />
             내보내기
+          </button>
+        )}
+        {onShare && (
+          <button
+            onClick={onShare}
+            className="flex items-center gap-1.5 px-3 h-8 rounded-[8px] border border-[var(--border)] text-[12px] font-medium text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-muted)] transition-colors"
+            title="공유 링크 생성"
+          >
+            <Share2 size={13} />
+            공유
           </button>
         )}
         {onPresent && (

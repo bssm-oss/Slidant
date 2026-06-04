@@ -36,9 +36,9 @@ class AgentDefinitionRepository(BaseRepository[AgentDefinition]):
         return list(result.scalars().all())
 
     async def list_by_project(self, user_id: UUID, project_id: UUID) -> list[AgentDefinition]:
+        """PPT에 추가된 모든 에이전트 반환 — 누가 가져왔든 프로젝트 멤버 전체 공유."""
         result = await self.session.execute(
             select(AgentDefinition).where(
-                AgentDefinition.user_id == user_id,
                 AgentDefinition.project_id == project_id,
                 AgentDefinition.is_system.is_(False),
             )

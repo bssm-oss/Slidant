@@ -33,7 +33,7 @@ function extractCompleteOps(text: string): any[] {
 import { create } from 'zustand'
 import type { Agent, AgentLog, AgentStatus, ChatMessage } from '@/shared/types'
 import { runAgent as apiRunAgent } from '@/shared/lib/agentRunApi'
-import { sseClient } from '@/shared/lib/sseClient'
+import { wsClient } from '@/shared/lib/wsClient'
 import { useSlideStore } from './slideStore'
 import { useProposalStore } from './proposalStore'
 import { useSessionStore } from './sessionStore'
@@ -42,6 +42,13 @@ export interface AgentStep {
   id: string
   label: string
   status: 'pending' | 'active' | 'done'
+}
+
+export interface PresenceUser {
+  userId: string
+  name: string
+  color: string
+  currentSlide: number
 }
 
 interface AgentState {
@@ -54,6 +61,7 @@ interface AgentState {
   overallStatus: AgentStatus
   activeRightTab: 'agent' | 'properties'
   agentSteps: AgentStep[]
+  presenceUsers: PresenceUser[]  // 현재 접속 중인 다른 사용자
 
   loadAgents: (projectId?: string) => Promise<void>
   loadChatHistory: (projectId: string) => Promise<void>
@@ -65,9 +73,12 @@ interface AgentState {
   runAgent: (command: string, agentRole?: string, agentDefinitionId?: string) => Promise<void>
 }
 
+const USER_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899']
+
 export const useAgentStore = create<AgentState>((set, get) => ({
   agents: [],
   agentLogs: [],
+  presenceUsers: [],
   chatMessages: [],
   selectedAgentDefinitionId: null,
   runningAgentIds: new Set(),
@@ -131,9 +142,50 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   },
 
   connectWs: (projectId) => {
-    sseClient.connect(projectId)
-    const unsubscribe = sseClient.onMessage((msg) => {
+    wsClient.connect(projectId)
+    const unsubscribe = wsClient.onMessage((msg) => {
       const type = msg.type as string
+
+      if (type === 'user_joined') {
+        const userId = msg.userId as string
+        const name = msg.name as string
+        const colorIdx = Math.abs(userId.charCodeAt(0)) % USER_COLORS.length
+        set((s) => ({
+          presenceUsers: s.presenceUsers.some((u) => u.userId === userId)
+            ? s.presenceUsers
+            : [...s.presenceUsers, { userId, name, color: USER_COLORS[colorIdx], currentSlide: 0 }],
+        }))
+        return
+      }
+
+      if (type === 'user_left') {
+        set((s) => ({ presenceUsers: s.presenceUsers.filter((u) => u.userId !== (msg.userId as string)) }))
+        return
+      }
+
+      if (type === 'presence_update') {
+        const userId = msg.userId as string
+        const data = (msg.data ?? {}) as { currentSlide?: number }
+        set((s) => ({
+          presenceUsers: s.presenceUsers.map((u) =>
+            u.userId === userId ? { ...u, currentSlide: data.currentSlide ?? u.currentSlide } : u
+          ),
+        }))
+        return
+      }
+
+      if (type === 'presence_state') {
+        const users = (msg.users ?? []) as Array<{ userId: string; name: string; currentSlide?: number }>
+        set({
+          presenceUsers: users.map((u, i) => ({
+            userId: u.userId,
+            name: u.name,
+            color: USER_COLORS[i % USER_COLORS.length],
+            currentSlide: u.currentSlide ?? 0,
+          })),
+        })
+        return
+      }
 
       if (type === 'agent_started') {
         const role = (msg.role as string) ?? 'content'
@@ -545,7 +597,9 @@ export const useAgentStore = create<AgentState>((set, get) => ({
 
   sendMessage: async (command: string) => {
     const { selectedAgentDefinitionId, agents } = get()
-    const selectedAgent = agents.find((a) => a.definitionId === selectedAgentDefinitionId)
+    // selectedAgentDefinitionId가 null이면 첫 번째 에이전트 사용
+    const activeAgent = agents.find((a) => a.definitionId === selectedAgentDefinitionId) ?? agents[0]
+    const activeDefId = activeAgent?.definitionId ?? undefined
 
     set((s) => ({
       chatMessages: [
@@ -554,7 +608,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           id: `optimistic-user-${Date.now()}`,
           role: 'user' as const,
           content: command,
-          agentDefinitionId: selectedAgentDefinitionId ?? undefined,
+          agentDefinitionId: activeDefId,  // 항상 유효한 definitionId 사용
           timestamp: new Date().toISOString(),
           type: 'info' as const,
         },
@@ -562,7 +616,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       activeRightTab: 'agent',
     }))
 
-    await get().runAgent(command, selectedAgent?.role ?? 'content', selectedAgentDefinitionId ?? undefined)
+    await get().runAgent(command, activeAgent?.role ?? 'content', activeDefId)
   },
 
   runAgent: async (command, agentRole = 'content', agentDefinitionId?) => {

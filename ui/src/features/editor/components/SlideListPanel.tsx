@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react'
 import { useEditorStore } from '../store/editorStore'
+import { useAgentStore, type PresenceUser } from '../store/agentStore'
 import { cn } from '@/shared/lib/utils'
-import { Plus, X, Copy, ArrowUp, ArrowDown, MoreHorizontal } from 'lucide-react'
+import { Plus, X, Copy, ArrowUp, ArrowDown, MoreHorizontal, RefreshCw } from 'lucide-react'
 import type { SlideComponent, Slide } from '@/shared/types'
 import {
   DndContext,
@@ -91,11 +92,13 @@ interface SortableSlideItemProps {
   onDuplicate: (i: number) => void
   onMoveUp: (i: number) => void
   onMoveDown: (i: number) => void
+  onRegenerate: (i: number) => void
+  viewers?: PresenceUser[]
 }
 
 function SortableSlideItem({
   slide, index, isCurrent, totalSlides,
-  onSelect, onDelete, onDuplicate, onMoveUp, onMoveDown,
+  onSelect, onDelete, onDuplicate, onMoveUp, onMoveDown, onRegenerate, viewers = [],
 }: SortableSlideItemProps) {
   const [isHovered, setIsHovered] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -135,7 +138,7 @@ function SortableSlideItem({
                 display: 'block',
                 pointerEvents: 'none',
               }}
-              sandbox="allow-same-origin"
+              sandbox="allow-scripts"
               title={`슬라이드 ${index + 1} 미리보기`}
             />
           </div>
@@ -152,7 +155,37 @@ function SortableSlideItem({
           </div>
         )}
         <div className="absolute bottom-0.5 right-1 text-[9px] font-medium text-[var(--text-disabled)]">{index + 1}</div>
+        {/* Presence 아바타 */}
+        {viewers.length > 0 && (
+          <div className="absolute top-1 left-1 flex gap-0.5">
+            {viewers.slice(0, 3).map((u) => (
+              <div
+                key={u.userId}
+                title={u.name}
+                style={{ background: u.color }}
+                className="w-4 h-4 rounded-full flex items-center justify-center text-white text-[8px] font-bold shadow-sm"
+              >
+                {u.name[0]?.toUpperCase()}
+              </div>
+            ))}
+          </div>
+        )}
       </button>
+
+      {/* Regenerate overlay — bottom-right on hover */}
+      {(isHovered || menuOpen) && (
+        <div className="absolute bottom-1 left-1 z-10">
+          <button
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onRegenerate(index) }}
+            className="flex items-center gap-1 px-1.5 py-0.5 bg-black/70 text-white text-[9px] rounded-[4px] hover:bg-black/90 transition-colors"
+            title="이 슬라이드 재생성"
+          >
+            <RefreshCw size={9} />
+            재생성
+          </button>
+        </div>
+      )}
 
       {/* Hover overlay actions */}
       {(isHovered || menuOpen) && (
@@ -206,6 +239,7 @@ export default function SlideListPanel() {
     presentation, currentSlideIndex,
     setCurrentSlide, addSlide, deleteSlide, duplicateSlide, reorderSlides,
   } = useEditorStore()
+  const { presenceUsers } = useAgentStore()
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -218,6 +252,11 @@ export default function SlideListPanel() {
     const newIndex = presentation.slides.findIndex((s) => s.id === over.id)
     if (oldIndex !== -1 && newIndex !== -1) reorderSlides(oldIndex, newIndex)
   }, [presentation, reorderSlides])
+
+  const handleRegenerate = useCallback((slideIndex: number) => {
+    const { sendMessage } = useAgentStore.getState()
+    sendMessage(`@슬라이드${slideIndex + 1} 다시 생성해줘`)
+  }, [])
 
   const slides = presentation?.slides ?? []
 
@@ -238,6 +277,7 @@ export default function SlideListPanel() {
                 key={slide.id}
                 slide={slide}
                 index={i}
+                viewers={presenceUsers.filter((u) => u.currentSlide === i)}
                 isCurrent={currentSlideIndex === i}
                 totalSlides={slides.length}
                 onSelect={setCurrentSlide}
@@ -245,6 +285,7 @@ export default function SlideListPanel() {
                 onDuplicate={duplicateSlide}
                 onMoveUp={(idx) => reorderSlides(idx, idx - 1)}
                 onMoveDown={(idx) => reorderSlides(idx, idx + 1)}
+                onRegenerate={handleRegenerate}
               />
             ))}
           </SortableContext>
