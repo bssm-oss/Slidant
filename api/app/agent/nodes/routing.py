@@ -30,7 +30,7 @@ def make_dispatch_slides(_ctx: NodeContext):
                 "slide_index": i,
                 "current_slide_spec": spec,
                 "slide_specs": specs,   # 전체 슬라이드 계획 전달 (목차 일관성)
-                "html_slides": [],
+                "html_slides": "__RESET__",  # 이전 ops 누적 방지
             })
             for i, spec in enumerate(specs)
         ]

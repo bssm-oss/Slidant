@@ -4,6 +4,21 @@ from typing import Annotated, TypedDict
 from langgraph.graph.message import add_messages
 
 
+_RESET_SENTINEL = "__RESET__"
+
+
+def _accumulate_or_reset(left: list, right: list | str) -> list:
+    """
+    Send API 병렬 팬아웃을 위한 커스텀 reducer.
+    - right == "__RESET__": 리스트 초기화 (ops 사이클 간 누적 방지)
+    - right == []: 변화 없음
+    - right == [...]: 기존에 추가
+    """
+    if isinstance(right, str) and right == _RESET_SENTINEL:
+        return []
+    return (left or []) + (right or [])
+
+
 class AgentState(TypedDict):
     messages: Annotated[list, add_messages]
     command: str
@@ -20,7 +35,7 @@ class AgentState(TypedDict):
     design_tokens: dict
     component_specs: list
     html_output: str
-    html_slides: Annotated[list, operator.add]
+    html_slides: Annotated[list, _accumulate_or_reset]
     slide_specs: list
     slide_index: int
     current_slide_spec: dict

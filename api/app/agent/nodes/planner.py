@@ -155,7 +155,7 @@ def make_ops_dispatcher(ctx: NodeContext):
     def ops_dispatcher_node(state: AgentState) -> AgentState:
         queue = list(state.get("ops_queue", []))
         if not queue:
-            return {**state, "current_op": {}, "html_slides": []}
+            return {**state, "current_op": {}, "html_slides": "__RESET__"}
 
         op = queue.pop(0)
         op_type = op.get("type", "create")
@@ -177,7 +177,7 @@ def make_ops_dispatcher(ctx: NodeContext):
                 "current_op": op,
                 "slide_specs": slide_specs,
                 "mode": "create",
-                "html_slides": [],
+                "html_slides": "__RESET__",
             }
 
         # edit/delete/component: 단일 op 처리, 타겟 슬라이드 컨텍스트 설정
@@ -198,7 +198,7 @@ def make_ops_dispatcher(ctx: NodeContext):
             "current_op": op,
             "slide_context": slide_ctx,
             "mode": op_type,
-            "html_slides": [],
+            "html_slides": "__RESET__",
         }
     return ops_dispatcher_node
 

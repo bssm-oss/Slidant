@@ -330,12 +330,15 @@ async def _run_agent_background_inner(
                 is_edit_cmd = any(k in body.command for k in edit_keywords)
                 if is_edit_cmd:
                     logger.info("   edit 명령 감지 → 추가 슬라이드 생성 건너뜀 (%d개)", len(specs) - 1)
-                for slide_spec in ([] if is_edit_cmd else specs[1:]):
+                # 현재 슬라이드 order 기준으로 이후 슬라이드 순서 지정
+                base_order = (slide.order if slide else 0) + 1
+                for i, slide_spec in enumerate([] if is_edit_cmd else specs[1:]):
                     new_slide = SlideModel(
                         project_id=body.project_id,
                         title=slide_spec.get("title", ""),
                         html_content=slide_spec.get("html", ""),
                         content=[],
+                        order=base_order + i,
                     )
                     uow.slides.add(new_slide)
                     new_slides.append(new_slide)
