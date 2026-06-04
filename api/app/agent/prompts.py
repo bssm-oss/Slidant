@@ -510,6 +510,13 @@ create:           새 슬라이드 생성 → {"type":"create", "spec": {...}}
 • 복합 명령 가능: operations 배열에 여러 op 포함 (순서대로 실행)
 • 단순 명령도 operations 배열 형식 유지 (1개짜리 배열)
 
+• "모든 슬라이드" / "전체 슬라이드" 수정 → slide_total 수만큼 edit op 생성
+  예) 슬라이드 3장일 때 "모든 슬라이드 노란색으로":
+  [{"type":"edit","slide_index":0,"instruction":"노란색 디자인"},
+   {"type":"edit","slide_index":1,"instruction":"노란색 디자인"},
+   {"type":"edit","slide_index":2,"instruction":"노란색 디자인"}]
+  슬라이드 수는 Context의 <slides total=N> 태그에서 확인.
+
 ━━ MODE (레거시 호환) ━━
 operations 배열 타입으로 mode 자동 결정됨. 별도 mode 필드 불필요.
 

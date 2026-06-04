@@ -103,7 +103,9 @@ def build_slide_context(components: list[dict]) -> str:
 
 
 def build_all_slides_context(all_slides: list[dict]) -> str:
-    lines = [f"<presentation_structure total_slides='{len(all_slides)}'>"]
+    n = len(all_slides)
+    # <slides total=N> 태그: UNIFIED_PLANNER_PROMPT에서 "모든 슬라이드" 처리 시 참조
+    lines = [f"<slides total={n}>", f"<presentation_structure total_slides='{n}'>"]
     for s in all_slides:
         comp_count = len(s.get("components", []))
         title = s.get("title") or "(제목 없음)"
@@ -112,6 +114,7 @@ def build_all_slides_context(all_slides: list[dict]) -> str:
             f'  <slide index="{s["order"]}" id="{s["id"]}" title="{title}" status="{is_empty}" />'
         )
     lines.append("</presentation_structure>")
+    lines.append("</slides>")
     lines.append(
         "\nIMPORTANT: To fill or modify existing slides, use path '/{slide_id}/...' or add "
         "components to the current slide with path '/-'. "

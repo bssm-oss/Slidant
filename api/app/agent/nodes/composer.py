@@ -143,7 +143,44 @@ def make_html_editor(ctx: NodeContext):
             ctx.on_event("node_done", f"✅ {summary[:30]}")
 
         logger.info("[html_editor] html=%d chars", len(html))
+
+        # 행위 메타데이터: 변경된 색상/컴포넌트 추출
+        op = state.get("current_op", {})
+        slide_idx = op.get("slide_index", 0)
+        meta = _extract_change_meta(existing_html, html, slide_idx, op.get("instruction", command))
+
         ops_results = list(state.get("ops_results", []))
-        ops_results.append({"type": "edit", "summary": summary})
+        ops_results.append(meta)
         return {**state, "html_output": html, "result_summary": summary, "ops_results": ops_results}
     return html_editor_node
+
+
+def _extract_change_meta(old_html: str, new_html: str, slide_index: int, instruction: str) -> dict:
+    """두 HTML을 비교해 변경된 색상·컴포넌트 메타데이터 반환."""
+    import re
+
+    def extract_colors(html: str) -> set[str]:
+        return set(re.findall(r'#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})\b', html))
+
+    def extract_comp_ids(html: str) -> set[str]:
+        return set(re.findall(r'data-component-id="([^"]+)"', html))
+
+    old_colors = extract_colors(old_html)
+    new_colors = extract_colors(new_html)
+    added_colors = new_colors - old_colors
+    removed_colors = old_colors - new_colors
+
+    old_comps = extract_comp_ids(old_html)
+    new_comps = extract_comp_ids(new_html)
+    added_comps = new_comps - old_comps
+    removed_comps = old_comps - new_comps
+
+    return {
+        "type": "edit",
+        "slide_index": slide_index,
+        "instruction": instruction,
+        "colors_added": sorted(f"#{c}" for c in added_colors)[:6],
+        "colors_removed": sorted(f"#{c}" for c in removed_colors)[:6],
+        "components_added": sorted(added_comps),
+        "components_removed": sorted(removed_comps),
+    }

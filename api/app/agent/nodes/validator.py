@@ -45,40 +45,95 @@ def make_should_retry_html(_ctx: NodeContext):
     return should_retry_html
 
 
-def make_formatter(_ctx: NodeContext):
-    def formatter_node(state: AgentState) -> AgentState:
+def make_formatter(ctx: NodeContext):
+    async def formatter_node(state: AgentState) -> AgentState:
+        ops_results = state.get("ops_results", [])
         patches = state.get("result_patches", [])
-        llm_summary = state.get("result_summary", "")
 
+        # HTML 모드: ops_results 행위 리니지 → LLM 자연어 변환
+        if ops_results:
+            summary = await _lineage_to_summary(ctx, state.get("command", ""), ops_results, state)
+            return {**state, "result_summary": summary}
+
+        # 레거시 JSON patch 모드
         if not patches:
             html_slides = state.get("html_slides", [])
             html_out = state.get("html_output", "")
             if html_slides or html_out:
-                if llm_summary:
-                    return {**state, "result_summary": llm_summary.strip()}
                 cnt = len(html_slides) if html_slides else 1
                 return {**state, "result_summary": f"{cnt}장 슬라이드 생성 완료"}
             return state
+
+        llm_summary = state.get("result_summary", "")
+        if llm_summary:
+            return {**state, "result_summary": llm_summary.strip()}
 
         adds = sum(1 for op in patches if op.get("op") == "add" and op.get("path") == "/-")
         replaces = sum(1 for op in patches if op.get("op") == "replace")
         removes = sum(1 for op in patches if op.get("op") == "remove")
         slide_adds = sum(1 for op in patches if op.get("op") == "add"
                          and op.get("path", "").startswith("/slides/"))
-
         stats_parts = []
         if adds:       stats_parts.append(f"컴포넌트 {adds}개 추가")
         if replaces:   stats_parts.append(f"{replaces}개 수정")
         if removes:    stats_parts.append(f"{removes}개 삭제")
         if slide_adds: stats_parts.append(f"슬라이드 {slide_adds}장 추가")
-        stats = "、".join(stats_parts) if stats_parts else "변경 없음"
-
-        if llm_summary:
-            formatted = llm_summary.strip()
-        else:
-            formatted = stats
-        return {**state, "result_summary": formatted}
+        return {**state, "result_summary": "、".join(stats_parts) or "변경 없음"}
     return formatter_node
+
+
+async def _lineage_to_summary(ctx: NodeContext, command: str, ops_results: list, state: dict) -> str:
+    """ops_results 행위 리니지 → LLM 자연어 요약."""
+    import json
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    # ops_results를 사람이 읽기 쉬운 형태로 직렬화
+    lines = []
+    for r in ops_results:
+        t = r.get("type", "")
+        idx = r.get("slide_index", "?")
+        if t == "edit":
+            colors = r.get("colors_added", [])
+            instr = r.get("instruction", "")
+            lines.append(f"- 슬라이드 {int(idx)+1} 수정: {instr}"
+                         + (f" | 적용 색상: {', '.join(colors[:4])}" if colors else ""))
+        elif t == "component_edit":
+            lines.append(f"- 슬라이드 {int(idx)+1} 컴포넌트 [{r.get('component_id','')}] 수정")
+        elif t == "component_delete":
+            lines.append(f"- 슬라이드 {int(idx)+1} 컴포넌트 [{r.get('component_id','')}] 삭제")
+        elif t == "delete":
+            lines.append(f"- 슬라이드 {int(idx)+1} 삭제")
+        elif t == "create":
+            lines.append(f"- 슬라이드 생성: {r.get('summary','')}")
+
+    if not lines:
+        return state.get("result_summary", "작업 완료")
+
+    human_text = (
+        f"사용자 요청: {command}\n\n"
+        f"실행된 작업 목록:\n" + "\n".join(lines) +
+        "\n\n위 작업을 1-2문장 한국어로 자연스럽게 요약해라. "
+        "예: '슬라이드 5장 전체에 WARM 팔레트(배경 #1C0F0A, 액센트 #F59E0B) 적용 완료'"
+        "\n요약만 출력. 다른 말 없이."
+    )
+
+    raw = ""
+    try:
+        async for chunk in ctx.llm_plain.astream([
+            SystemMessage(content="You are a concise Korean summarizer for slide editing actions."),
+            HumanMessage(content=human_text),
+        ]):
+            raw_c = chunk.content if hasattr(chunk, "content") else ""
+            if isinstance(raw_c, list):
+                token = "".join(b.get("text", "") for b in raw_c if isinstance(b, dict) and b.get("type") == "text")
+            else:
+                token = str(raw_c) if raw_c else ""
+            raw += token
+    except Exception as e:
+        logger.warning("lineage_to_summary failed: %s", e)
+        return "\n".join(lines)
+
+    return raw.strip() or "\n".join(lines)
 
 
 # ── legacy (JSON patch) 노드 ──────────────────────────────────────────────────
