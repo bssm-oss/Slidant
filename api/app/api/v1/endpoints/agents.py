@@ -312,7 +312,7 @@ async def _run_agent_background_inner(
             if html_slides:
                 from app.models.slide import Slide as SlideModel
                 from app.services import slide_history_service
-                specs = html_slides[:5]
+                specs = html_slides  # 슬라이드 수 제한 없음
                 # 첫 번째 슬라이드 → 현재 슬라이드에 적용 (빈 슬라이드 덮어씀)
                 if specs and slide:
                     first = specs[0]

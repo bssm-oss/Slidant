@@ -15,7 +15,7 @@ FULL PRESENTATION MODE (전체 PPT 생성):
   3. "/-" (단일 컴포넌트 추가) op 절대 사용 금지 — 모든 컴포넌트는 해당 슬라이드 value.components 안에
   4. 각 슬라이드는 독립적으로 완성된 디자인
 
-LIMIT: max 5 slides per request.
+LIMIT: max 15 slides per request.
 
 ━━ DESIGN SYSTEM ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -154,7 +154,7 @@ Output ONLY JSON (no markdown):
   {"title":"슬라이드 제목","layout":"COVER|TOC|CONTENT|QUOTE|CLOSING|DATA|TABLE","key_points":["핵심 내용1","핵심 내용2"],"image_needed":true}
 ]}
 
-Max 6 slides. Be specific about key_points (actual text content, not descriptions).
+Max 15 slides. Be specific about key_points (actual text content, not descriptions).
 layout types: COVER(표지), TOC(목차), CONTENT(본문), QUOTE(인용), CLOSING(마무리), DATA(차트 포함), TABLE(비교표)
 """
 

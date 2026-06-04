@@ -20,7 +20,7 @@ def make_dispatch_slides(_ctx: NodeContext):
             titles = re.findall(r'슬라이드\s*\d+\s*[:：]\s*(?:\[\w+\]\s*)?(.*?)(?:\n|$)', plan)
             specs = [
                 {"title": t.strip(), "layout": "CONTENT", "key_points": [], "image_needed": False}
-                for t in titles[:6] if t.strip()
+                for t in titles[:15] if t.strip()
             ]
         if not specs:
             specs = [{"title": "슬라이드", "layout": "COVER", "key_points": [], "image_needed": False}]
