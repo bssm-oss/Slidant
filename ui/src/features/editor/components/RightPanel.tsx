@@ -55,6 +55,9 @@ function StepsChecklist({ steps }: { steps: AgentStep[] }) {
   const hasSlides = slideSteps.length > 0
   const allSlidesDone = slideSteps.length > 0 && slideSteps.every((s) => s.status === 'done')
   const anySlideActive = slideSteps.some((s) => s.status === 'active' || s.status === 'done')
+  // 순차 단계가 모두 완료돼야 슬라이드 병렬 그룹 활성화
+  const seqAllDone = seqSteps.every((s) => s.status === 'done')
+  const slideGroupReady = seqAllDone || anySlideActive
 
   return (
     <div className="mx-3 my-2 px-3 py-2.5">
@@ -80,9 +83,10 @@ function StepsChecklist({ steps }: { steps: AgentStep[] }) {
             </div>
           </div>
 
-          {/* 병렬 박스 */}
+          {/* 병렬 박스 — 순차 단계 완료 전엔 dimmed */}
           <div className={cn(
             'ml-0 border rounded-[8px] p-2 mb-1 transition-all duration-300',
+            !slideGroupReady && 'opacity-40',
             allSlidesDone
               ? 'border-emerald-200 bg-emerald-50'
               : anySlideActive

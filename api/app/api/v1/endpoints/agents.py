@@ -330,8 +330,8 @@ async def _run_agent_background_inner(
                 is_edit_cmd = any(k in body.command for k in edit_keywords)
                 if is_edit_cmd:
                     logger.info("   edit 명령 감지 → 추가 슬라이드 생성 건너뜀 (%d개)", len(specs) - 1)
-                # 현재 슬라이드 order 기준으로 이후 슬라이드 순서 지정
-                base_order = (slide.order if slide else 0) + 1
+                # DB에서 현재 최대 order 조회 → 겹치지 않게 이후 슬라이드 순서 지정
+                base_order = await uow.slides.get_last_order(body.project_id)
                 for i, slide_spec in enumerate([] if is_edit_cmd else specs[1:]):
                     new_slide = SlideModel(
                         project_id=body.project_id,

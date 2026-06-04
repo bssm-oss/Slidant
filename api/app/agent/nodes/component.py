@@ -123,9 +123,10 @@ def make_component_deleter(ctx: NodeContext):
 
 def make_slide_deleter(ctx: NodeContext):
     async def slide_deleter_node(state: AgentState) -> AgentState:
+        step_id = state.get("current_op", {}).get("step_id", "delete-0-0")
         if ctx.on_event:
             ctx.on_event("node_start", "🗑️ 슬라이드 삭제 중...")
-            ctx.on_event("step_done", "delete")
+            ctx.on_event("step_done", step_id)
             ctx.on_event("node_done", "✅ 슬라이드 삭제")
         return {**state, "delete_slide": True, "result_summary": "슬라이드가 삭제되었습니다."}
     return slide_deleter_node

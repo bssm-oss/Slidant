@@ -152,7 +152,8 @@ def make_html_editor(ctx: NodeContext):
             summary = parsed.get("summary", "슬라이드 수정 완료")
 
         if ctx.on_event and html:
-            ctx.on_event("step_done", "edit")
+            step_id = state.get("current_op", {}).get("step_id", "edit-0-0")
+            ctx.on_event("step_done", step_id)
             ctx.on_event("node_done", f"✅ {summary[:30]}")
 
         logger.info("[html_editor] html=%d chars", len(html))

@@ -101,6 +101,7 @@ def make_unified_planner(ctx: NodeContext):
 
             if ops_queue:
                 slide_counter = 0  # create op용 slide-N 카운터
+                non_create_counter = 0  # edit/delete op용 카운터 (step_id 생성에 사용)
                 for i, op in enumerate(ops_queue):
                     t = op.get("type", "")
                     idx = op.get("slide_index", 0)
@@ -109,7 +110,6 @@ def make_unified_planner(ctx: NodeContext):
                     if t == "create":
                         title = (spec.get("title") or f"슬라이드 {slide_counter+1}")[:18]
                         label = f"📄 {title}"
-                        # slide_composer step_done(f"slide-{idx}") 와 매칭
                         steps.append({"id": f"slide-{slide_counter}", "label": label})
                         slide_counter += 1
                         continue
@@ -123,7 +123,10 @@ def make_unified_planner(ctx: NodeContext):
                         label = f"🗑️ 슬라이드 {idx+1} 삭제"
                     else:
                         label = f"작업 {i+1}"
-                    steps.append({"id": f"op-{i}", "label": label})
+                    # step_id = ops_dispatcher의 step_id 계산 로직과 동일
+                    step_id = f"{t}-{idx}-{non_create_counter}"
+                    steps.append({"id": step_id, "label": label})
+                    non_create_counter += 1
             else:
                 for i, s in enumerate(slide_specs[:6]):
                     title = (s.get("title") or f"슬라이드 {i+1}")[:18]
@@ -174,13 +177,17 @@ def make_ops_dispatcher(ctx: NodeContext):
             return {
                 **state,
                 "ops_queue": queue,
-                "current_op": op,
+                "current_op": {**op, "step_id": "create-batch"},
                 "slide_specs": slide_specs,
                 "mode": "create",
                 "html_slides": "__RESET__",
             }
 
-        # edit/delete/component: 단일 op 처리, 타겟 슬라이드 컨텍스트 설정
+        # edit/delete/component: 단일 op — step_id를 current_op에 심어 노드가 올바른 id로 step_done 발사
+        queue_pos = len(state.get("ops_results", []))  # 몇 번째 op인지
+        step_id = f"{op_type}-{slide_idx}-{queue_pos}"
+        op_with_step = {**op, "step_id": step_id}
+
         all_slides = state.get("all_slides_context", [])
         target = next(
             (s for s in all_slides if s.get("order") == slide_idx),
@@ -195,7 +202,7 @@ def make_ops_dispatcher(ctx: NodeContext):
         return {
             **state,
             "ops_queue": queue,
-            "current_op": op,
+            "current_op": op_with_step,
             "slide_context": slide_ctx,
             "mode": op_type,
             "html_slides": "__RESET__",
