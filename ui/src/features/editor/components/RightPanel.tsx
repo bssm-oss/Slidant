@@ -35,7 +35,7 @@ function StepNode({ step, showLine, lineGreen }: { step: AgentStep; showLine: bo
         )}
       </div>
       <div className={cn(
-        'pb-3 pt-0.5 text-[12px] leading-[18px] transition-all duration-300',
+        'pb-3 pt-0.5 text-[12px] leading-[18px] transition-all duration-300 break-words min-w-0',
         !showLine && 'pb-0',
         isDone && 'text-[var(--text-muted)]',
         isActive && 'text-[var(--text)] font-semibold',

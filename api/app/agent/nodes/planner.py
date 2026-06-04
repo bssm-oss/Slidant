@@ -97,7 +97,7 @@ def make_unified_planner(ctx: NodeContext):
                 key = q[:12]  # 앞 12자 기준 중복 체크
                 if key not in seen_queries:
                     seen_queries.add(key)
-                    steps.append({"id": f"search-{len(seen_queries)}", "label": f"🔍 {q[:20]}"})
+                    steps.append({"id": f"search-{len(seen_queries)}", "label": f"🔍 {q[:30]}"})
                 if len(seen_queries) >= 3:
                     break
 
