@@ -68,6 +68,52 @@ class UnitOfWork:
 - 이벤트 타입: `agent_started` | `agent_token` | `agent_node_event` | `agent_done` | `agent_error`
 - `agent_done` payload에 `html_content` 포함 → 프론트엔드 즉시 반영
 
+## 레이어 아키텍처 컨벤션
+
+```
+api/endpoints/  →  services/  →  repositories/  →  db
+                      ↑
+               core/domain/  (순수 비즈니스 로직)
+               core/         (인프라: config, security, deps)
+```
+
+### 레이어별 책임
+
+| 레이어 | 위치 | 책임 | 금지 |
+|--------|------|------|------|
+| **endpoints** | `api/v1/endpoints/` | HTTP 요청/응답, 인증, UoW 주입 | 비즈니스 로직, DB 직접 접근 |
+| **services** | `services/` | 흐름 조율: repo 호출 + core 호출 + 이벤트 발행, 트랜잭션 경계 | 순수 계산 로직, DB 스키마 의존 없는 연산 |
+| **core/domain** | `core/domain/` | 순수 비즈니스 로직: 계산, 변환, diff, 검증 | DB I/O, HTTP, 외부 상태 |
+| **core** | `core/` | 인프라 유틸: 암호화, 설정, 의존성 주입 | 비즈니스 로직 |
+| **repositories** | `repositories/` | DB CRUD | 비즈니스 로직 |
+
+### 현재 `core/domain/` 파일
+
+| 파일 | 내용 |
+|------|------|
+| `slide_content.py` | 슬라이드 JSON 컴포넌트 CRUD (순수 함수) |
+| `slide_parser.py` | HTML ↔ 컴포넌트 파싱/렌더 (BeautifulSoup, 순수 함수) |
+| `history_diff.py` | 슬라이드/컴포넌트 변경 diff → 이력 레코드 생성 |
+
+### 판단 기준
+
+> "이 함수가 DB 없이 단독으로 테스트 가능한가?"
+> - Yes → `core/domain/`
+> - No (repo 필요) → `services/`
+
+### 하위 호환 re-export
+
+`services/slide_parser.py`, `services/slide_content.py`는 기존 import 경로 호환을 위한 re-export shim.
+신규 코드는 `core/domain/` 직접 import 권장.
+
+```python
+# 권장 (신규 코드)
+from app.core.domain.slide_parser import parse_slide_html
+
+# 구 경로 (동작하지만 비권장)
+from app.services.slide_parser import parse_slide_html
+```
+
 ## 개발 원칙
 
 - Agent는 HTML 직접 생성 — JSON 스키마 중간 변환 없음
