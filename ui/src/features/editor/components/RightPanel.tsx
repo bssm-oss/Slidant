@@ -4,11 +4,10 @@ import { useEditorStore } from '../store/editorStore'
 import { useAgentStore, type AgentStep } from '../store/agentStore'
 import { useSlideStore } from '../store/slideStore'
 import { cn } from '@/shared/lib/utils'
-import { Maximize2, Send, Loader2, ChevronDown, Zap, GitBranch, MousePointer2 } from 'lucide-react'
+import { Maximize2, Send, Loader2, ChevronDown, Zap, MousePointer2, Search } from 'lucide-react'
 import type { Agent, ChatMessage } from '@/shared/types'
 import AgentManagerPanel from './AgentManagerPanel'
 import ProposalPanel from './ProposalPanel'
-import { fetchPipelines, fetchAllUserPipelines, clonePipelineToProject, type Pipeline } from '@/shared/lib/pipelineApi'
 import type { HtmlComponentStyle } from './SlideCanvas'
 
 // ── 단일 노드 아이템 ──────────────────────────────────────────────────────────
@@ -226,51 +225,14 @@ function ChatBubble({ msg }: { msg: ChatMessage }) {
   )
 }
 
-// ── Agent selector pill ───────────────────────────────────────────────────────
-const DEFAULT_PIPELINE_ID = '__default__'
-
-function AgentSelector({ agents, onSelect, projectId }: {
+// ── Agent selector ────────────────────────────────────────────────────────────
+function AgentSelector({ agents, selectedId, onSelect }: {
   agents: Agent[]
   selectedId?: string | null
-  onSelect: (id: string, type: 'agent' | 'pipeline', pipelineId?: string) => void
-  projectId?: string
+  onSelect: (id: string) => void
 }) {
   const [open, setOpen] = useState(false)
-  const [pipelines, setPipelines] = useState<Pipeline[]>([])
-  const [selectedPipelineId, setSelectedPipelineId] = useState<string>(DEFAULT_PIPELINE_ID)
-  const [showImport, setShowImport] = useState(false)
-  const [allPipelines, setAllPipelines] = useState<Pipeline[]>([])
-  const [importing, setImporting] = useState<string | null>(null)
   const ref = useRef<HTMLDivElement>(null)
-
-  const loadPipelines = () => {
-    if (projectId) fetchPipelines(projectId).then(setPipelines).catch(() => {})
-  }
-
-  useEffect(() => {
-    if (!projectId || !open) return
-    loadPipelines()
-  }, [projectId, open])
-
-  const openImport = () => {
-    setOpen(false)
-    setShowImport(true)
-    fetchAllUserPipelines().then((all) => {
-      // 현재 프로젝트 파이프라인 제외
-      setAllPipelines(all.filter((p) => p.project_id !== projectId))
-    }).catch(() => {})
-  }
-
-  const handleImport = async (pipeline: Pipeline) => {
-    if (!projectId) return
-    setImporting(pipeline.id)
-    try {
-      await clonePipelineToProject(pipeline.id, projectId)
-      loadPipelines()
-      setShowImport(false)
-    } catch {}
-    setImporting(null)
-  }
 
   useEffect(() => {
     if (!open) return
@@ -283,10 +245,7 @@ function AgentSelector({ agents, onSelect, projectId }: {
 
   if (agents.length === 0) return null
 
-  const customPipeline = pipelines.find((p) => p.id === selectedPipelineId)
-  const displayName = selectedPipelineId === DEFAULT_PIPELINE_ID
-    ? '기본 파이프라인'
-    : (customPipeline?.name ?? '기본 파이프라인')
+  const activeAgent = agents.find((a) => a.definitionId === selectedId) ?? agents[0]
 
   return (
     <div className="relative" ref={ref}>
@@ -294,110 +253,34 @@ function AgentSelector({ agents, onSelect, projectId }: {
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-2 px-3 py-2 rounded-[10px] bg-[var(--accent-subtle)] text-[var(--accent)] text-[13px] font-semibold hover:bg-purple-100 transition-colors"
       >
-        <GitBranch size={13} className="shrink-0" />
-        <span className="max-w-[130px] truncate">{displayName}</span>
+        <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] shrink-0" />
+        <span className="max-w-[140px] truncate">{activeAgent.name}</span>
         <ChevronDown size={12} />
       </button>
       {open && (
-        <div className="absolute left-0 top-full mt-1 z-30 bg-white border border-[var(--border)] rounded-[10px] shadow-lg min-w-[220px] overflow-hidden">
-          <div className="px-3 pt-2.5 pb-1">
-            <span className="text-[10px] font-semibold text-[var(--text-disabled)] uppercase tracking-wide">파이프라인</span>
+        <div className="absolute left-0 top-full mt-1 z-30 bg-white border border-[var(--border)] rounded-[10px] shadow-lg min-w-[200px] overflow-hidden py-1">
+          <div className="px-3 pt-1.5 pb-1">
+            <span className="text-[10px] font-semibold text-[var(--text-disabled)] uppercase tracking-wide">에이전트 선택</span>
           </div>
-
-          {/* 기본 파이프라인 */}
-          <button
-            onClick={() => {
-              setSelectedPipelineId(DEFAULT_PIPELINE_ID)
-              const firstAgent = agents[0]
-              if (firstAgent) onSelect(firstAgent.definitionId ?? firstAgent.id, 'agent')
-              setOpen(false)
-            }}
-            className={cn(
-              'w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] text-left transition-colors hover:bg-[var(--bg-muted)]',
-              selectedPipelineId === DEFAULT_PIPELINE_ID && 'text-[var(--accent)] font-semibold bg-[var(--accent-subtle)]',
-            )}
-          >
-            <span className={cn(
-              'w-2 h-2 rounded-full shrink-0',
-              selectedPipelineId === DEFAULT_PIPELINE_ID ? 'bg-[var(--accent)]' : 'bg-[var(--border)]',
-            )} />
-            <div className="flex-1 min-w-0">
-              <span className="block">기본 파이프라인</span>
-              <span className="text-[10px] text-[var(--text-disabled)] font-normal">계획 → 디자인 → 슬라이드 생성</span>
-            </div>
-          </button>
-
-          {/* 사용자 정의 파이프라인 */}
-          {pipelines.map((p) => (
+          {agents.map((a) => (
             <button
-              key={p.id}
-              onClick={() => {
-                setSelectedPipelineId(p.id)
-                onSelect(p.id, 'pipeline', p.id)
-                setOpen(false)
-              }}
+              key={a.definitionId}
+              onClick={() => { onSelect(a.definitionId ?? a.id); setOpen(false) }}
               className={cn(
                 'w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] text-left transition-colors hover:bg-[var(--bg-muted)]',
-                selectedPipelineId === p.id && 'text-[var(--accent)] font-semibold bg-[var(--accent-subtle)]',
+                a.definitionId === activeAgent.definitionId && 'text-[var(--accent)] font-semibold bg-[var(--accent-subtle)]',
               )}
             >
               <span className={cn(
                 'w-2 h-2 rounded-full shrink-0',
-                selectedPipelineId === p.id ? 'bg-[var(--accent)]' : 'bg-[var(--border)]',
+                a.definitionId === activeAgent.definitionId ? 'bg-[var(--accent)]' : 'bg-[var(--border)]',
               )} />
               <div className="flex-1 min-w-0">
-                <span className="block truncate">{p.name}</span>
-                <span className="text-[10px] text-[var(--text-disabled)] font-normal">{p.steps.length}단계 커스텀</span>
+                <span className="block truncate">{a.name}</span>
+                <span className="text-[10px] text-[var(--text-disabled)] font-normal">{a.role}</span>
               </div>
             </button>
           ))}
-
-          {/* 불러오기 */}
-          <div className="border-t border-[var(--border)] mt-1 pt-1 pb-1.5">
-            <button
-              onClick={openImport}
-              className="w-full flex items-center gap-2 px-4 py-2 text-[12px] text-[var(--accent)] hover:bg-[var(--accent-subtle)] transition-colors"
-            >
-              <GitBranch size={11} />
-              불러오기
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* 불러오기 모달 */}
-      {showImport && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowImport(false)}>
-          <div className="bg-white rounded-[12px] shadow-xl w-[360px] max-h-[480px] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="px-5 py-4 border-b border-[var(--border)]">
-              <p className="text-[14px] font-semibold text-[var(--text)]">파이프라인 불러오기</p>
-              <p className="text-[11px] text-[var(--text-muted)] mt-0.5">다른 PPT의 파이프라인을 이 PPT에 추가합니다</p>
-            </div>
-            <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2">
-              {allPipelines.length === 0 ? (
-                <p className="text-[12px] text-[var(--text-disabled)] py-4 text-center">불러올 파이프라인이 없습니다</p>
-              ) : allPipelines.map((p) => (
-                <div key={p.id} className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-[8px] bg-[var(--bg-muted)] hover:bg-[var(--bg-raised)] transition-colors">
-                  <div className="min-w-0">
-                    <p className="text-[13px] font-medium text-[var(--text)] truncate">{p.name}</p>
-                    <p className="text-[11px] text-[var(--text-muted)]">{p.steps.length}단계</p>
-                  </div>
-                  <button
-                    onClick={() => handleImport(p)}
-                    disabled={importing === p.id}
-                    className="shrink-0 px-3 py-1.5 text-[12px] font-medium bg-[var(--accent)] text-white rounded-[6px] disabled:opacity-40 hover:opacity-90 transition-opacity"
-                  >
-                    {importing === p.id ? '추가 중...' : '추가'}
-                  </button>
-                </div>
-              ))}
-            </div>
-            <div className="px-4 pb-4">
-              <button onClick={() => setShowImport(false)} className="w-full py-2 text-[12px] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors">
-                닫기
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>
@@ -475,6 +358,7 @@ export default function RightPanel() {
   const [localSelectedId, setLocalSelectedId] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [showSlidePicker, setShowSlidePicker] = useState(false)
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false)
   const [htmlStyle, setHtmlStyle] = useState<HtmlComponentStyle | null>(null)
 
   // HTML 모드에서 선택된 요소 스타일 수신
@@ -526,8 +410,11 @@ export default function RightPanel() {
   }, [showSlidePicker])
 
   const handleSend = async () => {
-    const cmd = input.trim()
+    let cmd = input.trim()
     if (!cmd || isRunning) return
+    if (webSearchEnabled) {
+      cmd = `[웹검색 활성화] ${cmd}`
+    }
     setInput('')
     if (inputRef.current) inputRef.current.style.height = '72px'
     setShowSlidePicker(false)
@@ -554,8 +441,7 @@ export default function RightPanel() {
           <AgentSelector
             agents={agents}
             selectedId={activeId}
-            onSelect={(id, _type) => handleSelectAgent(id)}
-            projectId={presentation?.id}
+            onSelect={handleSelectAgent}
           />
         ) : (
           <span className="text-[12px] text-[var(--text-disabled)]">에이전트 로딩 중...</span>
@@ -681,6 +567,19 @@ export default function RightPanel() {
                 @
               </button>
             )}
+            {/* Web search toggle */}
+            <button
+              onClick={() => setWebSearchEnabled((v) => !v)}
+              className={cn(
+                'px-1.5 py-1 rounded-[6px] text-[12px] font-medium transition-colors',
+                webSearchEnabled
+                  ? 'bg-[var(--accent-subtle)] text-[var(--accent)]'
+                  : 'text-[var(--text-disabled)] hover:text-[var(--text-muted)] hover:bg-[var(--bg-muted)]',
+              )}
+              title="웹 검색 포함"
+            >
+              <Search size={13} />
+            </button>
             {/* Send button */}
             <button
               onClick={handleSend}
