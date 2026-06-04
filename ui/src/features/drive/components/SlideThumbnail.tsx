@@ -184,7 +184,7 @@ export default function SlideThumbnail({ projectId }: Props) {
               display: 'block',
               pointerEvents: 'none',
             }}
-            sandbox="allow-same-origin"
+            sandbox="allow-scripts"
             title="슬라이드 미리보기"
           />
         </div>

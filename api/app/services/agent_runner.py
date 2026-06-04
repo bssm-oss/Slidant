@@ -217,11 +217,11 @@ You are ContentPlanner for Slidant. Given the command and action plan, specify t
 
 Output ONLY JSON (no markdown):
 {"slides":[
-  {"title":"슬라이드 제목","layout":"COVER|TOC|CONTENT|QUOTE|CLOSING","key_points":["핵심 내용1","핵심 내용2"],"image_needed":true}
+  {"title":"슬라이드 제목","layout":"COVER|TOC|CONTENT|QUOTE|CLOSING|DATA|TABLE","key_points":["핵심 내용1","핵심 내용2"],"image_needed":true}
 ]}
 
 Max 6 slides. Be specific about key_points (actual text content, not descriptions).
-layout types: COVER(표지), TOC(목차), CONTENT(본문), QUOTE(인용), CLOSING(마무리)
+layout types: COVER(표지), TOC(목차), CONTENT(본문), QUOTE(인용), CLOSING(마무리), DATA(차트 포함), TABLE(비교표)
 """
 
 SLIDE_COMPOSER_PROMPT = """\
@@ -272,6 +272,64 @@ INLINE SVG (icons, decorations — no external URL needed):
   • Abstract shape, geometric accent, icon as <svg> directly in HTML
   • Example accent: <svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="none" stroke="#3B82F6" stroke-width="2" opacity="0.3"/></svg>
 
+━━ DATA VISUALIZATION — Chart.js (iframe sandbox="allow-scripts" 활성화됨) ━━
+
+Chart.js CDN을 <style> 직후 <script src="...">로 로드하고 <canvas>에 렌더링.
+MUST: canvas id는 unique (chart-1, chart-2 ...), 반드시 실제 데이터 값 사용.
+
+LINE CHART (트렌드, 시계열):
+<canvas id="chart-1" width="440" height="250" data-component-id="chart-1" style="position:absolute;left:480px;top:110px;width:440px;height:250px;z-index:10;background:rgba(255,255,255,0.04);border-radius:12px;"></canvas>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+new Chart(document.getElementById('chart-1'),{type:'line',data:{labels:['2022','2023','2024','2025E'],datasets:[{label:'시장규모(억$)',data:[120,185,260,380],borderColor:'#3B82F6',backgroundColor:'rgba(59,130,246,0.15)',fill:true,tension:0.4,pointRadius:5,pointBackgroundColor:'#3B82F6'}]},options:{responsive:false,animation:false,plugins:{legend:{labels:{color:'#9CA3AF',font:{size:12}}},title:{display:true,text:'연도별 시장 규모',color:'#F9FAFB',font:{size:14,weight:'bold'}}},scales:{x:{ticks:{color:'#9CA3AF'},grid:{color:'rgba(255,255,255,0.06)'}},y:{ticks:{color:'#9CA3AF'},grid:{color:'rgba(255,255,255,0.06)'}}}}});
+</script>
+
+BAR CHART (카테고리 비교):
+<canvas id="chart-1" width="440" height="250" data-component-id="chart-1" style="position:absolute;left:480px;top:110px;width:440px;height:250px;z-index:10;background:rgba(255,255,255,0.04);border-radius:12px;"></canvas>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+new Chart(document.getElementById('chart-1'),{type:'bar',data:{labels:['A후보','B후보','C후보'],datasets:[{label:'득표수',data:[28461,25590,1200],backgroundColor:['#3B82F6','#EF4444','#10B981'],borderRadius:6}]},options:{responsive:false,animation:false,plugins:{legend:{display:false},title:{display:true,text:'후보별 득표 현황',color:'#F9FAFB',font:{size:14,weight:'bold'}}},scales:{x:{ticks:{color:'#9CA3AF'},grid:{display:false}},y:{ticks:{color:'#9CA3AF'},grid:{color:'rgba(255,255,255,0.06)'}}}}});
+</script>
+
+DOUGHNUT/PIE (점유율, 구성비):
+<canvas id="chart-1" width="360" height="280" data-component-id="chart-1" style="position:absolute;left:540px;top:120px;width:360px;height:280px;z-index:10;background:rgba(255,255,255,0.04);border-radius:12px;"></canvas>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+new Chart(document.getElementById('chart-1'),{type:'doughnut',data:{labels:['A','B','C'],datasets:[{data:[45,32,23],backgroundColor:['#3B82F6','#8B5CF6','#10B981'],borderWidth:0}]},options:{responsive:false,animation:false,plugins:{legend:{position:'bottom',labels:{color:'#9CA3AF',padding:16}},title:{display:true,text:'구성 비율',color:'#F9FAFB',font:{size:14,weight:'bold'}}}}});
+</script>
+
+COMPARISON TABLE (HTML table — chart.js 불필요):
+<div data-component-id="comp-table" style="position:absolute;left:60px;top:150px;width:840px;z-index:10;">
+  <table style="width:100%;border-collapse:collapse;font-size:14px;color:#F9FAFB;font-family:system-ui;">
+    <thead><tr style="border-bottom:2px solid #3B82F6;">
+      <th style="padding:10px 14px;text-align:left;color:#9CA3AF;font-weight:600;font-size:12px;">구분</th>
+      <th style="padding:10px 14px;text-align:center;color:#3B82F6;font-weight:700;">항목A</th>
+      <th style="padding:10px 14px;text-align:center;color:#8B5CF6;font-weight:700;">항목B</th>
+      <th style="padding:10px 14px;text-align:center;color:#10B981;font-weight:700;">항목C</th>
+    </tr></thead>
+    <tbody>
+      <tr style="border-bottom:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);">
+        <td style="padding:10px 14px;color:#9CA3AF;">특징1</td>
+        <td style="padding:10px 14px;text-align:center;color:#34D399;">✓</td>
+        <td style="padding:10px 14px;text-align:center;color:#34D399;">✓</td>
+        <td style="padding:10px 14px;text-align:center;color:#6B7280;">—</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+CHART.JS RULES:
+• canvas에 반드시 width="W" height="H" HTML 어트리뷰트 설정 — CSS만으로는 Chart.js가 크기 인식 못함
+• canvas 영역에 다른 요소(이미지 플레이스홀더, 텍스트 div) 절대 겹치지 말 것 — canvas 투명하여 뒤 요소가 비침
+• canvas에 background 스타일 포함해서 뒤 요소가 보이지 않도록 할 것
+• data 배열에 실제 수치 값 반드시 사용 — 예시값(120,185...) 그대로 쓰지 말 것
+• animation:false 필수 (슬라이드 렌더링 완료 보장)
+• responsive:false 필수 (position:absolute와 충돌 방지)
+• canvas는 position:absolute, z-index:10 이상
+• Chart.js CDN은 슬라이드당 1회만 로드 (중복 <script src> 금지)
+• 여러 차트 필요 시 하나의 <script src> 후 여러 new Chart() 호출
+• When slide needs chart → [DATA] layout; table → [TABLE] layout
+
 WEB FONTS (import in <style>):
   • @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
   • Then: font-family:'Inter',system-ui,sans-serif;
@@ -288,6 +346,8 @@ LAYOUT PATTERNS (go beyond rectangles):
 [CONTENT] bg → accent-bar → title(60,60) → divider-line(60,140,60px×4px) → body-items(60,165+45n) → [right-image]
 [TOC]     bg → accent-bar → title(60,60) → divider → numbered items(60,175+55n)
 [QUOTE]   bg → top+bottom bars → large-quote-svg → quote-text(80,180,fs:34,fw:300) → author(80,370)
+[DATA]    bg → accent-bar → title(60,60) → divider → bullet-list(60,150,w:400) → Chart.js canvas(480,110,w:440,h:250)
+[TABLE]   bg → accent-bar → title(60,60) → divider → comparison-table(60,150,w:840)
 [CLOSING] bg → dual accent bars → radial-glow-circle → main-text(center,fs:64) → sub(center)
 [STATS]   bg → accent-bar → title → 3 stat cards with large numbers + labels
 [SPLIT]   bg → diagonal-clip left-panel(accent color) → right content area → text on both sides
@@ -524,6 +584,56 @@ def _extract_json(text: str) -> dict | list | None:
 
     return None
 
+
+UNIFIED_PLANNER_PROMPT = """\
+You are PlannerAgent for Slidant. Analyze the command and produce a complete plan in ONE response.
+
+━━ OUTPUT FORMAT (JSON ONLY, no markdown) ━━
+{
+  "mode": "edit",
+  "summary": "한국어 1-2문장",
+  "search_queries": [],
+  "design_tokens": {
+    "palette": "DARK",
+    "bg": "#0A0F1E", "accent": "#3B82F6", "text": "#F9FAFB", "text2": "#9CA3AF",
+    "cover_title_size": 68, "slide_title_size": 44, "subtitle_size": 28, "body_size": 21
+  },
+  "slides": [
+    {"title": "슬라이드 제목", "layout": "COVER", "key_points": ["핵심 내용"], "image_needed": false}
+  ]
+}
+
+━━ MODE ━━
+edit: 수정/변경/바꿔/적용 키워드 → mode:"edit", slides:1개 (수정 내용 설명)
+create: PPT/만들어/생성 키워드 → mode:"create", slides:N개 (max 6)
+
+━━ WEB SEARCH ━━
+최신/실제 데이터가 필요하면 search_queries 생성.
+
+검색어 작성 원칙:
+• 사용자 명령의 고유명사(인명·지명·기관명·제품명·직책명 등)를 검색어에 그대로 사용 — 일반화 금지
+• 상위 카테고리보다 사용자가 실제로 언급한 구체적 단위로 검색
+• 필요시 쿼리 2-3개로 분리해 서로 다른 측면 커버
+
+예) "영도구청장 후보자 현황" → ["제9회 전국동시지방선거 영도구청장 후보자 결과", "영도구청장 개표현황 득표수"]
+예) "삼성전자 2024 실적" → ["삼성전자 2024년 연간 매출 영업이익", "삼성전자 2024 반기보고서"]
+예) "AI 트렌드" → ["2025 생성형 AI 시장 규모 통계", "2025 AI 기술 트렌드"]
+
+명령에 "[웹검색 활성화]"가 포함되면 반드시 search_queries에 추가.
+
+━━ DESIGN PALETTES ━━
+DARK  : bg#0A0F1E accent#3B82F6 text#F9FAFB text2#9CA3AF — tech/modern
+WARM  : bg#1C0F0A accent#F59E0B text#FEF3C7 text2#D97706 — food/culture/warm
+LIGHT : bg#F8FAFC accent#7C3AED text#0F172A text2#475569 — clean/business
+NATURE: bg#0D1F1A accent#34D399 text#ECFDF5 text2#6EE7B7 — environment/health
+SLATE : bg#1E293B accent#F1F5F9 text#F8FAFC text2#94A3B8 — minimal/corporate
+
+━━ LAYOUT TYPES ━━
+COVER: 표지  TOC: 목차  CONTENT: 본문  QUOTE: 인용  CLOSING: 마무리  STATS: 통계  SPLIT: 분할  DATA: 차트포함  TABLE: 비교표
+
+key_points: 해당 슬라이드에 포함할 실제 텍스트 내용 (불릿 형태).
+Output ONLY JSON.
+"""
 
 PLANNER_PROMPT = """\
 You are a professional PPT design planner. Analyze the command and slide context, then produce a specific action plan.
@@ -903,12 +1013,42 @@ def build_agent_graph(
                 from tavily import TavilyClient
                 client = TavilyClient(api_key=tavily_key)
                 for q in state.get("search_queries", [])[:3]:
-                    resp = client.search(q, max_results=5)
+                    resp = client.search(
+                        q,
+                        max_results=7,
+                        search_depth="advanced",
+                        include_answer=True,
+                        include_raw_content=False,
+                    )
+                    tavily_answer = resp.get("answer", "")
+
+                    # 검색어와 제목 유사도로 관련성 필터링
+                    # 동일 지역/주제의 엉뚱한 결과(시장선거 → 구청장 쿼리) 걸러냄
+                    q_tokens = set(q.replace("  ", " ").split())
+                    def relevance_score(r: dict) -> float:
+                        title = r.get("title", "").lower()
+                        score = r.get("score", 0)
+                        # 쿼리 토큰이 제목에 포함될수록 가중치
+                        overlap = sum(1 for t in q_tokens if t in title)
+                        return score + overlap * 0.1
+
+                    sorted_results = sorted(
+                        resp.get("results", []),
+                        key=relevance_score,
+                        reverse=True,
+                    )
+
                     results.append({
                         "query": q,
+                        "answer": tavily_answer,
                         "results": [
-                            {"title": r["title"], "url": r["url"], "snippet": r.get("content", "")[:300]}
-                            for r in resp.get("results", [])
+                            {
+                                "title": r["title"],
+                                "url": r["url"],
+                                "snippet": r.get("content", "")[:800],
+                                "score": r.get("score", 0),
+                            }
+                            for r in sorted_results
                         ],
                     })
             except Exception as e:
@@ -924,11 +1064,14 @@ def build_agent_graph(
 
         search_ctx = ""
         if state.get("search_results"):
-            search_ctx = "\n\nWeb Search Results:\n"
+            search_ctx = "\n\n## 웹 검색 결과 (주제와 관련된 내용만 슬라이드에 반영)\n"
             for sr in state["search_results"]:
-                search_ctx += f"Query: {sr['query']}\n"
-                for r in sr["results"][:3]:
-                    search_ctx += f"- {r['title']}: {r['snippet']}\n"
+                search_ctx += f"\n### 검색어: {sr['query']}\n"
+                if sr.get("answer"):
+                    search_ctx += f"**요약**: {sr['answer']}\n"
+                for r in sr["results"][:5]:
+                    search_ctx += f"\n**{r['title']}** ({r['url']})\n{r['snippet']}\n"
+            search_ctx += "\n※ 검색어와 무관한 데이터를 혼용하지 말 것. 확실하지 않은 수치는 생략.\n"
 
         messages = [
             SystemMessage(content=CONTENT_PLANNER_PROMPT),
@@ -994,10 +1137,14 @@ def build_agent_graph(
 
         search_ctx = ""
         if state.get("search_results"):
-            search_ctx = "\n\nRelevant search results:\n"
+            search_ctx = "\n\n## 웹 검색 데이터 (슬라이드에 반영할 것 — 검색어와 무관한 결과는 무시):\n"
             for sr in state["search_results"]:
-                for r in sr["results"][:2]:
-                    search_ctx += f"- {r['title']}: {r['snippet']}\n"
+                search_ctx += f"\n### 검색어: {sr['query']}\n"
+                if sr.get("answer"):
+                    search_ctx += f"**요약**: {sr['answer']}\n"
+                for r in sr["results"][:4]:
+                    search_ctx += f"- **{r['title']}**: {r['snippet']}\n"
+            search_ctx += "\n※ 검색 결과 중 슬라이드 주제와 무관한 항목은 사용하지 말 것.\n"
 
         human_text = (
             f"Slide spec: {json.dumps(spec, ensure_ascii=False)}\n\n"
@@ -1070,6 +1217,82 @@ def build_agent_graph(
             return "retry"
         return "done"
 
+    # ── unified_planner_node (planner + content_planner + design_resolver 통합) ──
+    async def unified_planner_node(state: AgentState) -> AgentState:
+        if on_event: on_event("node_start", "🧠 계획 수립 중...")
+        history = state.get("conversation_history", "")
+        history_section = f"\n\nPrevious conversation:\n{history}" if history else ""
+
+        messages = [
+            SystemMessage(content=UNIFIED_PLANNER_PROMPT),
+            HumanMessage(content=f"Command: {state['command']}{history_section}\n\nCurrent slide:\n{state['slide_context']}"),
+        ]
+
+        raw = ""
+        try:
+            async for chunk in llm_plain.astream(messages):
+                raw_c = chunk.content if hasattr(chunk, "content") else ""
+                if isinstance(raw_c, list):
+                    token = "".join(b.get("text", "") for b in raw_c if isinstance(b, dict) and b.get("type") == "text")
+                else:
+                    token = str(raw_c) if raw_c else ""
+                raw += token
+        except Exception as e:
+            logger.warning("  [unified_planner] failed: %s", e)
+
+        parsed = _extract_json(raw)
+
+        # 파싱 실패 시 폴백
+        if not isinstance(parsed, dict):
+            if on_event: on_event("node_done", "✅ 계획 완료")
+            return {**state, "plan": raw, "mode": "create", "design_tokens": {}, "slide_specs": [], "search_queries": [], "result_summary": ""}
+
+        mode = parsed.get("mode", "create")
+        design_tokens = parsed.get("design_tokens", {})
+        if not design_tokens or "bg" not in design_tokens:
+            design_tokens = {
+                "palette": "DARK", "bg": "#0A0F1E", "accent": "#3B82F6",
+                "text": "#F9FAFB", "text2": "#9CA3AF",
+                "cover_title_size": 68, "slide_title_size": 44, "subtitle_size": 28, "body_size": 21,
+            }
+        slide_specs = parsed.get("slides", [])
+        search_queries = [q for q in parsed.get("search_queries", []) if isinstance(q, str) and q.strip()]
+        summary = parsed.get("summary", "")
+
+        # steps_init emit
+        if on_event:
+            steps = [{"id": "plan", "label": "계획 수립"}]
+            if search_queries:
+                steps.append({"id": "search", "label": f"웹 검색 ({len(search_queries)}개)"})
+            for i, s in enumerate(slide_specs[:6]):
+                steps.append({"id": f"slide-{i}", "label": (s.get("title", "") or f"슬라이드 {i+1}")[:20]})
+            if not any(step["id"].startswith("slide") for step in steps):
+                steps.append({"id": "slide-0", "label": "슬라이드 생성"})
+            on_event("steps_init", json.dumps(steps, ensure_ascii=False))
+            on_event("step_done", "plan")
+            on_event("node_done", "✅ 계획 완료")
+
+        logger.info("  [unified_planner] mode=%s slides=%d search=%d palette=%s",
+                    mode, len(slide_specs), len(search_queries), design_tokens.get("palette", "?"))
+
+        return {
+            **state,
+            "plan": raw,
+            "mode": mode,
+            "design_tokens": design_tokens,
+            "slide_specs": slide_specs,
+            "search_queries": search_queries,
+            "result_summary": summary,
+            "messages": [],
+        }
+
+    # ── slide_dispatch 더미 노드 (Send API 트리거용) ──────────────
+    def slide_dispatch_node(state: AgentState) -> AgentState:
+        return state
+
+    def route_after_planner(state: AgentState) -> str:
+        return "search" if state.get("search_queries") else "dispatch"
+
     # ── Send API dispatch functions ───────────────────────────────
     def dispatch_slides(state: AgentState):
         from langgraph.constants import Send
@@ -1101,42 +1324,36 @@ def build_agent_graph(
     def route_by_mode(state: AgentState) -> str:
         return "edit" if state.get("mode") == "edit" else "create"
 
-    # ── HTML mode graph (신규 파이프라인) ─────────────────────────
+    # ── HTML mode graph (통합 플래너 파이프라인) ──────────────────
+    # START → unified_planner → [web_searcher →] slide_dispatch → N×slide_composer
+    #       → html_aggregator → html_validator → formatter → END
     if html_mode:
         graph = StateGraph(AgentState)
-        graph.add_node("planner", planner_node)
-        graph.add_node("intent_analyzer", intent_analyzer_node)
-        graph.add_node("search_router", search_router_node)
+        graph.add_node("unified_planner", unified_planner_node)
         graph.add_node("web_searcher", web_searcher_node)
-        graph.add_node("content_planner", content_planner_node)
-        graph.add_node("design_resolver", design_resolver_node_html)
+        graph.add_node("slide_dispatch", slide_dispatch_node)
         graph.add_node("slide_composer", slide_composer_node)
         graph.add_node("html_aggregator", html_aggregator_node)
         graph.add_node("html_validator", html_validator_node_new)
         graph.add_node("formatter", formatter_node)
         graph.add_node("retry_inc", increment_retry)
 
-        graph.add_edge(START, "planner")
-        graph.add_edge("planner", "intent_analyzer")
-        graph.add_conditional_edges("intent_analyzer", route_by_mode, {
-            "edit": "design_resolver",
-            "create": "search_router",
-        })
-        graph.add_conditional_edges("search_router", should_search, {
+        graph.add_edge(START, "unified_planner")
+        graph.add_conditional_edges("unified_planner", route_after_planner, {
             "search": "web_searcher",
-            "skip": "content_planner",
+            "dispatch": "slide_dispatch",
         })
-        graph.add_edge("web_searcher", "content_planner")
-        graph.add_edge("content_planner", "design_resolver")
-        # Send API fan-out: design_resolver → N×slide_composer
-        graph.add_conditional_edges("design_resolver", dispatch_slides)
+        graph.add_edge("web_searcher", "slide_dispatch")
+        # Send API fan-out: slide_dispatch → N×slide_composer
+        # path_map 명시 → 정적 그래프 시각화에서 slide_composer 엣지 표시
+        graph.add_conditional_edges("slide_dispatch", dispatch_slides, ["slide_composer"])
         graph.add_edge("slide_composer", "html_aggregator")
         graph.add_edge("html_aggregator", "html_validator")
         graph.add_conditional_edges("html_validator", should_retry_html_new, {
             "retry": "retry_inc",
             "done": "formatter",
         })
-        graph.add_edge("retry_inc", "slide_composer")
+        graph.add_edge("retry_inc", "slide_dispatch")
         graph.add_edge("formatter", END)
         return graph.compile()
 

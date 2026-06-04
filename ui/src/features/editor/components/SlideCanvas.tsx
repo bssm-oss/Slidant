@@ -515,7 +515,7 @@ export default function SlideCanvas() {
               transformOrigin: 'top left',
               display: 'block',
             }}
-            sandbox="allow-same-origin"
+            sandbox="allow-scripts"
             title="slide"
             onLoad={() => handleIframeLoad()}
           />

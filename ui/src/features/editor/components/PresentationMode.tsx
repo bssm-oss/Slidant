@@ -112,7 +112,7 @@ function SlideView({ slide }: { slide: Slide }) {
               display: 'block',
               pointerEvents: 'none',
             }}
-            sandbox="allow-same-origin"
+            sandbox="allow-scripts"
             title="슬라이드"
           />
         </div>
