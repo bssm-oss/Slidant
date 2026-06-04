@@ -91,32 +91,31 @@ def make_unified_planner(ctx: NodeContext):
 
         if ctx.on_event:
             steps = [{"id": "plan", "label": "계획 수립"}]
-            # 검색: 실제 쿼리 내용 표시
-            for q in search_queries[:2]:
-                steps.append({"id": f"search-{q[:8]}", "label": f"🔍 {q[:22]}"})
-            if len(search_queries) > 2:
-                steps.append({"id": "search-more", "label": f"🔍 +{len(search_queries)-2}개 검색"})
+            # 검색: 중복 제거 후 최대 3개, 쿼리 내용 표시
+            seen_queries: set[str] = set()
+            for q in search_queries:
+                key = q[:12]  # 앞 12자 기준 중복 체크
+                if key not in seen_queries:
+                    seen_queries.add(key)
+                    steps.append({"id": f"search-{len(seen_queries)}", "label": f"🔍 {q[:20]}"})
+                if len(seen_queries) >= 3:
+                    break
 
             if ops_queue:
                 for i, op in enumerate(ops_queue):
                     t = op.get("type", "")
                     idx = op.get("slide_index", 0)
                     spec = op.get("spec", {})
-                    instruction = op.get("instruction", "")
-                    instr_short = instruction[:18] if instruction else ""
 
                     if t == "create":
-                        # spec.title이 있으면 사용 (예: "표지", "시장 현황", "결론")
-                        title = spec.get("title") or f"슬라이드 {i+1}"
-                        layout = spec.get("layout", "")
-                        label = f"📄 {title[:16]}" + (f" [{layout}]" if layout else "")
+                        title = (spec.get("title") or f"슬라이드 {i+1}")[:18]
+                        label = f"📄 {title}"
                     elif t == "edit":
-                        label = f"✏️ 슬라이드 {idx+1}" + (f": {instr_short}" if instr_short else " 수정")
+                        label = f"✏️ 슬라이드 {idx+1} 수정"
                     elif t == "component_edit":
-                        cid = op.get("component_id", "")
-                        label = f"🔧 [{cid}]" + (f" {instr_short}" if instr_short else " 수정")
+                        label = f"🔧 컴포넌트 수정"
                     elif t == "component_delete":
-                        label = f"🗑️ [{op.get('component_id','')}] 삭제"
+                        label = f"🗑️ 컴포넌트 삭제"
                     elif t == "delete":
                         label = f"🗑️ 슬라이드 {idx+1} 삭제"
                     else:
@@ -124,10 +123,8 @@ def make_unified_planner(ctx: NodeContext):
                     steps.append({"id": f"op-{i}", "label": label})
             else:
                 for i, s in enumerate(slide_specs[:6]):
-                    title = s.get("title") or f"슬라이드 {i+1}"
-                    layout = s.get("layout", "")
-                    label = f"📄 {title[:16]}" + (f" [{layout}]" if layout else "")
-                    steps.append({"id": f"slide-{i}", "label": label})
+                    title = (s.get("title") or f"슬라이드 {i+1}")[:18]
+                    steps.append({"id": f"slide-{i}", "label": f"📄 {title}"})
                 if not any(step["id"].startswith("slide") for step in steps):
                     steps.append({"id": "slide-0", "label": "📄 슬라이드 생성"})
             ctx.on_event("steps_init", json.dumps(steps, ensure_ascii=False))
