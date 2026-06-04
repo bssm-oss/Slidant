@@ -25,7 +25,13 @@ def make_dispatch_slides(_ctx: NodeContext):
         if not specs:
             specs = [{"title": "슬라이드", "layout": "COVER", "key_points": [], "image_needed": False}]
         return [
-            Send("slide_composer", {**state, "slide_index": i, "current_slide_spec": spec, "html_slides": []})
+            Send("slide_composer", {
+                **state,
+                "slide_index": i,
+                "current_slide_spec": spec,
+                "slide_specs": specs,   # 전체 슬라이드 계획 전달 (목차 일관성)
+                "html_slides": [],
+            })
             for i, spec in enumerate(specs)
         ]
     return dispatch_slides

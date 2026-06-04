@@ -56,12 +56,25 @@ def make_slide_composer(ctx: NodeContext):
                     search_ctx += f"- **{r['title']}**: {r['snippet']}\n"
             search_ctx += "\n※ 검색 결과 중 슬라이드 주제와 무관한 항목은 사용하지 말 것.\n"
 
+        # 전체 슬라이드 계획 요약 (목차 일관성 — 내 슬라이드가 전체에서 어디에 위치하는지)
+        all_specs = state.get("slide_specs", [])
+        toc_ctx = ""
+        if all_specs and len(all_specs) > 1:
+            toc_lines = [f"{i+1}. {s.get('title','?')} [{s.get('layout','')}]"
+                         for i, s in enumerate(all_specs)]
+            toc_ctx = (
+                f"\n\n## 전체 프레젠테이션 구성 ({len(all_specs)}장)\n"
+                + "\n".join(toc_lines)
+                + f"\n\n→ 현재 생성 중인 슬라이드: {idx+1}번 '{spec.get('title','')}'\n"
+                "이 목차와 일치하는 내용으로 생성할 것."
+            )
+
         human_text = (
             f"Slide spec: {json.dumps(spec, ensure_ascii=False)}\n\n"
             f"Design tokens: {json.dumps(design_tokens, ensure_ascii=False)}\n\n"
             f"Slide index: {idx} (0-based)\n\n"
             f"Current slide HTML (for reference/edit):\n{state.get('slide_context', '(empty)')}"
-            f"{search_ctx}"
+            f"{toc_ctx}{search_ctx}"
         )
 
         composer_system = SLIDE_COMPOSER_PROMPT
