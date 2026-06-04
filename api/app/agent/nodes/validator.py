@@ -17,15 +17,22 @@ def make_html_aggregator(_ctx: NodeContext):
         deduped: dict[int, dict] = {}
         for s in all_slides:
             idx = s.get("index", 0)
-            if s.get("html"):  # html 있는 것만
+            if s.get("html"):
                 deduped[idx] = s
         valid = sorted(deduped.values(), key=lambda s: s.get("index", 0))
 
         if state.get("mode") == "edit" and valid:
             return {**state, "html_slides": valid, "html_output": valid[0]["html"],
                     "result_summary": "슬라이드 수정 완료"}
-        summary = f"{len(valid)}장 슬라이드 생성 완료"
-        return {**state, "html_slides": valid, "result_summary": summary}
+
+        # create 결과를 ops_results에 추가 (formatter의 summary 생성에 사용)
+        ops_results = list(state.get("ops_results", []))
+        ops_results.append({
+            "type": "create",
+            "count": len(valid),
+            "titles": [s.get("title", f"슬라이드 {s.get('index',0)+1}") for s in valid],
+        })
+        return {**state, "html_slides": valid, "ops_results": ops_results}
     return html_aggregator_node
 
 
@@ -62,8 +69,9 @@ def make_formatter(ctx: NodeContext):
         ops_results = state.get("ops_results", [])
         patches = state.get("result_patches", [])
 
-        # HTML 모드: ops_results 행위 리니지 → LLM 자연어 변환
-        if ops_results:
+        # HTML 모드: ops_results 또는 html_slides → LLM 자연어 변환
+        html_slides_present = bool(state.get("html_slides"))
+        if ops_results or html_slides_present:
             summary = await _lineage_to_summary(ctx, state.get("command", ""), ops_results, state)
             return {**state, "result_summary": summary}
 
@@ -116,7 +124,12 @@ async def _lineage_to_summary(ctx: NodeContext, command: str, ops_results: list,
         elif t == "delete":
             lines.append(f"- 슬라이드 {int(idx)+1} 삭제")
         elif t == "create":
-            lines.append(f"- 슬라이드 생성: {r.get('summary','')}")
+            count = r.get("count", 0)
+            titles = r.get("titles", [])
+            titles_str = ", ".join(f"'{t}'" for t in titles[:5])
+            if len(titles) > 5:
+                titles_str += f" 외 {len(titles)-5}장"
+            lines.append(f"- {count}장 슬라이드 생성: {titles_str}")
 
     if not lines:
         return state.get("result_summary", "작업 완료")
@@ -124,8 +137,9 @@ async def _lineage_to_summary(ctx: NodeContext, command: str, ops_results: list,
     human_text = (
         f"사용자 요청: {command}\n\n"
         f"실행된 작업 목록:\n" + "\n".join(lines) +
-        "\n\n위 작업을 1-2문장 한국어로 자연스럽게 요약해라. "
-        "예: '슬라이드 5장 전체에 WARM 팔레트(배경 #1C0F0A, 액센트 #F59E0B) 적용 완료'"
+        "\n\n위 작업을 1-2문장 한국어로 자연스럽게 요약해라."
+        " 생성된 슬라이드 수와 주요 내용을 포함할 것."
+        " 예: '영도구청장 선거 관련 10장 PPT 생성 완료 (선거개요, 후보자프로필, 개표현황 등)'"
         "\n요약만 출력. 다른 말 없이."
     )
 
