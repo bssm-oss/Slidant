@@ -167,24 +167,39 @@ async def ws_endpoint(
     full_upd = crdt_svc.make_full_update(project_id)
     await manager._safe_send_bytes(websocket, full_upd)
 
-    # 새로고침 복구: 실행 중인 agent run 있으면 agent_started 재전송
+    # 새로고침 복구: Redis 이벤트 히스토리 replay + 실행 중인 agent run 상태 복구
     try:
-        async with AsyncSessionLocal() as session:
-            from app.repositories.agent import AgentRunRepository, AgentDefinitionRepository
-            run_repo = AgentRunRepository(session)
-            def_repo = AgentDefinitionRepository(session)
-            running_runs = await run_repo.list_running_by_project(project_id)
-            for run in running_runs:
-                agent_def = await def_repo.get(run.agent_definition_id)
-                agent_name = agent_def.name if agent_def else "Agent"
-                await manager.send_json(websocket, {
-                    "type": "agent_started",
-                    "agent_run_id": str(run.id),
-                    "agent_name": agent_name,
-                    "role": agent_def.role if agent_def else "content",
-                    "command": "",
-                    "resumed": True,  # 새로고침 복구임을 표시
-                })
+        from app.core.redis import get_redis
+        import json as _json
+        redis = get_redis()
+        key = f"slidant:events:{project_id}"
+        cached = await redis.lrange(key, 0, -1)
+        if cached:
+            # 캐시된 이벤트 순서대로 replay
+            for raw in cached:
+                try:
+                    evt = _json.loads(raw)
+                    await manager.send_json(websocket, {**evt, "replayed": True})
+                except Exception:
+                    pass
+        else:
+            # 캐시 없을 때: DB에서 running 상태 확인 후 agent_started만 전송
+            async with AsyncSessionLocal() as session:
+                from app.repositories.agent import AgentRunRepository, AgentDefinitionRepository
+                run_repo = AgentRunRepository(session)
+                def_repo = AgentDefinitionRepository(session)
+                running_runs = await run_repo.list_running_by_project(project_id)
+                for run in running_runs:
+                    agent_def = await def_repo.get(run.agent_definition_id)
+                    agent_name = agent_def.name if agent_def else "Agent"
+                    await manager.send_json(websocket, {
+                        "type": "agent_started",
+                        "agent_run_id": str(run.id),
+                        "agent_name": agent_name,
+                        "role": agent_def.role if agent_def else "content",
+                        "command": "",
+                        "resumed": True,
+                    })
     except Exception as e:
         logger.warning("ws_resume_check failed: %s", e)
 

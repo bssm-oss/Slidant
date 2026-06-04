@@ -501,3 +501,19 @@ async def _broadcast(project_id: str, message: dict) -> None:
     logger.debug("ws_broadcast  project=%s  peers=%d  type=%s",
                  project_id, ws_manager.peer_count(project_id), message.get("type"))
     await ws_manager.broadcast_json(project_id, message)
+    # Redis에 이벤트 히스토리 캐싱 (새로고침 복구용)
+    try:
+        from app.core.redis import get_redis
+        import json as _json
+        redis = get_redis()
+        key = f"slidant:events:{project_id}"
+        event_type = message.get("type", "")
+        # agent_token은 누적이 크므로 제외, slide_ready는 포함
+        if event_type not in ("agent_token",):
+            await redis.rpush(key, _json.dumps(message, default=str))
+            await redis.expire(key, 1800)  # 30분 TTL
+        # agent_done / agent_error → 이벤트 히스토리 정리 (완료 후 복구 불필요)
+        if event_type in ("agent_done", "agent_error"):
+            await redis.delete(key)
+    except Exception as _e:
+        logger.debug("redis_cache_fail: %s", _e)

@@ -145,6 +145,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     wsClient.connect(projectId)
     const unsubscribe = wsClient.onMessage((msg) => {
       const type = msg.type as string
+      const isReplayed = !!(msg.replayed)  // Redis에서 replay된 이벤트
 
       if (type === 'user_joined') {
         const userId = msg.userId as string
@@ -288,9 +289,10 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         if (eventType === 'steps_init') {
           try {
             const raw = JSON.parse(message) as {id: string, label: string}[]
+            // replay 시: 모든 단계를 pending으로만 초기화 (이후 step_done replay로 채워짐)
             const steps: AgentStep[] = raw.map((s, i) => ({
               ...s,
-              status: i === 0 ? 'active' : 'pending',
+              status: (isReplayed ? 'pending' : (i === 0 ? 'active' : 'pending')) as AgentStep['status'],
             }))
             set({ agentSteps: steps })
           } catch {}
@@ -305,7 +307,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             return {
               agentSteps: s.agentSteps.map((st, i) => {
                 if (i === idx) return { ...st, status: 'done' }
-                if (i === idx + 1) return { ...st, status: 'active' }
+                // replay 시: 다음 단계를 active 대신 pending 유지 (실제 진행 순서 모름)
+                if (!isReplayed && i === idx + 1) return { ...st, status: 'active' }
                 return st
               }),
             }
@@ -501,6 +504,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       }
 
       if (type === 'agent_done') {
+        // replay된 agent_done은 채팅 버블 추가 안 함 (이미 chat history에 있음)
+        if (isReplayed) return
         const { agents } = get()
         const doneAgentName = (msg.agent_name as string) ?? ''
         const doneAgent = agents.find((a) => a.name === doneAgentName || a.status === 'running')
