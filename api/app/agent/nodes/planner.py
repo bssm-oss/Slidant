@@ -91,24 +91,45 @@ def make_unified_planner(ctx: NodeContext):
 
         if ctx.on_event:
             steps = [{"id": "plan", "label": "계획 수립"}]
-            if search_queries:
-                steps.append({"id": "search", "label": f"웹 검색 ({len(search_queries)}개)"})
+            # 검색: 실제 쿼리 내용 표시
+            for q in search_queries[:2]:
+                steps.append({"id": f"search-{q[:8]}", "label": f"🔍 {q[:22]}"})
+            if len(search_queries) > 2:
+                steps.append({"id": "search-more", "label": f"🔍 +{len(search_queries)-2}개 검색"})
+
             if ops_queue:
                 for i, op in enumerate(ops_queue):
                     t = op.get("type", "")
-                    label = {
-                        "create": "슬라이드 생성",
-                        "edit": f"슬라이드 {op.get('slide_index',0)+1} 수정",
-                        "component_edit": f"컴포넌트 수정 ({op.get('component_id','')})",
-                        "component_delete": f"컴포넌트 삭제 ({op.get('component_id','')})",
-                        "delete": f"슬라이드 {op.get('slide_index',0)+1} 삭제",
-                    }.get(t, f"작업 {i+1}")
+                    idx = op.get("slide_index", 0)
+                    spec = op.get("spec", {})
+                    instruction = op.get("instruction", "")
+                    instr_short = instruction[:18] if instruction else ""
+
+                    if t == "create":
+                        # spec.title이 있으면 사용 (예: "표지", "시장 현황", "결론")
+                        title = spec.get("title") or f"슬라이드 {i+1}"
+                        layout = spec.get("layout", "")
+                        label = f"📄 {title[:16]}" + (f" [{layout}]" if layout else "")
+                    elif t == "edit":
+                        label = f"✏️ 슬라이드 {idx+1}" + (f": {instr_short}" if instr_short else " 수정")
+                    elif t == "component_edit":
+                        cid = op.get("component_id", "")
+                        label = f"🔧 [{cid}]" + (f" {instr_short}" if instr_short else " 수정")
+                    elif t == "component_delete":
+                        label = f"🗑️ [{op.get('component_id','')}] 삭제"
+                    elif t == "delete":
+                        label = f"🗑️ 슬라이드 {idx+1} 삭제"
+                    else:
+                        label = f"작업 {i+1}"
                     steps.append({"id": f"op-{i}", "label": label})
             else:
                 for i, s in enumerate(slide_specs[:6]):
-                    steps.append({"id": f"slide-{i}", "label": (s.get("title", "") or f"슬라이드 {i+1}")[:20]})
+                    title = s.get("title") or f"슬라이드 {i+1}"
+                    layout = s.get("layout", "")
+                    label = f"📄 {title[:16]}" + (f" [{layout}]" if layout else "")
+                    steps.append({"id": f"slide-{i}", "label": label})
                 if not any(step["id"].startswith("slide") for step in steps):
-                    steps.append({"id": "slide-0", "label": "슬라이드 생성"})
+                    steps.append({"id": "slide-0", "label": "📄 슬라이드 생성"})
             ctx.on_event("steps_init", json.dumps(steps, ensure_ascii=False))
             ctx.on_event("step_done", "plan")
             ctx.on_event("node_done", "✅ 계획 완료")
