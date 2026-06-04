@@ -45,10 +45,10 @@ def make_component_editor(ctx: NodeContext):
         if ctx.on_event:
             ctx.on_event("node_start", f"🔧 컴포넌트 수정 중 ({component_id})...")
 
-        from app.services.slide_parser import parse_slide_html, update_component_in_html
+        from app.core.domain.html_slide import HtmlSlide
         existing_html = state.get("slide_context", "")
-        parsed = parse_slide_html(existing_html)
-        target_comp = parsed["components"].get(component_id)
+        slide_entity = HtmlSlide(html=existing_html)
+        target_comp = slide_entity.components.get(component_id)
 
         if not target_comp:
             logger.warning("component_editor: component '%s' not found", component_id)
@@ -82,7 +82,7 @@ def make_component_editor(ctx: NodeContext):
             summary = parsed_result.get("summary", f"컴포넌트 {component_id} 수정 완료")
 
         if new_comp_html:
-            new_slide_html = update_component_in_html(existing_html, component_id, new_comp_html)
+            new_slide_html = slide_entity.update_component(component_id, new_comp_html).html
             result = {"type": "component_edit", "component_id": component_id,
                       "html": new_comp_html, "slide_html": new_slide_html, "summary": summary}
         else:
@@ -106,9 +106,9 @@ def make_component_deleter(ctx: NodeContext):
         if ctx.on_event:
             ctx.on_event("node_start", f"🗑️ 컴포넌트 삭제 중 ({component_id})...")
 
-        from app.services.slide_parser import delete_component_from_html
+        from app.core.domain.html_slide import HtmlSlide
         existing_html = state.get("slide_context", "")
-        new_html = delete_component_from_html(existing_html, component_id)
+        new_html = HtmlSlide(html=existing_html).delete_component(component_id).html
 
         summary = f"컴포넌트 '{component_id}' 삭제 완료"
         if ctx.on_event:

@@ -95,6 +95,29 @@ api/endpoints/  →  services/  →  repositories/  →  db
 | `slide_parser.py` | HTML ↔ 컴포넌트 파싱/렌더 (BeautifulSoup, 순수 함수) |
 | `history_diff.py` | 슬라이드/컴포넌트 변경 diff → 이력 레코드 생성 |
 
+### 도메인 엔티티 (@dataclass)
+
+`core/domain/`의 순수 로직은 `@dataclass`로 캡슐화. 데이터 + 동작을 함께 표현.
+
+| 엔티티 | 파일 | 주요 메서드 |
+|--------|------|------------|
+| `HtmlSlide` | `html_slide.py` | `.components`, `.update_component()`, `.delete_component()`, `.update_style()` |
+| `SlideContent` | `slide_content.py` | `.add()`, `.update()`, `.remove()`, `.apply_patches()` |
+| `HtmlSlideDiff` | `history_diff.py` | `.to_component_history()` |
+| `JsonSlideDiff` | `history_diff.py` | `.to_component_history()` |
+| `SlideSnapshot` | `history_diff.py` | `.to_slide_history()` |
+
+```python
+# 사용 예시
+slide = HtmlSlide(html=slide.html_content)
+updated = slide.update_component("title", new_html)  # 새 인스턴스 반환 (immutable)
+slide.html_content = updated.html
+
+sc = SlideContent.from_slide(slide)
+sc.apply_patches(ops)       # in-place 변경
+slide.content = sc.to_list()
+```
+
 ### 판단 기준
 
 > "이 함수가 DB 없이 단독으로 테스트 가능한가?"

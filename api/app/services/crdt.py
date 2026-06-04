@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING
 
 import pycrdt
 
-from app.services.slide_parser import parse_slide_html, render_slide_html
+from app.core.domain.html_slide import HtmlSlide
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -81,7 +81,8 @@ def _init_doc_from_slides(doc: pycrdt.Doc, slides: list) -> None:
     for slide in sorted(slides, key=lambda s: s.order):
         sid = str(slide.id)
         html = slide.html_content or ""
-        parsed = parse_slide_html(html)
+        slide_entity = HtmlSlide(html=html)
+        parsed = {"style": slide_entity.style, "components": slide_entity.components, "orphans": slide_entity.orphans}
 
         with doc.transaction():
             slide_map = pycrdt.Map()
@@ -129,7 +130,7 @@ def get_slide_html(project_id: str, slide_id: str) -> str | None:
 
     comp_map = slide_map.get("components")
     if not comp_map:
-        return render_slide_html(style, {}, orphans)
+        return HtmlSlide._render(style, {}, orphans)
 
     components = {}
     for cid in list(comp_map.keys()):
@@ -139,7 +140,7 @@ def get_slide_html(project_id: str, slide_id: str) -> str | None:
             "order": c.get("order", 0),
         }
 
-    return render_slide_html(style, components, orphans)
+    return HtmlSlide._render(style, components, orphans)
 
 
 # ── 에이전트 → Y.Doc 컴포넌트 업데이트 ────────────────────────────────────────
@@ -164,7 +165,8 @@ def apply_agent_html(
     slides_map = doc.get("slides", type=pycrdt.Map)
     sid = str(slide_id)
 
-    parsed = parse_slide_html(html)
+    slide_entity = HtmlSlide(html=html)
+    parsed = {"style": slide_entity.style, "components": slide_entity.components, "orphans": slide_entity.orphans}
     new_style = parsed["style"]
     new_components = parsed["components"]
     new_orphans = "".join(parsed.get("orphans", []))
@@ -313,7 +315,8 @@ def add_slide_to_doc(project_id: str, slide_id: str, html: str = "", title: str 
     if not doc:
         return None
     slides_map = doc.get("slides", type=pycrdt.Map)
-    parsed = parse_slide_html(html)
+    slide_entity = HtmlSlide(html=html)
+    parsed = {"style": slide_entity.style, "components": slide_entity.components, "orphans": slide_entity.orphans}
     sid = str(slide_id)
 
     with doc.transaction():
