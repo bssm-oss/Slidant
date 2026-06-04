@@ -87,9 +87,11 @@ def _init_doc_from_slides(doc: pycrdt.Doc, slides: list) -> None:
             slide_map = pycrdt.Map()
             slides_map[sid] = slide_map
 
+        orphans_html = "".join(parsed.get("orphans", []))
         with doc.transaction():
             slides_map[sid]["style"] = pycrdt.Text(parsed["style"])
             slides_map[sid]["title"] = pycrdt.Text(slide.title or "")
+            slides_map[sid]["orphans"] = pycrdt.Text(orphans_html)  # <script> 등 보존
 
         # components Y.Map
         with doc.transaction():
@@ -122,10 +124,12 @@ def get_slide_html(project_id: str, slide_id: str) -> str | None:
 
     slide_map = slides_map[str(slide_id)]
     style = str(slide_map.get("style", pycrdt.Text("")))
+    orphans_text = str(slide_map.get("orphans", pycrdt.Text("")))
+    orphans = [orphans_text] if orphans_text else []
 
     comp_map = slide_map.get("components")
     if not comp_map:
-        return render_slide_html(style, {})
+        return render_slide_html(style, {}, orphans)
 
     components = {}
     for cid in list(comp_map.keys()):
@@ -135,7 +139,7 @@ def get_slide_html(project_id: str, slide_id: str) -> str | None:
             "order": c.get("order", 0),
         }
 
-    return render_slide_html(style, components)
+    return render_slide_html(style, components, orphans)
 
 
 # ── 에이전트 → Y.Doc 컴포넌트 업데이트 ────────────────────────────────────────
@@ -163,6 +167,7 @@ def apply_agent_html(
     parsed = parse_slide_html(html)
     new_style = parsed["style"]
     new_components = parsed["components"]
+    new_orphans = "".join(parsed.get("orphans", []))
 
     # 충돌 감지: 같은 컴포넌트를 다른 에이전트가 이미 점유 중?
     slide_locks = _component_locks[project_id][sid]
@@ -182,11 +187,16 @@ def apply_agent_html(
 
     slide_map = slides_map[sid]
 
-    # style 업데이트
+    # style + orphans 업데이트
     with doc.transaction():
         style_text: pycrdt.Text = slide_map.get("style", pycrdt.Text(""))
         style_text.clear()
         style_text.insert(0, new_style)
+    with doc.transaction():
+        orphan_text: pycrdt.Text = slide_map.get("orphans", pycrdt.Text(""))
+        if orphan_text is not None:
+            orphan_text.clear()
+            orphan_text.insert(0, new_orphans)
 
     # 컴포넌트 업데이트
     comp_map = slide_map.get("components")

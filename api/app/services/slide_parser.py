@@ -35,30 +35,37 @@ def parse_slide_html(html: str) -> dict:
         return {"style": style, "components": {}}
 
     components: dict[str, dict] = {}
+    orphans: list[str] = []  # data-component-id 없는 태그 (<script>, <link> 등)
     order = 0
     for el in slide_div.children:
         if not isinstance(el, Tag):
             continue
         cid = el.get("data-component-id")
         if cid:
-            components[cid] = {
-                "html": str(el),
-                "order": order,
-            }
+            components[cid] = {"html": str(el), "order": order}
             order += 1
+        else:
+            # <script>, <link>, <canvas> without id 등 보존
+            orphans.append(str(el))
 
-    return {"style": style, "components": components}
+    return {"style": style, "components": components, "orphans": orphans}
 
 
 # ── 렌더 ─────────────────────────────────────────────────────────────────────
 
-def render_slide_html(style: str, components: dict[str, dict]) -> str:
+def render_slide_html(
+    style: str,
+    components: dict[str, dict],
+    orphans: list[str] | None = None,
+) -> str:
     """
-    {style, components} → 완전한 슬라이드 HTML 문자열.
-    components 값은 {html: str, order: int} 구조.
+    {style, components, orphans} → 완전한 슬라이드 HTML 문자열.
+    orphans: data-component-id 없는 <script> 등 — 컴포넌트 뒤에 붙임.
     """
     sorted_comps = sorted(components.values(), key=lambda c: c.get("order", 0))
     inner = "".join(c["html"] for c in sorted_comps)
+    if orphans:
+        inner += "".join(orphans)
     css = style.strip()
     slide_css = (
         ".slide{width:960px;height:540px;position:relative;overflow:hidden;font-family:system-ui,sans-serif;}"

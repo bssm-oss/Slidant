@@ -188,7 +188,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       }
 
       if (type === 'component_conflict') {
-        const { slide_id, component_ids, agent_name } = msg as {
+        const { component_ids, agent_name } = msg as {
           slide_id: string; component_ids: string[]; agent_name: string
         }
         // 컴포넌트 단위 충돌 → conflictComponentIds에 추가
