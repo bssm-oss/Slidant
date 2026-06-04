@@ -11,8 +11,16 @@ logger = logging.getLogger("slidant.agent")
 
 def make_html_aggregator(_ctx: NodeContext):
     def html_aggregator_node(state: AgentState) -> AgentState:
-        slides = sorted(state.get("html_slides", []), key=lambda s: s.get("index", 0))
-        valid = [s for s in slides if s.get("html")]
+        # html_slides는 Annotated[list, operator.add] — 이전 ops 결과가 누적될 수 있음
+        # 인덱스 기준 dedup: 같은 index는 마지막 값만 유지
+        all_slides = state.get("html_slides", [])
+        deduped: dict[int, dict] = {}
+        for s in all_slides:
+            idx = s.get("index", 0)
+            if s.get("html"):  # html 있는 것만
+                deduped[idx] = s
+        valid = sorted(deduped.values(), key=lambda s: s.get("index", 0))
+
         if state.get("mode") == "edit" and valid:
             return {**state, "html_slides": valid, "html_output": valid[0]["html"],
                     "result_summary": "슬라이드 수정 완료"}
