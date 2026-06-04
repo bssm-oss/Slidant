@@ -7,7 +7,9 @@ os.environ.setdefault("OPENROUTER_API_KEY", "placeholder")
 os.environ.setdefault("ANTHROPIC_API_KEY", "placeholder")
 
 from langchain_openai import ChatOpenAI
-from app.services.agent_runner import build_agent_graph
+from app.agent.context import NodeContext
+from app.agent.graph import build_graph
+from app.agent.prompts import SYSTEM_PROMPTS
 
 _dummy_llm = ChatOpenAI(
     model="gpt-4o",
@@ -15,18 +17,13 @@ _dummy_llm = ChatOpenAI(
     api_key="placeholder",
 )
 
-# HTML 파이프라인 그래프 (기본 생성 플로우)
-html_pipeline = build_agent_graph(
-    role="content",
+_ctx = NodeContext(
     llm=_dummy_llm,
     llm_plain=_dummy_llm,
-    html_mode=True,
+    gen_prompt=SYSTEM_PROMPTS["content"],
+    on_token=None,
+    on_event=None,
 )
 
-# Legacy JSON 파이프라인 그래프
-legacy_pipeline = build_agent_graph(
-    role="content",
-    llm=_dummy_llm,
-    llm_plain=_dummy_llm,
-    html_mode=False,
-)
+html_pipeline   = build_graph(_ctx, html_mode=True)
+legacy_pipeline = build_graph(_ctx, html_mode=False)
