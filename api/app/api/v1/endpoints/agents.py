@@ -3,8 +3,7 @@ import json as json_lib
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, status
-from sse_starlette.sse import EventSourceResponse
+from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 
 from app.core.config import settings
 from app.core.deps import CurrentUser, UoW
@@ -16,8 +15,7 @@ from app.services.agent_runner import build_slide_context_from_html, run_agent
 router = APIRouter(prefix="/agent", tags=["agent"])
 logger = logging.getLogger("slidant.agent")
 
-# SSE: project_id → list of asyncio.Queue
-_sse_queues: dict[str, list[asyncio.Queue]] = {}
+from app.api.v1.endpoints.ws import manager as ws_manager
 
 
 def _sanitize_error(e: Exception) -> str:
@@ -380,9 +378,23 @@ async def _run_agent_background_inner(
                     for s in new_slides
                 ]
 
-            await uow.commit()  # broadcast 전에 먼저 커밋 — 클라이언트가 즉시 조회할 수 있도록
+            await uow.commit()  # broadcast 전에 먼저 커밋
             logger.info("━━ DONE  agent_run=%s  affected=%s", agent_run_id, affected_ids)
-            await _broadcast(str(body.project_id), broadcast_payload)
+
+            # Y.Doc 업데이트 (사용자 간 CRDT 동기화)
+            from app.services import crdt as crdt_svc
+            project_id_str = str(body.project_id)
+            if crdt_svc.get_doc(project_id_str):
+                if html_output:
+                    upd = crdt_svc.apply_agent_html(project_id_str, str(body.slide_id), html_output)
+                    if upd:
+                        await ws_manager.broadcast_bytes(project_id_str, upd)
+                for s in new_slides:
+                    upd = crdt_svc.add_slide_to_doc(project_id_str, str(s.id), s.html_content or "", s.title or "")
+                    if upd:
+                        await ws_manager.broadcast_bytes(project_id_str, upd)
+
+            await _broadcast(project_id_str, broadcast_payload)
 
         except Exception as e:
             logger.error("━━ ERROR  agent_run=%s  %s", agent_run_id, str(e), exc_info=True)
@@ -449,33 +461,7 @@ async def get_agent_logs(project_id: UUID, current_user: CurrentUser, uow: UoW):
 
 
 @router.get("/events/{project_id}")
-async def sse_endpoint(request: Request, project_id: str):
-    """SSE: 에이전트 실시간 이벤트 스트림 (agent_started / agent_done / agent_error)"""
-    queue: asyncio.Queue = asyncio.Queue()
-    _sse_queues.setdefault(project_id, []).append(queue)
-    logger.info("sse_connect  project=%s  subs=%d", project_id, len(_sse_queues[project_id]))
-
-    async def generator():
-        try:
-            yield {"event": "connected", "data": json_lib.dumps({"project_id": project_id})}
-            while True:
-                if await request.is_disconnected():
-                    break
-                try:
-                    msg = await asyncio.wait_for(queue.get(), timeout=25.0)
-                    yield {"event": msg.get("type", "message"), "data": json_lib.dumps(msg, default=str)}
-                except asyncio.TimeoutError:
-                    # keepalive ping
-                    yield {"event": "ping", "data": "{}"}
-        finally:
-            _sse_queues.get(project_id, []).remove(queue) if queue in _sse_queues.get(project_id, []) else None
-            logger.info("sse_disconnect  project=%s  subs=%d", project_id, len(_sse_queues.get(project_id, [])))
-
-    return EventSourceResponse(generator())
-
-
 async def _broadcast(project_id: str, message: dict) -> None:
-    queues = _sse_queues.get(project_id, [])
-    logger.debug("sse_broadcast  project=%s  subs=%d  type=%s", project_id, len(queues), message.get("type"))
-    for q in list(queues):
-        await q.put(message)
+    logger.debug("ws_broadcast  project=%s  peers=%d  type=%s",
+                 project_id, ws_manager.peer_count(project_id), message.get("type"))
+    await ws_manager.broadcast_json(project_id, message)
