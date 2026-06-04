@@ -187,6 +187,21 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         return
       }
 
+      if (type === 'slide_deleted') {
+        const deletedSlideId = msg.slide_id as string
+        const ppt = useSlideStore.getState().presentation
+        if (ppt) {
+          useSlideStore.setState({
+            presentation: {
+              ...ppt,
+              slides: ppt.slides.filter((s) => s.id !== deletedSlideId),
+            },
+            currentSlideIndex: Math.max(0, useSlideStore.getState().currentSlideIndex - 1),
+          })
+        }
+        return
+      }
+
       if (type === 'agent_started') {
         const role = (msg.role as string) ?? 'content'
         const agentName = (msg.agent_name as string) ?? `${role.charAt(0).toUpperCase()}${role.slice(1)}Agent`

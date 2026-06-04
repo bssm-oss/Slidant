@@ -229,11 +229,11 @@ async def _run_agent_background_inner(
                 conversation_history=conversation_history,
                 html_mode=True,
             )
-            patches, _, llm_summary, html_output, html_slides = await run_agent(**run_kwargs)
+            patches, _, llm_summary, html_output, html_slides, delete_slide = await run_agent(**run_kwargs)
             elapsed = (_time.perf_counter() - t0) * 1000
 
-            logger.info("   ← LLM 완료  %.0fms  patches=%d  html=%d  html_slides=%d",
-                        elapsed, len(patches), len(html_output), len(html_slides))
+            logger.info("   ← LLM 완료  %.0fms  patches=%d  html=%d  html_slides=%d  delete=%s",
+                        elapsed, len(patches), len(html_output), len(html_slides), delete_slide)
             if llm_summary:
                 logger.info("   summary: %s", llm_summary)
             for i, op in enumerate(patches[:5]):
@@ -245,6 +245,20 @@ async def _run_agent_background_inner(
             slide_ops = [op for op in patches if op.get("path", "").startswith("/slides/")]
             comp_ops  = [op for op in patches if not op.get("path", "").startswith("/slides/")]
             logger.info("   comp_ops=%d  slide_ops=%d", len(comp_ops), len(slide_ops))
+
+            # 슬라이드 삭제 모드
+            if delete_slide and slide:
+                from app.repositories.slide import SlideRepository
+                slide_repo = SlideRepository(uow.session)
+                await slide_repo.delete(slide)
+                logger.info("   슬라이드 삭제 완료: %s", body.slide_id)
+                await uow.commit()
+                await _broadcast(str(body.project_id), {
+                    "type": "slide_deleted",
+                    "slide_id": str(body.slide_id),
+                    "summary": llm_summary or "슬라이드가 삭제되었습니다.",
+                })
+                return
 
             # HTML 모드: html_output으로 슬라이드 직접 업데이트
             if html_output and slide:
