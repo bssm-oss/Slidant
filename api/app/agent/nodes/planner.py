@@ -91,25 +91,28 @@ def make_unified_planner(ctx: NodeContext):
 
         if ctx.on_event:
             steps = [{"id": "plan", "label": "계획 수립"}]
-            # 검색: 중복 제거 후 최대 3개, 쿼리 내용 표시
-            seen_queries: set[str] = set()
-            for q in search_queries:
-                key = q[:12]  # 앞 12자 기준 중복 체크
-                if key not in seen_queries:
-                    seen_queries.add(key)
-                    steps.append({"id": f"search-{len(seen_queries)}", "label": f"🔍 {q[:30]}"})
-                if len(seen_queries) >= 3:
-                    break
+            # 검색: 단일 step id "search" (web_searcher_node의 step_done("search")와 매칭)
+            if search_queries:
+                # 대표 쿼리 1개만 레이블에 표시
+                label = f"🔍 {search_queries[0][:28]}"
+                if len(search_queries) > 1:
+                    label += f" 외 {len(search_queries)-1}개"
+                steps.append({"id": "search", "label": label})
 
             if ops_queue:
+                slide_counter = 0  # create op용 slide-N 카운터
                 for i, op in enumerate(ops_queue):
                     t = op.get("type", "")
                     idx = op.get("slide_index", 0)
                     spec = op.get("spec", {})
 
                     if t == "create":
-                        title = (spec.get("title") or f"슬라이드 {i+1}")[:18]
+                        title = (spec.get("title") or f"슬라이드 {slide_counter+1}")[:18]
                         label = f"📄 {title}"
+                        # slide_composer step_done(f"slide-{idx}") 와 매칭
+                        steps.append({"id": f"slide-{slide_counter}", "label": label})
+                        slide_counter += 1
+                        continue
                     elif t == "edit":
                         label = f"✏️ 슬라이드 {idx+1} 수정"
                     elif t == "component_edit":
