@@ -17,6 +17,12 @@ class ProjectRepository(BaseRepository[Project]):
         )
         return list(result.scalars().all())
 
+    async def update_yjs_state(self, project_id: UUID, state: bytes) -> None:
+        project = await self.get(project_id)
+        if project:
+            project.yjs_state = state
+            self.session.add(project)
+
     async def get_owned(self, project_id: UUID, owner_id: UUID) -> Project | None:
         result = await self.session.execute(
             select(Project).where(
