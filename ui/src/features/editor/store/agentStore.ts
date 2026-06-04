@@ -187,6 +187,33 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         return
       }
 
+      if (type === 'component_conflict') {
+        const { slide_id, component_ids, agent_name } = msg as {
+          slide_id: string; component_ids: string[]; agent_name: string
+        }
+        // 컴포넌트 단위 충돌 → conflictComponentIds에 추가
+        set((s) => {
+          const newConflicts = new Set(s.conflictComponentIds)
+          component_ids.forEach((id) => newConflicts.add(id))
+          return { conflictComponentIds: newConflicts }
+        })
+        // 충돌 알림 채팅 메시지
+        set((s) => ({
+          chatMessages: [
+            ...s.chatMessages,
+            {
+              id: `conflict-${Date.now()}`,
+              role: 'agent' as const,
+              content: `⚠️ 컴포넌트 충돌: ${agent_name}이 이미 수정 중인 요소(${component_ids.join(', ')})를 다른 에이전트가 수정했습니다.`,
+              agentName: 'System',
+              timestamp: new Date().toISOString(),
+              type: 'error' as const,
+            },
+          ],
+        }))
+        return
+      }
+
       if (type === 'slide_deleted') {
         const deletedSlideId = msg.slide_id as string
         const ppt = useSlideStore.getState().presentation

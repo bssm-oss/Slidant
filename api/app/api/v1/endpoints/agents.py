@@ -260,15 +260,38 @@ async def _run_agent_background_inner(
                 })
                 return
 
-            # HTML 모드: html_output으로 슬라이드 직접 업데이트
+            # HTML 모드: html_output → 컴포넌트 레벨 CRDT 업데이트 + DB 저장
             if html_output and slide:
                 from app.services import slide_history_service
+                from app.services import crdt as crdt_svc
+
                 reason = f'{agent_def_name}: {body.command[:120]}'
                 await slide_history_service.archive_and_apply(
                     uow, body.slide_id, list(slide.content or []),
                     reason, agent_name=agent_def_name, html_content=html_output
                 )
                 logger.info("   HTML 즉시 적용: %d chars → slide %s", len(html_output), body.slide_id)
+
+                # CRDT 컴포넌트 레벨 업데이트
+                project_id_str = str(body.project_id)
+                slide_id_str = str(body.slide_id)
+                if crdt_svc.get_doc(project_id_str):
+                    upd, conflicted = crdt_svc.apply_agent_html(
+                        project_id_str, slide_id_str, html_output, agent_name=agent_def_name
+                    )
+                    if upd:
+                        await ws_manager.broadcast_bytes(project_id_str, upd)
+                    # 충돌 발생 시 conflict 이벤트 브로드캐스트
+                    if conflicted:
+                        logger.warning("   컴포넌트 충돌 감지: %s", conflicted)
+                        await _broadcast(project_id_str, {
+                            "type": "component_conflict",
+                            "slide_id": slide_id_str,
+                            "component_ids": conflicted,
+                            "agent_name": agent_def_name,
+                        })
+                    # 작업 완료 후 컴포넌트 점유 해제
+                    crdt_svc.release_agent_lock(project_id_str, slide_id_str, agent_def_name)
             elif comp_ops and slide:
                 # 기존 JSON patch fallback
                 from app.services.slide_content import apply_patches
@@ -395,16 +418,14 @@ async def _run_agent_background_inner(
             await uow.commit()  # broadcast 전에 먼저 커밋
             logger.info("━━ DONE  agent_run=%s  affected=%s", agent_run_id, affected_ids)
 
-            # Y.Doc 업데이트 (사용자 간 CRDT 동기화)
+            # 새 슬라이드 CRDT 등록
             from app.services import crdt as crdt_svc
             project_id_str = str(body.project_id)
             if crdt_svc.get_doc(project_id_str):
-                if html_output:
-                    upd = crdt_svc.apply_agent_html(project_id_str, str(body.slide_id), html_output)
-                    if upd:
-                        await ws_manager.broadcast_bytes(project_id_str, upd)
                 for s in new_slides:
-                    upd = crdt_svc.add_slide_to_doc(project_id_str, str(s.id), s.html_content or "", s.title or "")
+                    upd = crdt_svc.add_slide_to_doc(
+                        project_id_str, str(s.id), s.html_content or "", s.title or ""
+                    )
                     if upd:
                         await ws_manager.broadcast_bytes(project_id_str, upd)
 

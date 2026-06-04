@@ -63,6 +63,12 @@ class AgentState(TypedDict):
     search_queries: list    # search_router 출력
     search_results: list    # web_searcher 출력
     delete_slide: bool      # slide_deleter: True이면 현재 슬라이드 삭제
+    # ops_queue 복합 작업 필드
+    ops_queue: list         # [{type, slide_index, slide_id, instruction, spec}]
+    ops_results: list       # 완료된 작업 결과 누적
+    current_op: dict        # ops_dispatcher가 현재 처리 중인 op
+    all_slides_context: list  # 전체 슬라이드 [{id, order, html_content, title}] (멀티 슬라이드 타겟팅용)
+    review_ok: bool         # self_reviewer 판정
 
 
 _SHARED_RULES = """
@@ -372,6 +378,26 @@ FEW-SHOT B — STATS slide with glassmorphism cards:
 {"html":"<style>@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}.slide{width:960px;height:540px;position:relative;overflow:hidden;font-family:system-ui,sans-serif;}</style><div class=\\"slide\\"><div data-component-id=\\"bg\\" style=\\"position:absolute;inset:0;background:#0A0F1E;z-index:1\\"></div><div data-component-id=\\"glow\\" style=\\"position:absolute;left:200px;top:-100px;width:560px;height:400px;background:radial-gradient(ellipse,rgba(59,130,246,0.2),transparent 70%);z-index:2\\"></div><div data-component-id=\\"accent\\" style=\\"position:absolute;left:0;top:0;width:6px;height:540px;background:#3B82F6;z-index:3\\"></div><div data-component-id=\\"title\\" style=\\"position:absolute;left:80px;top:50px;font-size:36px;font-weight:700;color:#F9FAFB;z-index:10\\">핵심 수치</div><div data-component-id=\\"card1\\" style=\\"position:absolute;left:80px;top:130px;width:240px;height:150px;backdrop-filter:blur(20px);background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:16px;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;animation:fadeUp 0.6s ease forwards\\"><span style=\\"font-size:52px;font-weight:900;color:#3B82F6\\">1위</span><span style=\\"font-size:14px;color:#9CA3AF;margin-top:4px\\">항목 설명</span></div><div data-component-id=\\"card2\\" style=\\"position:absolute;left:360px;top:130px;width:240px;height:150px;backdrop-filter:blur(20px);background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:16px;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;animation:fadeUp 0.6s 0.15s ease both\\"><span style=\\"font-size:52px;font-weight:900;color:#8B5CF6\\">340만</span><span style=\\"font-size:14px;color:#9CA3AF;margin-top:4px\\">항목 설명</span></div><div data-component-id=\\"card3\\" style=\\"position:absolute;left:640px;top:130px;width:240px;height:150px;backdrop-filter:blur(20px);background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:16px;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;animation:fadeUp 0.6s 0.3s ease both\\"><span style=\\"font-size:52px;font-weight:900;color:#10B981\\">98%</span><span style=\\"font-size:14px;color:#9CA3AF;margin-top:4px\\">항목 설명</span></div></div>"}
 """
 
+COMPONENT_EDITOR_PROMPT = """\
+You are ComponentEditor for Slidant. You modify a SPECIFIC component element within a slide.
+
+You receive:
+- The target component's current outerHTML (one element with data-component-id)
+- The modification instruction
+
+OUTPUT FORMAT (JSON ONLY):
+{"summary":"한국어 수정 요약","html":"<element data-component-id=\\"...\\" ...>...</element>"}
+
+━━ RULES ━━
+• Output ONLY the single modified element (same data-component-id)
+• Preserve the data-component-id attribute exactly
+• Preserve position/size CSS (left, top, width, height) unless layout change requested
+• Only change what was instructed (color, text, font, style, etc.)
+• Never output the full slide HTML — single element only
+
+OUTPUT ONLY JSON.
+"""
+
 HTML_EDITOR_PROMPT = """\
 You are HtmlEditor for Slidant. You receive an EXISTING slide HTML and modify it according to the instruction.
 
@@ -618,27 +644,44 @@ def _extract_json(text: str) -> dict | list | None:
 
 
 UNIFIED_PLANNER_PROMPT = """\
-You are PlannerAgent for Slidant. Analyze the command and produce a complete plan in ONE response.
+You are PlannerAgent for Slidant. Analyze the command and produce a structured operations plan.
 
 ━━ OUTPUT FORMAT (JSON ONLY, no markdown) ━━
 {
-  "mode": "edit",
-  "summary": "한국어 1-2문장",
+  "summary": "한국어 1-2문장 전체 계획 요약",
   "search_queries": [],
   "design_tokens": {
     "palette": "DARK",
     "bg": "#0A0F1E", "accent": "#3B82F6", "text": "#F9FAFB", "text2": "#9CA3AF",
     "cover_title_size": 68, "slide_title_size": 44, "subtitle_size": 28, "body_size": 21
   },
-  "slides": [
-    {"title": "슬라이드 제목", "layout": "COVER", "key_points": ["핵심 내용"], "image_needed": false}
+  "operations": [
+    {"type": "delete", "slide_index": 2},
+    {"type": "edit",   "slide_index": 0, "instruction": "노란색 디자인으로 변경"},
+    {"type": "create", "spec": {"title": "새 슬라이드", "layout": "CONTENT", "key_points": ["내용"]}}
   ]
 }
 
-━━ MODE ━━
-delete: 삭제/지워/제거 키워드 → mode:"delete", slides:[] (빈 배열)
-edit:   수정/변경/바꿔/적용/디자인/색상/노란/어둡게 키워드 → mode:"edit", slides:1개 (수정 지시 설명)
-create: PPT/만들어/생성 키워드 → mode:"create", slides:N개 (max 6)
+━━ OPERATION TYPES ━━
+delete:           슬라이드 전체 삭제 → {"type":"delete", "slide_index": N}
+edit:             슬라이드 스타일/디자인 전체 수정 → {"type":"edit", "slide_index": N, "instruction": "수정 내용"}
+component_edit:   특정 요소만 수정 (제목 텍스트, 특정 색상 등) → {"type":"component_edit", "slide_index": N, "component_id": "title", "instruction": "수정 내용"}
+component_delete: 특정 요소 제거 → {"type":"component_delete", "slide_index": N, "component_id": "bg"}
+create:           새 슬라이드 생성 → {"type":"create", "spec": {...}}
+
+판단 기준:
+• "제목만 바꿔" / "텍스트 수정" / "이 요소" → component_edit (component_id 추론)
+• "디자인 전체" / "색상 전체" / "노란색으로" → edit (전체 슬라이드)
+• "슬라이드 삭제" → delete
+• "이 부분 지워" / "요소 제거" → component_delete
+
+• slide_index: 0-based. "@슬라이드1" → 0, "@슬라이드3" → 2
+• 명령에 슬라이드 지정 없으면: edit/delete → 현재 슬라이드(index 0), create → 새 슬라이드
+• 복합 명령 가능: operations 배열에 여러 op 포함 (순서대로 실행)
+• 단순 명령도 operations 배열 형식 유지 (1개짜리 배열)
+
+━━ MODE (레거시 호환) ━━
+operations 배열 타입으로 mode 자동 결정됨. 별도 mode 필드 불필요.
 
 ━━ WEB SEARCH ━━
 최신/실제 데이터가 필요하면 search_queries 생성.
@@ -1203,6 +1246,104 @@ def build_agent_graph(
         logger.info("[html_editor] html=%d chars", len(html))
         return {**state, "html_output": html, "result_summary": summary}
 
+    # ── component_editor: 특정 data-component-id 요소만 수정 ─────────────────
+    async def component_editor_node(state: AgentState) -> AgentState:
+        op = state.get("current_op", {})
+        component_id = op.get("component_id", "")
+        instruction = op.get("instruction", state.get("command", ""))
+
+        if on_event:
+            on_event("node_start", f"🔧 컴포넌트 수정 중 ({component_id})...")
+
+        # 기존 HTML에서 대상 컴포넌트 추출
+        from app.services.slide_parser import parse_slide_html
+        existing_html = state.get("slide_context", "")
+        parsed = parse_slide_html(existing_html)
+        target_comp = parsed["components"].get(component_id)
+
+        if not target_comp:
+            logger.warning("component_editor: component '%s' not found", component_id)
+            return {**state, "result_summary": f"컴포넌트 '{component_id}' 없음"}
+
+        human_text = (
+            f"TARGET COMPONENT (data-component-id=\"{component_id}\"):\n"
+            f"{target_comp['html']}\n\n"
+            f"MODIFICATION: {instruction}\n\n"
+            "위 지시에 따라 이 요소만 수정하라. data-component-id 보존 필수."
+        )
+
+        messages = [SystemMessage(content=COMPONENT_EDITOR_PROMPT), HumanMessage(content=human_text)]
+        raw = ""
+        try:
+            async for chunk in llm.astream(messages):
+                raw_c = chunk.content if hasattr(chunk, "content") else ""
+                if isinstance(raw_c, list):
+                    token = "".join(b.get("text", "") for b in raw_c if isinstance(b, dict) and b.get("type") == "text")
+                else:
+                    token = str(raw_c) if raw_c else ""
+                raw += token
+        except Exception as e:
+            logger.warning("component_editor failed: %s", e)
+
+        parsed_result = _extract_json(raw)
+        new_comp_html = ""
+        summary = ""
+        if isinstance(parsed_result, dict):
+            new_comp_html = parsed_result.get("html", "")
+            summary = parsed_result.get("summary", f"컴포넌트 {component_id} 수정 완료")
+
+        if new_comp_html:
+            from app.services.slide_parser import update_component_in_html
+            new_slide_html = update_component_in_html(existing_html, component_id, new_comp_html)
+            result = {
+                "type": "component_edit",
+                "component_id": component_id,
+                "html": new_comp_html,
+                "slide_html": new_slide_html,
+                "summary": summary,
+            }
+        else:
+            new_slide_html = existing_html
+            result = {"type": "component_edit", "component_id": component_id, "error": "no output"}
+
+        if on_event and new_comp_html:
+            on_event("step_done", f"comp-{component_id}")
+            on_event("node_done", f"✅ {summary[:30]}")
+
+        ops_results = list(state.get("ops_results", []))
+        ops_results.append(result)
+        return {
+            **state,
+            "html_output": new_slide_html,
+            "ops_results": ops_results,
+            "result_summary": summary,
+        }
+
+    # ── component_deleter: data-component-id 요소 삭제 ───────────────────────
+    async def component_deleter_node(state: AgentState) -> AgentState:
+        op = state.get("current_op", {})
+        component_id = op.get("component_id", "")
+        if on_event:
+            on_event("node_start", f"🗑️ 컴포넌트 삭제 중 ({component_id})...")
+
+        from app.services.slide_parser import delete_component_from_html
+        existing_html = state.get("slide_context", "")
+        new_html = delete_component_from_html(existing_html, component_id)
+
+        summary = f"컴포넌트 '{component_id}' 삭제 완료"
+        if on_event:
+            on_event("step_done", f"comp-del-{component_id}")
+            on_event("node_done", f"✅ {summary}")
+
+        ops_results = list(state.get("ops_results", []))
+        ops_results.append({"type": "component_delete", "component_id": component_id})
+        return {
+            **state,
+            "html_output": new_html,
+            "ops_results": ops_results,
+            "result_summary": summary,
+        }
+
     # ── slide_deleter: 현재 슬라이드 삭제 표시 ────────────────────────────────
     async def slide_deleter_node(state: AgentState) -> AgentState:
         if on_event:
@@ -1424,6 +1565,10 @@ def build_agent_graph(
             mode = state.get("mode", "create")
             if mode == "delete":
                 return "delete"
+            if mode == "component_edit":
+                return "component_edit"
+            if mode == "component_delete":
+                return "component_delete"
             if mode == "edit":
                 return "edit"
             # create: 검색 필요하면 search, 아니면 dispatch
@@ -1435,6 +1580,8 @@ def build_agent_graph(
         graph.add_node("slide_dispatch", slide_dispatch_node)
         graph.add_node("slide_composer", slide_composer_node)
         graph.add_node("html_editor", html_editor_node)
+        graph.add_node("component_editor", component_editor_node)
+        graph.add_node("component_deleter", component_deleter_node)
         graph.add_node("slide_deleter", slide_deleter_node)
         graph.add_node("html_aggregator", html_aggregator_node)
         graph.add_node("html_validator", html_validator_node_new)
@@ -1443,25 +1590,29 @@ def build_agent_graph(
 
         graph.add_edge(START, "unified_planner")
         graph.add_conditional_edges("unified_planner", route_after_planner_v2, {
-            "search":   "web_searcher",
-            "dispatch": "slide_dispatch",
-            "edit":     "html_editor",
-            "delete":   "slide_deleter",
+            "search":            "web_searcher",
+            "dispatch":          "slide_dispatch",
+            "edit":              "html_editor",
+            "component_edit":    "component_editor",
+            "component_delete":  "component_deleter",
+            "delete":            "slide_deleter",
         })
         # create 경로
         graph.add_edge("web_searcher", "slide_dispatch")
         graph.add_conditional_edges("slide_dispatch", dispatch_slides, ["slide_composer"])
         graph.add_edge("slide_composer", "html_aggregator")
         graph.add_edge("html_aggregator", "html_validator")
-        # edit 경로
+        # edit / component 경로
         graph.add_edge("html_editor", "html_validator")
+        graph.add_edge("component_editor", "html_validator")
+        graph.add_edge("component_deleter", "html_validator")
         # 공통 validator → formatter
         graph.add_conditional_edges("html_validator", should_retry_html_new, {
             "retry": "retry_inc",
             "done":  "formatter",
         })
         graph.add_edge("retry_inc", "slide_dispatch")
-        # delete 경로 → formatter 직행
+        # delete → formatter 직행
         graph.add_edge("slide_deleter", "formatter")
         graph.add_edge("formatter", END)
         return graph.compile()
