@@ -1,3 +1,4 @@
+import secrets
 from datetime import datetime
 from datetime import datetime as dt
 from uuid import UUID
@@ -278,3 +279,24 @@ async def revert_component_change(
         uow, slide_id, target.content,
         f"컴포넌트 변경 되돌리기 ({entry.op} → 역방향)",
     )
+
+
+@router.post("/{project_id}/share", response_model=dict)
+async def generate_share_token(project_id: UUID, current_user: CurrentUser, uow: UoW):
+    """프로젝트 공유 링크 토큰 생성 (이미 있으면 재생성)."""
+    project = await uow.projects.get(project_id)
+    if not project or project.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    project.share_token = secrets.token_urlsafe(32)
+    await uow.commit()
+    return {"share_token": project.share_token, "share_url": f"/share/{project.share_token}"}
+
+
+@router.delete("/{project_id}/share", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_share_token(project_id: UUID, current_user: CurrentUser, uow: UoW):
+    """프로젝트 공유 링크 토큰 삭제 (공유 비활성화)."""
+    project = await uow.projects.get(project_id)
+    if not project or project.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    project.share_token = None
+    await uow.commit()

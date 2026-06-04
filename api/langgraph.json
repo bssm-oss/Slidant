@@ -1,0 +1,8 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "html_pipeline": "./langgraph_graphs.py:html_pipeline",
+    "legacy_pipeline": "./langgraph_graphs.py:legacy_pipeline"
+  },
+  "env": ".env"
+}

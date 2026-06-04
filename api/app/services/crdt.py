@@ -145,9 +145,7 @@ def apply_agent_html(project_id: str, slide_id: str, html: str) -> bytes | None:
 
     with doc.transaction():
         text: pycrdt.Text = slides_map[str(slide_id)]["html_content"]
-        length = len(str(text))
-        if length:
-            text.delete(0, length)
+        text.clear()          # pycrdt Text: clear() replaces delete(0, len)
         text.insert(0, html)
 
     _dirty.add(project_id)
