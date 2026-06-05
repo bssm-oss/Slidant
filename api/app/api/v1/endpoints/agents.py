@@ -247,19 +247,24 @@ async def _run_agent_background_inner(
             comp_ops  = [op for op in patches if not op.get("path", "").startswith("/slides/")]
             logger.info("   comp_ops=%d  slide_ops=%d", len(comp_ops), len(slide_ops))
 
-            # 슬라이드 삭제 모드
+            # 슬라이드 삭제 처리 (delete_slide=True)
+            # delete만 있으면 즉시 반환; delete+create 혼합이면 삭제 후 계속 진행
             if delete_slide and slide:
                 from app.repositories.slide import SlideRepository
                 slide_repo = SlideRepository(uow.session)
                 await slide_repo.delete(slide)
                 logger.info("   슬라이드 삭제 완료: %s", body.slide_id)
-                await uow.commit()
-                await _broadcast(str(body.project_id), {
-                    "type": "slide_deleted",
-                    "slide_id": str(body.slide_id),
-                    "summary": llm_summary or "슬라이드가 삭제되었습니다.",
-                })
-                return
+                slide = None  # 이후 slide 참조 불가 — None으로 표시
+                if not html_slides:
+                    # 순수 삭제 — 새 슬라이드 없음 → 즉시 종료
+                    await uow.commit()
+                    await _broadcast(str(body.project_id), {
+                        "type": "slide_deleted",
+                        "slide_id": str(body.slide_id),
+                        "summary": llm_summary or "슬라이드가 삭제되었습니다.",
+                    })
+                    return
+                # delete+create 혼합: 삭제 완료, 아래에서 html_slides 전량 신규 생성 진행
 
             # HTML 모드: html_output → 컴포넌트 레벨 CRDT 업데이트 + DB 저장
             if html_output and slide:
@@ -313,8 +318,11 @@ async def _run_agent_background_inner(
                 from app.models.slide import Slide as SlideModel
                 from app.services import slide_history_service
                 specs = html_slides  # 슬라이드 수 제한 없음
-                # 첫 번째 슬라이드 → 현재 슬라이드에 적용 (빈 슬라이드 덮어씀)
+                edit_keywords = ("수정", "변경", "바꿔", "적용", "고쳐", "다시")
+                is_edit_cmd = any(k in body.command for k in edit_keywords)
+
                 if specs and slide:
+                    # slide 살아있음 → 첫 번째 슬라이드를 현재 슬라이드에 적용
                     first = specs[0]
                     reason = f'{agent_def_name}: {body.command[:120]}'
                     await slide_history_service.archive_and_apply(
@@ -325,14 +333,19 @@ async def _run_agent_background_inner(
                         slide.title = first["title"]
                     logger.info("   HTML[0] → 현재 슬라이드 적용: title=%r  html=%d chars",
                                 first.get("title"), len(first.get("html", "")))
-                # 나머지 슬라이드 → 신규 생성 (edit 명령이면 건너뜀)
-                edit_keywords = ("수정", "변경", "바꿔", "적용", "고쳐", "다시")
-                is_edit_cmd = any(k in body.command for k in edit_keywords)
-                if is_edit_cmd:
+                    specs_to_create = [] if is_edit_cmd else specs[1:]
+                else:
+                    # slide 없음 (삭제됐거나 None) → 전량 신규 생성
+                    specs_to_create = [] if is_edit_cmd else specs
+                    if is_edit_cmd:
+                        logger.info("   edit 명령 + slide 없음 → 생성 건너뜀")
+
+                if is_edit_cmd and slide:
                     logger.info("   edit 명령 감지 → 추가 슬라이드 생성 건너뜀 (%d개)", len(specs) - 1)
+
                 # DB에서 현재 최대 order 조회 → 겹치지 않게 이후 슬라이드 순서 지정
                 base_order = await uow.slides.get_last_order(body.project_id)
-                for i, slide_spec in enumerate([] if is_edit_cmd else specs[1:]):
+                for i, slide_spec in enumerate(specs_to_create):
                     new_slide = SlideModel(
                         project_id=body.project_id,
                         title=slide_spec.get("title", ""),
