@@ -9,6 +9,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from app.agent.context import NodeContext
 from app.agent.state import AgentState
 from app.agent.prompts import SLIDE_COMPOSER_PROMPT, HTML_EDITOR_PROMPT
+from app.core.domain.layout_budget import compute_layout_budget
 
 logger = logging.getLogger("slidant.agent")
 
@@ -69,12 +70,16 @@ def make_slide_composer(ctx: NodeContext):
                 "이 목차와 일치하는 내용으로 생성할 것."
             )
 
+        # 살아있는 제약 명세: 이 슬라이드의 실제 픽셀 예산 동적 계산
+        layout_budget = compute_layout_budget(spec, all_specs)
+
         human_text = (
             f"Slide spec: {json.dumps(spec, ensure_ascii=False)}\n\n"
             f"Design tokens: {json.dumps(design_tokens, ensure_ascii=False)}\n\n"
             f"Slide index: {idx} (0-based)\n\n"
             f"Current slide HTML (for reference/edit):\n{state.get('slide_context', '(empty)')}"
             f"{toc_ctx}{search_ctx}"
+            f"{layout_budget}"
         )
 
         composer_system = SLIDE_COMPOSER_PROMPT
@@ -123,11 +128,13 @@ def make_html_editor(ctx: NodeContext):
         op = state.get("current_op", {})
         instruction = op.get("instruction", command)
 
+        layout_budget = compute_layout_budget(spec)
         human_text = (
             f"EXISTING SLIDE HTML:\n{existing_html}\n\n"
             f"MODIFICATION INSTRUCTION: {instruction}\n"
             f"Edit spec: {json.dumps(spec, ensure_ascii=False)}\n"
             f"Design tokens (참고용): {json.dumps(design_tokens, ensure_ascii=False)}\n\n"
+            f"{layout_budget}"
             "위 지시에 따라 기존 HTML을 수정하라. 내용은 보존, 요청된 것만 변경."
         )
 
