@@ -32,6 +32,8 @@ services:
   api:
     build: ./api
     container_name: slidant-api
+    env_file:
+      - ./api/.env
     environment:
       DATABASE_URL: postgresql+asyncpg://slidant:${POSTGRES_PASSWORD:-slidant}@db:5432/slidant
       REDIS_URL: redis://redis:6379
@@ -39,6 +41,7 @@ services:
       FERNET_KEY: ${FERNET_KEY:-nXW4KWszBYNONjbVjcQ76Phn27XWsbVdxfxjoRyhNqY=}
       MOCK_AGENT: ${MOCK_AGENT:-false}
       TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      # LANGSMITH_* 및 LANGCHAIN_* 는 env_file(./api/.env)에서 자동 주입
       APP_ENV: production
       CORS_ORIGINS: http://localhost,http://localhost:80,http://localhost:3000,http://localhost:3002,http://localhost:5173,${EXTRA_CORS_ORIGINS:-}
     ports:
