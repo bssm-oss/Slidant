@@ -321,14 +321,18 @@ async def _run_agent_background_inner(
                 edit_keywords = ("수정", "변경", "바꿔", "적용", "고쳐", "다시")
                 is_edit_cmd = any(k in body.command for k in edit_keywords)
 
-                if delete_slide and not is_edit_cmd:
-                    # delete+create 혼합 = 전체 프레젠테이션 교체
-                    # body.slide_id는 이미 삭제됨(slide=None). 나머지 기존 슬라이드도 제거 후 fresh 생성.
-                    remaining = await uow.slides.list_by_project(body.project_id)
-                    for rem in remaining:
-                        if rem.id != body.slide_id:  # body.slide_id는 이미 세션에서 삭제됨
-                            await uow.session.delete(rem)
-                            logger.info("   기존 슬라이드 제거 (전체 교체): %s title=%r", rem.id, rem.title)
+                # 전체 프레젠테이션 교체 판단:
+                # - delete+create 혼합: 명시적 전체 교체 의도
+                # - create-only(2장+, not edit): 새 PPT 생성 의도 → 기존도 정리
+                is_full_replace = (len(specs) >= 2 and not is_edit_cmd)
+
+                if is_full_replace:
+                    # 기존 슬라이드 전량 삭제 후 fresh 생성 (order 0부터 재배치)
+                    # body.slide_id는 이미 삭제됐을 수 있음(delete_slide=True), 아니면 지금 삭제
+                    existing_slides = await uow.slides.list_by_project(body.project_id)
+                    for ex in existing_slides:
+                        await uow.session.delete(ex)
+                    logger.info("   기존 슬라이드 %d장 전량 제거 (전체 교체)", len(existing_slides))
                     for i, spec in enumerate(specs):
                         new_slide = SlideModel(
                             project_id=body.project_id,
@@ -339,11 +343,11 @@ async def _run_agent_background_inner(
                         )
                         uow.slides.add(new_slide)
                         new_slides.append(new_slide)
-                        logger.info("   HTML 슬라이드 생성 (fresh): title=%r  html=%d chars",
-                                    spec.get("title"), len(spec.get("html", "")))
+                        logger.info("   HTML 슬라이드 생성 (fresh %d/%d): title=%r",
+                                    i + 1, len(specs), spec.get("title"))
 
                 elif specs and slide:
-                    # 기존 슬라이드 살아있음 → specs[0] 덮어쓰기, specs[1:] 신규 추가
+                    # 단일 슬라이드 생성 또는 edit: specs[0]→현재 슬라이드 덮어쓰기
                     first = specs[0]
                     reason = f'{agent_def_name}: {body.command[:120]}'
                     await slide_history_service.archive_and_apply(
@@ -355,8 +359,6 @@ async def _run_agent_background_inner(
                     logger.info("   HTML[0] → 현재 슬라이드 적용: title=%r  html=%d chars",
                                 first.get("title"), len(first.get("html", "")))
                     specs_to_create = [] if is_edit_cmd else specs[1:]
-                    if is_edit_cmd:
-                        logger.info("   edit 명령 → 추가 슬라이드 건너뜀")
                     base_order = await uow.slides.get_last_order(body.project_id)
                     for i, spec in enumerate(specs_to_create):
                         new_slide = SlideModel(
@@ -368,23 +370,7 @@ async def _run_agent_background_inner(
                         )
                         uow.slides.add(new_slide)
                         new_slides.append(new_slide)
-                        logger.info("   HTML 슬라이드 추가: title=%r  html=%d chars",
-                                    spec.get("title"), len(spec.get("html", "")))
-
-                else:
-                    # slide=None + delete_slide=False (엣지케이스)
-                    if not is_edit_cmd:
-                        base_order = await uow.slides.get_last_order(body.project_id)
-                        for i, spec in enumerate(specs):
-                            new_slide = SlideModel(
-                                project_id=body.project_id,
-                                title=spec.get("title", ""),
-                                html_content=spec.get("html", ""),
-                                content=[],
-                                order=base_order + i,
-                            )
-                            uow.slides.add(new_slide)
-                            new_slides.append(new_slide)
+                        logger.info("   HTML 슬라이드 추가: title=%r", spec.get("title"))
             elif slide_ops:
                 from app.services.project_service import create_slide_with_components
                 for op in slide_ops[:5]:  # 한 번에 최대 5장
