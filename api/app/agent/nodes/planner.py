@@ -158,7 +158,8 @@ def make_ops_dispatcher(ctx: NodeContext):
     def ops_dispatcher_node(state: AgentState) -> AgentState:
         queue = list(state.get("ops_queue", []))
         if not queue:
-            return {**state, "current_op": {}, "html_slides": "__RESET__"}
+            # html_slides 보존 — 생성된 슬라이드를 formatter까지 전달해야 함
+            return {**state, "current_op": {}}
 
         op = queue.pop(0)
         op_type = op.get("type", "create")
@@ -180,10 +181,10 @@ def make_ops_dispatcher(ctx: NodeContext):
                 "current_op": {**op, "step_id": "create-batch"},
                 "slide_specs": slide_specs,
                 "mode": "create",
-                "html_slides": "__RESET__",
+                "html_slides": "__RESET__",  # create 배치 시작 시에만 리셋
             }
 
-        # edit/delete/component: 단일 op — step_id를 current_op에 심어 노드가 올바른 id로 step_done 발사
+        # edit/delete/component: html_slides 보존 (이전 create 배치 결과 유지)
         queue_pos = len(state.get("ops_results", []))  # 몇 번째 op인지
         step_id = f"{op_type}-{slide_idx}-{queue_pos}"
         op_with_step = {**op, "step_id": step_id}
@@ -205,7 +206,7 @@ def make_ops_dispatcher(ctx: NodeContext):
             "current_op": op_with_step,
             "slide_context": slide_ctx,
             "mode": op_type,
-            "html_slides": "__RESET__",
+            # html_slides 리셋 없음 — 이전 create 결과 보존
         }
     return ops_dispatcher_node
 
