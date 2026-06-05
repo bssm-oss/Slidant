@@ -296,7 +296,41 @@ IMAGE PLACEHOLDER (NO src/url):
   <span style="color:rgba(255,255,255,0.35);font-size:13px;">이미지</span>
 </div>
 
-TEXT SAFE ZONE: left≥80px right≤880px. Never fontSize<18.
+━━ BOUNDARY CONSTRAINTS (MANDATORY — NEVER VIOLATE) ━━
+
+CANVAS = 960×540px. All absolute elements MUST fit inside. Verify before output:
+  ✓ left + width  ≤ 960   (right edge must not exceed canvas)
+  ✓ top  + height ≤ 530   (bottom edge ≤ 530px — leave 10px breathing room)
+  ✓ left ≥ 0, top ≥ 0
+
+CONTENT SAFE ZONE:
+  • Horizontal: left ≥ 60px, right edge ≤ 900px
+  • Vertical body area: top 140px → bottom 500px = 360px for content
+  • Footer/watermark (if any): top 500–525px only
+
+BULLET LIST DENSITY RULES:
+  • Each bullet item = font-size × line-height + gap. Default: 21px × 1.5 + 8px ≈ 40px per item
+  • Body area height = 360px → max 9 items at 40px. But keep to ≤ 6 for readability
+  • If content has 7+ items: MUST use 2-column layout (each col: left=60,w=360 | left=480,w=380)
+  • 2-column: each column handles half the items independently; never let items cross columns
+
+2-COLUMN LAYOUT RULES:
+  • Left col:  left=60px,  width=380px, top=140px → max bottom=500px
+  • Right col: left=480px, width=420px, top=140px → max bottom=500px
+  • Each column is visually ISOLATED — no element overlaps the other column's area
+  • Title always spans full width (left=60, width=840)
+
+SPLIT-PANEL RULES (left accent panel + right content):
+  • Left panel clip-path: stays within 0–450px x range
+  • Right content: left≥460px, right≤940px
+  • Never place text where two panels overlap
+
+FONT SIZE ADAPTATION:
+  • Many items (7+): reduce body font to 17–18px and tighten gap to 6px
+  • Dense slide: title can shrink to 32px, body to 16px — overflow is NEVER acceptable
+  • fontSize < 15px is forbidden
+
+TEXT SAFE ZONE: left≥60px right≤900px. Never fontSize<15.
 
 FEW-SHOT A — COVER with animations + radial gradient:
 {"html":"<style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');@keyframes fadeUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:none}}@keyframes scaleIn{from{opacity:0;transform:scale(0.9)}to{opacity:1;transform:none}}.slide{width:960px;height:540px;position:relative;overflow:hidden;font-family:'Inter',system-ui,sans-serif;}</style><div class=\\"slide\\"><div data-component-id=\\"bg\\" style=\\"position:absolute;inset:0;background:#0A0F1E;z-index:1\\"></div><div data-component-id=\\"radial\\" style=\\"position:absolute;left:-100px;top:-100px;width:600px;height:600px;background:radial-gradient(ellipse,rgba(59,130,246,0.25) 0%,transparent 60%);z-index:2\\"></div><div data-component-id=\\"accent\\" style=\\"position:absolute;left:0;top:0;width:6px;height:540px;background:linear-gradient(180deg,#3B82F6,#8B5CF6);z-index:3\\"></div><div data-component-id=\\"title\\" style=\\"position:absolute;left:80px;top:160px;width:700px;font-size:68px;font-weight:900;color:#F9FAFB;line-height:1.1;z-index:10;animation:fadeUp 0.7s ease forwards\\">슬라이드 제목</div><div data-component-id=\\"sub\\" style=\\"position:absolute;left:80px;top:290px;width:600px;font-size:26px;color:#9CA3AF;z-index:10;animation:fadeUp 0.7s 0.2s ease both\\">부제목 텍스트</div><div data-component-id=\\"divider\\" style=\\"position:absolute;left:80px;top:345px;width:60px;height:4px;background:#3B82F6;z-index:10;animation:scaleIn 0.5s 0.4s ease both\\"></div></div>"}
@@ -343,6 +377,14 @@ OUTPUT FORMAT (JSON ONLY, no markdown):
 • If instruction is "다크/dark" → apply dark color scheme
 • If instruction is "레이아웃" → reposition elements, keep content
 • If instruction mentions specific element → only change that element
+
+━━ BOUNDARY CONSTRAINTS (MANDATORY) ━━
+After any modification, verify ALL absolute elements:
+  ✓ left + width  ≤ 960   (no right overflow)
+  ✓ top  + height ≤ 530   (no bottom overflow)
+  ✓ left ≥ 0, top ≥ 0
+If existing HTML has overflow: fix it while applying the instruction.
+Never leave any element with top+height > 540 or left+width > 960.
 
 ━━ COLOR CHANGE RULES ━━
 When changing colors, update ALL related elements consistently:
