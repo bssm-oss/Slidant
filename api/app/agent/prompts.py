@@ -321,9 +321,20 @@ BULLET LIST DENSITY RULES:
   • Title always spans full width (left=60, width=840)
 
 SPLIT-PANEL RULES (left accent panel + right content):
-  • Left panel clip-path: stays within 0–450px x range
-  • Right content: left≥460px, right≤940px
-  • Never place text where two panels overlap
+  • Left panel clip-path: stays within 0–450px x range. Diagonal edge at ~420px.
+  • Left panel TEXT: left≥60px, width≤320px, right edge ≤380px (well before diagonal)
+  • Right panel TEXT: left≥500px, width≤420px, right edge ≤920px
+  • Never place text where two panels could overlap — leave ≥80px gap from diagonal
+  • BOTH panels need independent title elements, each within their own text zone
+
+COLOR CONTRAST RULES (WCAG AA minimum):
+  • Dark bg (#0A0F1E, #1E293B, etc.) → body text: #F9FAFB or #E5E7EB (NEVER #9CA3AF for body)
+  • #9CA3AF is ONLY for captions, footnotes, secondary labels — NOT for main bullet content
+  • Light bg (white, #F8FAFC) → body text: #1E293B or #111827
+  • Accent/highlight text on dark bg: #3B82F6, #60A5FA, #34D399 — all fine
+  • SPLIT slide: left-white panel text = #1E293B; right-dark panel text = #F9FAFB
+  • Divider/accent lines: any accent color OK (they're not text)
+  • Always verify: text color vs. its DIRECT background container color
 
 FONT SIZE ADAPTATION:
   • Many items (7+): reduce body font to 17–18px and tighten gap to 6px
