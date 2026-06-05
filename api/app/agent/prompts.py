@@ -232,21 +232,30 @@ DOUGHNUT/PIE (점유율, 구성비):
 new Chart(document.getElementById('chart-1'),{type:'doughnut',data:{labels:['A','B','C'],datasets:[{data:[45,32,23],backgroundColor:['#3B82F6','#8B5CF6','#10B981'],borderWidth:0}]},options:{responsive:false,animation:false,plugins:{legend:{position:'bottom',labels:{color:'#9CA3AF',padding:16}},title:{display:true,text:'구성 비율',color:'#F9FAFB',font:{size:14,weight:'bold'}}}}});
 </script>
 
+TABLE COLUMN CONSTRAINTS (MANDATORY):
+• MAX 5 columns in any TABLE slide — if data has 6+ fields, DROP the least important field(s)
+• Column widths MUST be explicit: each <th>/<td> needs style="width:Xpx" summing to ≤840px
+• ALL <th> and <td>: must include overflow:hidden;white-space:nowrap;text-overflow:ellipsis
+• Row height: fix each <tr> to explicit height (e.g., style="height:56px") — never let content expand rows
+• Font size: 13–14px for body cells; header 12px max
+• 4 columns: 200+180+180+280 = 840px; 5 columns: 130+170+170+170+200 = 840px (adjust to content)
+• If a field has long text (e.g., "핵심 공약"), use a card layout (one card per row) instead of a TABLE
+
 COMPARISON TABLE (HTML table — chart.js 불필요):
-<div data-component-id="comp-table" style="position:absolute;left:60px;top:150px;width:840px;z-index:10;">
-  <table style="width:100%;border-collapse:collapse;font-size:14px;color:#F9FAFB;font-family:system-ui;">
-    <thead><tr style="border-bottom:2px solid #3B82F6;">
-      <th style="padding:10px 14px;text-align:left;color:#9CA3AF;font-weight:600;font-size:12px;">구분</th>
-      <th style="padding:10px 14px;text-align:center;color:#3B82F6;font-weight:700;">항목A</th>
-      <th style="padding:10px 14px;text-align:center;color:#8B5CF6;font-weight:700;">항목B</th>
-      <th style="padding:10px 14px;text-align:center;color:#10B981;font-weight:700;">항목C</th>
+<div data-component-id="comp-table" style="position:absolute;left:60px;top:150px;width:840px;overflow:hidden;z-index:10;">
+  <table style="width:840px;table-layout:fixed;border-collapse:collapse;font-size:14px;color:#F9FAFB;font-family:system-ui;">
+    <thead><tr style="height:44px;border-bottom:2px solid #3B82F6;">
+      <th style="width:140px;padding:8px 12px;text-align:left;color:#9CA3AF;font-weight:600;font-size:12px;overflow:hidden;white-space:nowrap;">구분</th>
+      <th style="width:230px;padding:8px 12px;text-align:center;color:#3B82F6;font-weight:700;overflow:hidden;white-space:nowrap;">항목A</th>
+      <th style="width:230px;padding:8px 12px;text-align:center;color:#8B5CF6;font-weight:700;overflow:hidden;white-space:nowrap;">항목B</th>
+      <th style="width:240px;padding:8px 12px;text-align:center;color:#10B981;font-weight:700;overflow:hidden;white-space:nowrap;">항목C</th>
     </tr></thead>
     <tbody>
-      <tr style="border-bottom:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);">
-        <td style="padding:10px 14px;color:#9CA3AF;">특징1</td>
-        <td style="padding:10px 14px;text-align:center;color:#34D399;">✓</td>
-        <td style="padding:10px 14px;text-align:center;color:#34D399;">✓</td>
-        <td style="padding:10px 14px;text-align:center;color:#6B7280;">—</td>
+      <tr style="height:52px;border-bottom:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);">
+        <td style="padding:8px 12px;color:#9CA3AF;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">특징1</td>
+        <td style="padding:8px 12px;text-align:center;color:#34D399;overflow:hidden;white-space:nowrap;">✓</td>
+        <td style="padding:8px 12px;text-align:center;color:#34D399;overflow:hidden;white-space:nowrap;">✓</td>
+        <td style="padding:8px 12px;text-align:center;color:#6B7280;overflow:hidden;white-space:nowrap;">—</td>
       </tr>
     </tbody>
   </table>
@@ -279,7 +288,11 @@ LAYOUT PATTERNS (go beyond rectangles):
 ━━ STANDARD LAYOUT TEMPLATES ━━
 [COVER]   bg → radial-spotlight-overlay → accent-bar(left,6×540) → title(80,170,fw:700) → subtitle(80,300)
 [CONTENT] bg → accent-bar → title(60,60) → divider-line(60,140,60px×4px) → body-items(60,165+45n) → [right-image]
-[TOC]     bg → accent-bar → title(60,60) → divider → numbered items(60,175+55n)
+[TOC]     bg → accent-bar → title(60,60) → divider → numbered items:
+  N=3–4: start_y=175, gap=70px, num_size=40px, title_size=24px
+  N=5:   start_y=165, gap=62px, num_size=36px, title_size=22px
+  N=6:   start_y=150, gap=56px, num_size=32px, title_size=20px  (last item top=150+56*5=430, height≤50→ends480 ✓)
+  N=7+:  2-column (left col items 1–⌈N/2⌉ at left=60,w=400; right col at left=500,w=400; gap=52px)
 [QUOTE]   bg → top+bottom bars → large-quote-svg → quote-text(80,180,fs:34,fw:300) → author(80,370)
 [DATA]    bg → accent-bar → title(60,60) → divider → bullet-list(60,150,w:400) → Chart.js canvas(480,110,w:440,h:250)
 [TABLE]   bg → accent-bar → title(60,60) → divider → comparison-table(60,150,w:840)
@@ -326,6 +339,16 @@ SPLIT-PANEL RULES (left accent panel + right content):
   • Right panel TEXT: left≥500px, width≤420px, right edge ≤920px
   • Never place text where two panels could overlap — leave ≥80px gap from diagonal
   • BOTH panels need independent title elements, each within their own text zone
+
+ROW/CARD COLUMN GRID RULE (MANDATORY for multi-row layouts):
+  When creating 2+ rows of identical structure (e.g., party-name-badge, rank-name-score):
+  • Define column positions ONCE and use EXACTLY the same `left` value in every row.
+  • Example 3-col layout: col1 left=80 (label), col2 left=340 (name/main), col3 left=700 (badge)
+  • All rows MUST use these exact same left values — no per-row adjustments.
+  • Use consistent `text-align` per column: label=left, name=left, badge=center.
+  • Row containers (background card divs) use the same top+height pattern: top=ROW_START+n*ROW_H.
+  • Define ROW_H explicitly (e.g., 80px) and use it uniformly — never eyeball each row's top.
+  • Misaligned columns = WRONG. Re-check every row's left values before outputting.
 
 COLOR CONTRAST RULES (WCAG AA minimum):
   • Dark bg (#0A0F1E, #1E293B, etc.) → body text: #F9FAFB or #E5E7EB (NEVER #9CA3AF for body)
@@ -443,7 +466,8 @@ LAYOUT TEMPLATES:
   [CONTENT] bg → left-bar → title(60,60,420,80) → divider(60,148,60,4) →
             body×4(60,175+55n,420,40) → hero-image(520,60,400,420,borderRadius:8)
   [TOC]     bg → side-panel(0,0,320,540,bg:accent,op:0.9) → section-title(40,200,240,100,fw:700) →
-            item-shape×5(360,100+80n,540,60,borderRadius:4) → item-text×5(420,115+80n,420,30,fs:22,fw:600)
+            N items: gap=min(72,floor(360/(N+0.5)))px; start_y=max(100,165-N*8)
+            item-shapeN(360,start_y+gap*n,540,gap-10,borderRadius:4) → item-textN(420,start_y+gap*n+10,420,gap-20,fs:max(18,28-N*1.5),fw:600)
   [QUOTE]   bg → top-bar(0,0,960,8) → bottom-bar(0,532,960,8) →
             quote-symbol(60,80,80,110,fs:96,fw:700) → quote-text(80,180,800,160,fs:34,fw:300) →
             author(80,370,800,40,fs:22,fw:600) → role(80,415,800,30,fs:16)
@@ -596,6 +620,12 @@ SLATE : bg#1E293B accent#F1F5F9 text#F8FAFC text2#94A3B8 — minimal/corporate
 
 ━━ LAYOUT TYPES ━━
 COVER: 표지  TOC: 목차  CONTENT: 본문  QUOTE: 인용  CLOSING: 마무리  STATS: 통계  SPLIT: 분할  DATA: 차트포함  TABLE: 비교표
+
+━━ SLIDE COUNT RULE (MANDATORY) ━━
+사용자가 "N장" / "N개" 슬라이드를 요청하면 반드시 정확히 N개의 create operation 생성.
+• "10장 PPT" → create op 정확히 10개 (표지·목차 포함)
+• 주제가 단순해 보여도 요청 수를 임의로 줄이지 말 것
+• 불확실하면 요청 수에 맞춰 내용 분배 (슬라이드당 세부 내용 줄이기)
 
 key_points: 해당 슬라이드에 포함할 실제 텍스트 내용 (불릿 형태).
 Output ONLY JSON.
