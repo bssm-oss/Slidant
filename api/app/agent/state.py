@@ -11,11 +11,14 @@ def _accumulate_or_reset(left: list, right: list | str) -> list:
     """
     Send API 병렬 팬아웃을 위한 커스텀 reducer.
     - right == "__RESET__": 리스트 초기화 (ops 사이클 간 누적 방지)
+    - right == ["__RESET__", ...]: 리셋 후 나머지 항목으로 대체 (head-sentinel replace)
     - right == []: 변화 없음
     - right == [...]: 기존에 추가
     """
     if isinstance(right, str) and right == _RESET_SENTINEL:
         return []
+    if isinstance(right, list) and right and right[0] == _RESET_SENTINEL:
+        return list(right[1:])  # head sentinel = reset then replace with rest
     return (left or []) + (right or [])
 
 

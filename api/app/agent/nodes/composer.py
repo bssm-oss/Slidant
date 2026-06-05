@@ -115,7 +115,7 @@ def make_html_editor(ctx: NodeContext):
 
         existing_html = state.get("slide_context", "")
         if not existing_html:
-            return {**state, "mode": "create"}
+            return {"mode": "create"}
 
         spec = (state.get("slide_specs") or [{}])[0]
         design_tokens = state.get("design_tokens", {})
@@ -165,7 +165,7 @@ def make_html_editor(ctx: NodeContext):
 
         ops_results = list(state.get("ops_results", []))
         ops_results.append(meta)
-        return {**state, "html_output": html, "result_summary": summary, "ops_results": ops_results}
+        return {"html_output": html, "result_summary": summary, "ops_results": ops_results}
     return html_editor_node
 
 

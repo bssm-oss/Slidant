@@ -64,8 +64,8 @@ def make_unified_planner(ctx: NodeContext):
         if not isinstance(parsed, dict):
             if ctx.on_event:
                 ctx.on_event("node_done", "✅ 계획 완료")
-            return {**state, "plan": raw, "mode": "create", "design_tokens": {},
-                    "slide_specs": [], "search_queries": [], "result_summary": ""}
+            return {"plan": raw, "mode": "create", "design_tokens": {},
+                    "slide_specs": [], "search_queries": [], "result_summary": "", "messages": []}
 
         design_tokens = parsed.get("design_tokens", {})
         if not design_tokens or "bg" not in design_tokens:
@@ -141,7 +141,6 @@ def make_unified_planner(ctx: NodeContext):
                     mode, len(slide_specs), len(search_queries), design_tokens.get("palette", "?"))
 
         return {
-            **state,
             "plan": raw,
             "mode": mode,
             "design_tokens": design_tokens,
@@ -158,8 +157,8 @@ def make_ops_dispatcher(ctx: NodeContext):
     def ops_dispatcher_node(state: AgentState) -> AgentState:
         queue = list(state.get("ops_queue", []))
         if not queue:
-            # html_slides 보존 — 생성된 슬라이드를 formatter까지 전달해야 함
-            return {**state, "current_op": {}}
+            # html_slides 건드리지 않음 — 생성된 슬라이드를 formatter까지 보존
+            return {"current_op": {}}
 
         op = queue.pop(0)
         op_type = op.get("type", "create")
@@ -176,12 +175,11 @@ def make_ops_dispatcher(ctx: NodeContext):
             ]
             logger.info("[ops_dispatcher] create batch=%d queue_left=%d", len(create_ops), len(queue))
             return {
-                **state,
                 "ops_queue": queue,
                 "current_op": {**op, "step_id": "create-batch"},
                 "slide_specs": slide_specs,
                 "mode": "create",
-                "html_slides": "__RESET__",  # create 배치 시작 시에만 리셋
+                "html_slides": "__RESET__",  # create 배치 시작 시에만 리셋 (sentinel 문자열)
             }
 
         # edit/delete/component: html_slides 보존 (이전 create 배치 결과 유지)
@@ -201,12 +199,11 @@ def make_ops_dispatcher(ctx: NodeContext):
 
         logger.info("[ops_dispatcher] op=%s slide_idx=%d queue_left=%d", op_type, slide_idx, len(queue))
         return {
-            **state,
             "ops_queue": queue,
             "current_op": op_with_step,
             "slide_context": slide_ctx,
             "mode": op_type,
-            # html_slides 리셋 없음 — 이전 create 결과 보존
+            # html_slides 없음 — 이전 create 결과 보존
         }
     return ops_dispatcher_node
 
@@ -229,13 +226,13 @@ def make_self_reviewer(ctx: NodeContext):
             logger.info("[self_reviewer] max review count reached, forcing done")
             if ctx.on_event:
                 ctx.on_event("node_done", "✅ 검토 완료")
-            return {**state, "review_ok": True, "review_count": review_count + 1}
+            return {"review_ok": True, "review_count": review_count + 1}
 
         ops_results = state.get("ops_results", [])
         if not ops_results:
             if ctx.on_event:
                 ctx.on_event("node_done", "✅ 검토 완료")
-            return {**state, "review_ok": True, "review_count": review_count + 1}
+            return {"review_ok": True, "review_count": review_count + 1}
 
         human_text = (
             f"원래 명령: {state.get('command', '')}\n\n실행된 작업:\n"
@@ -243,7 +240,8 @@ def make_self_reviewer(ctx: NodeContext):
                         for r in ops_results)
             + "\n\n명령이 완전히 수행됐는지 평가하라. "
             "문제 없으면 {\"ok\":true,\"summary\":\"완료 요약\"}. "
-            "문제 있으면 {\"ok\":false,\"corrections\":[{\"type\":\"edit\",\"slide_index\":0,\"instruction\":\"...\"}],\"summary\":\"문제 설명\"}."
+            "문제 있으면 {\"ok\":false,\"corrections\":[{\"type\":\"edit\",\"slide_index\":0,\"instruction\":\"...\"}],\"summary\":\"문제 설명\"}. "
+            "corrections는 반드시 type=edit만 사용. create/delete 절대 금지."
         )
 
         messages = [
@@ -263,7 +261,7 @@ def make_self_reviewer(ctx: NodeContext):
             logger.warning("self_reviewer failed: %s", e)
             if ctx.on_event:
                 ctx.on_event("node_done", "✅ 검토 완료")
-            return {**state, "review_ok": True}
+            return {"review_ok": True}
 
         parsed = _extract_json(raw)
         ok = True
@@ -282,7 +280,7 @@ def make_self_reviewer(ctx: NodeContext):
         if not ok and corrections:
             new_queue = corrections + new_queue
 
-        return {**state, "ops_queue": new_queue, "review_ok": ok,
+        return {"ops_queue": new_queue, "review_ok": ok,
                 "result_summary": summary, "review_count": review_count + 1}
     return self_reviewer_node
 
@@ -318,5 +316,5 @@ def make_legacy_planner(ctx: NodeContext):
         logger.info("  [planner] 계획: %r", plan[:200])
         if ctx.on_event:
             ctx.on_event("node_done", "✅ 계획 완료")
-        return {**state, "plan": plan, "messages": []}
+        return {"plan": plan, "messages": []}
     return planner_node

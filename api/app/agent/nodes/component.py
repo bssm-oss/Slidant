@@ -52,7 +52,7 @@ def make_component_editor(ctx: NodeContext):
 
         if not target_comp:
             logger.warning("component_editor: component '%s' not found", component_id)
-            return {**state, "result_summary": f"컴포넌트 '{component_id}' 없음"}
+            return {"result_summary": f"컴포넌트 '{component_id}' 없음"}
 
         human_text = (
             f"TARGET COMPONENT (data-component-id=\"{component_id}\"):\n"
@@ -95,7 +95,7 @@ def make_component_editor(ctx: NodeContext):
 
         ops_results = list(state.get("ops_results", []))
         ops_results.append(result)
-        return {**state, "html_output": new_slide_html, "ops_results": ops_results, "result_summary": summary}
+        return {"html_output": new_slide_html, "ops_results": ops_results, "result_summary": summary}
     return component_editor_node
 
 
@@ -117,7 +117,7 @@ def make_component_deleter(ctx: NodeContext):
 
         ops_results = list(state.get("ops_results", []))
         ops_results.append({"type": "component_delete", "component_id": component_id})
-        return {**state, "html_output": new_html, "ops_results": ops_results, "result_summary": summary}
+        return {"html_output": new_html, "ops_results": ops_results, "result_summary": summary}
     return component_deleter_node
 
 
@@ -128,5 +128,5 @@ def make_slide_deleter(ctx: NodeContext):
             ctx.on_event("node_start", "🗑️ 슬라이드 삭제 중...")
             ctx.on_event("step_done", step_id)
             ctx.on_event("node_done", "✅ 슬라이드 삭제")
-        return {**state, "delete_slide": True, "result_summary": "슬라이드가 삭제되었습니다."}
+        return {"delete_slide": True, "result_summary": "슬라이드가 삭제되었습니다."}
     return slide_deleter_node

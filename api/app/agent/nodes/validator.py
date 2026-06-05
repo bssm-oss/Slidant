@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 
 from app.agent.context import NodeContext
-from app.agent.state import AgentState
+from app.agent.state import AgentState, _RESET_SENTINEL
 
 logger = logging.getLogger("slidant.agent")
 
@@ -21,9 +21,13 @@ def make_html_aggregator(_ctx: NodeContext):
                 deduped[idx] = s
         valid = sorted(deduped.values(), key=lambda s: s.get("index", 0))
 
+        # head-sentinel replace: 누적 없이 dedup된 valid로 교체
+        result: dict = {"html_slides": [_RESET_SENTINEL, *valid]}
+
         if state.get("mode") == "edit" and valid:
-            return {**state, "html_slides": valid, "html_output": valid[0]["html"],
-                    "result_summary": "슬라이드 수정 완료"}
+            result["html_output"] = valid[0]["html"]
+            result["result_summary"] = "슬라이드 수정 완료"
+            return result
 
         # create 결과를 ops_results에 추가 (formatter의 summary 생성에 사용)
         ops_results = list(state.get("ops_results", []))
@@ -32,7 +36,8 @@ def make_html_aggregator(_ctx: NodeContext):
             "count": len(valid),
             "titles": [s.get("title", f"슬라이드 {s.get('index',0)+1}") for s in valid],
         })
-        return {**state, "html_slides": valid, "ops_results": ops_results}
+        result["ops_results"] = ops_results
+        return result
     return html_aggregator_node
 
 
@@ -73,7 +78,7 @@ def make_formatter(ctx: NodeContext):
         html_slides_present = bool(state.get("html_slides"))
         if ops_results or html_slides_present:
             summary = await _lineage_to_summary(ctx, state.get("command", ""), ops_results, state)
-            return {**state, "result_summary": summary}
+            return {"result_summary": summary}
 
         # 레거시 JSON patch 모드
         if not patches:
@@ -81,12 +86,12 @@ def make_formatter(ctx: NodeContext):
             html_out = state.get("html_output", "")
             if html_slides or html_out:
                 cnt = len(html_slides) if html_slides else 1
-                return {**state, "result_summary": f"{cnt}장 슬라이드 생성 완료"}
-            return state
+                return {"result_summary": f"{cnt}장 슬라이드 생성 완료"}
+            return {}
 
         llm_summary = state.get("result_summary", "")
         if llm_summary:
-            return {**state, "result_summary": llm_summary.strip()}
+            return {"result_summary": llm_summary.strip()}
 
         adds = sum(1 for op in patches if op.get("op") == "add" and op.get("path") == "/-")
         replaces = sum(1 for op in patches if op.get("op") == "replace")
@@ -98,7 +103,7 @@ def make_formatter(ctx: NodeContext):
         if replaces:   stats_parts.append(f"{replaces}개 수정")
         if removes:    stats_parts.append(f"{removes}개 삭제")
         if slide_adds: stats_parts.append(f"슬라이드 {slide_adds}장 추가")
-        return {**state, "result_summary": "、".join(stats_parts) or "변경 없음"}
+        return {"result_summary": "、".join(stats_parts) or "변경 없음"}
     return formatter_node
 
 
