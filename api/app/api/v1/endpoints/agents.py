@@ -7,6 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 
 from app.core.config import settings
 from app.core.deps import CurrentUser, UoW
+from app.core.domain.slide_sanitizer import sanitize_slide_html
 from app.models.chat import ChatMessage
 from app.schemas.agent import AgentRunRequest, AgentRunResponse
 from app.services import agent_service
@@ -272,6 +273,7 @@ async def _run_agent_background_inner(
                 from app.services import crdt as crdt_svc
 
                 reason = f'{agent_def_name}: {body.command[:120]}'
+                html_output = sanitize_slide_html(html_output)
                 await slide_history_service.archive_and_apply(
                     uow, body.slide_id, list(slide.content or []),
                     reason, agent_name=agent_def_name, html_content=html_output
@@ -337,7 +339,7 @@ async def _run_agent_background_inner(
                         new_slide = SlideModel(
                             project_id=body.project_id,
                             title=spec.get("title", ""),
-                            html_content=spec.get("html", ""),
+                            html_content=sanitize_slide_html(spec.get("html", "")),
                             content=[],
                             order=i,
                         )
@@ -352,7 +354,8 @@ async def _run_agent_background_inner(
                     reason = f'{agent_def_name}: {body.command[:120]}'
                     await slide_history_service.archive_and_apply(
                         uow, body.slide_id, list(slide.content or []),
-                        reason, agent_name=agent_def_name, html_content=first.get("html", "")
+                        reason, agent_name=agent_def_name,
+                        html_content=sanitize_slide_html(first.get("html", ""))
                     )
                     if first.get("title") and not slide.title:
                         slide.title = first["title"]
@@ -364,7 +367,7 @@ async def _run_agent_background_inner(
                         new_slide = SlideModel(
                             project_id=body.project_id,
                             title=spec.get("title", ""),
-                            html_content=spec.get("html", ""),
+                            html_content=sanitize_slide_html(spec.get("html", "")),
                             content=[],
                             order=base_order + i,
                         )
