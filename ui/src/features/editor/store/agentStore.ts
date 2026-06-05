@@ -421,7 +421,9 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         })
       }
 
-      if (type === 'new_slides' || (type === 'agent_done' && msg.new_slides)) {
+      // new_slides: agent_done에서 loadPresentation이 호출되므로 append 불필요
+      // type==='new_slides' (독립 이벤트)만 처리, agent_done 내 new_slides는 무시
+      if (type === 'new_slides') {
         const newSlides = (msg.new_slides as any[]) ?? []
         if (newSlides.length > 0) {
           const slideState = useSlideStore.getState()
@@ -430,7 +432,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
               presentation: {
                 ...slideState.presentation,
                 slides: [
-                  ...slideState.presentation.slides,
+                  ...slideState.presentation.slides.filter((sl) => !sl.id.startsWith('preview-slide-')),
                   ...newSlides.map((sl: any) => ({
                     id: sl.id,
                     order: sl.order,
@@ -525,13 +527,15 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             if (recentlyModified.has(id)) newConflicts.add(id)
           })
 
-          // preview 컴포넌트 제거
+          // preview 슬라이드/컴포넌트 제거 (loadPresentation 전 낙관적 클린업)
           const slideState = useSlideStore.getState()
           if (slideState.presentation) {
-            const cleanedSlides = slideState.presentation.slides.map((sl) => ({
-              ...sl,
-              components: sl.components.filter((c) => !c.id.startsWith('preview-')),
-            }))
+            const cleanedSlides = slideState.presentation.slides
+              .filter((sl) => !sl.id.startsWith('preview-slide-'))
+              .map((sl) => ({
+                ...sl,
+                components: sl.components.filter((c) => !c.id.startsWith('preview-')),
+              }))
             useSlideStore.setState({ presentation: { ...slideState.presentation, slides: cleanedSlides } })
           }
 
