@@ -171,7 +171,10 @@ OUTPUT FORMAT (JSON ONLY, no markdown):
 • <div class="slide"> must have: width:960px;height:540px;position:relative;overflow:hidden;font-family:system-ui,sans-serif;
 • Every element: position:absolute; data-component-id="[unique-kebab-id]"
 • Use design_tokens for ALL colors/sizes. No <script> tags.
-• z-index: bg(1) → overlay(2) → accent-bars(3) → shapes(4) → text(10+)
+• z-index STRICT 3-TIER — no values between 5 and 9:
+    bg/overlay/accent-bars/shapes/SVG-decorations: 1–4 ONLY (hard cap = 4)
+    text/cards/charts/interactive: 10+ ONLY (minimum = 10)
+    ✗ FORBIDDEN: z-index 5, 6, 7, 8, 9 for ANY element
 
 ━━ CSS TECHNIQUES — USE FREELY ━━
 
@@ -293,7 +296,9 @@ LAYOUT PATTERNS (go beyond rectangles):
   N=5:   start_y=165, gap=62px, num_size=36px, title_size=22px
   N=6:   start_y=150, gap=56px, num_size=32px, title_size=20px  (last item top=150+56*5=430, height≤50→ends480 ✓)
   N=7+:  2-column (left col items 1–⌈N/2⌉ at left=60,w=400; right col at left=500,w=400; gap=52px)
-[QUOTE]   bg → top+bottom bars → large-quote-svg → quote-text(80,180,fs:34,fw:300) → author(80,370)
+[QUOTE]   bg → top+bottom bars → large-quote-svg(top:50,opacity:0.07,z-index:4) → quote-text(80,220,fs:34,fw:300,z-index:10) → author(80,390,z-index:10)
+  QUOTE RULE: SVG and text must NOT share the same pixel region unless SVG opacity ≤ 0.08.
+  Default: place SVG at top:40–160px, text starts at top:220px+ so they don't overlap.
 [DATA]    bg → accent-bar → title(60,60) → divider → bullet-list(60,150,w:400) → Chart.js canvas(480,110,w:440,h:250)
 [TABLE]   bg → accent-bar → title(60,60) → divider → comparison-table(60,150,w:840)
 [CLOSING] bg → dual accent bars → radial-glow-circle → main-text(center,fs:64) → sub(center)
@@ -349,6 +354,15 @@ ROW/CARD COLUMN GRID RULE (MANDATORY for multi-row layouts):
   • Row containers (background card divs) use the same top+height pattern: top=ROW_START+n*ROW_H.
   • Define ROW_H explicitly (e.g., 80px) and use it uniformly — never eyeball each row's top.
   • Misaligned columns = WRONG. Re-check every row's left values before outputting.
+
+DECORATIVE ELEMENT SPATIAL RULE (MANDATORY):
+  Decorative elements (SVG/shape with width≥100px OR height≥100px) MUST satisfy ONE of:
+  A) opacity ≤ 0.08 → may overlap text area (purely atmospheric)
+  B) opacity > 0.08 → its bounding box (left, top, left+width, top+height) must NOT intersect
+     any text/card element's bounding box. Verify: if their top/bottom ranges overlap AND
+     their left/right ranges overlap → that element MUST use opacity ≤ 0.08.
+  ✗ WRONG: SVG(opacity:0.5, left:540, top:180, w:300, h:240) + text(left:540, top:300) → overlap!
+  ✓ RIGHT:  SVG(opacity:0.5, left:540, top:180, w:300, h:100) + text(left:540, top:300) → no overlap
 
 COLOR CONTRAST RULES (WCAG AA minimum):
   • Dark bg (#0A0F1E, #1E293B, etc.) → body text: #F9FAFB or #E5E7EB (NEVER #9CA3AF for body)
@@ -627,8 +641,21 @@ COVER: 표지  TOC: 목차  CONTENT: 본문  QUOTE: 인용  CLOSING: 마무리  
 • 주제가 단순해 보여도 요청 수를 임의로 줄이지 말 것
 • 불확실하면 요청 수에 맞춰 내용 분배 (슬라이드당 세부 내용 줄이기)
 
+━━ FULL PRESENTATION CREATION RULE (CRITICAL) ━━
+사용자가 "PPT 만들어줘 N장" / "프레젠테이션 제작" 등 완전한 신규 PPT를 요청할 때:
+• operations 배열을 create op만으로 구성 — edit/delete 절대 혼합 금지
+• 현재 슬라이드가 1장 있더라도 해당 슬라이드를 edit 하지 말 것
+• 첫 번째 op를 edit으로 시작하면 절대 안 됨 (10장 요청 → 10개 create, 9개 create + 1개 edit 혼합 금지)
+• 위반 시: edit 1개 + create 9개 = 실제 생성 9장 (edit 결과는 삭제됨)
+
 key_points: 해당 슬라이드에 포함할 실제 텍스트 내용 (불릿 형태).
-Output ONLY JSON.
+
+━━ OUTPUT WRAPPER ━━
+Wrap your JSON in <thinking> tags, then add a brief Korean user status in <status> tags.
+<status> must be 1-2 sentences in Korean — no HTML, no JSON, no technical details, only what the user needs to know.
+Example:
+<thinking>{"summary":"...","operations":[...]}</thinking>
+<status>10장 선거 결과 PPT를 생성합니다. 영도구청장 개표 데이터를 먼저 검색한 뒤 슬라이드를 구성하겠습니다.</status>
 """
 
 PLANNER_PROMPT = """\
@@ -682,3 +709,9 @@ Example (전체 PPT 생성 — "김치찌개 PPT 만들어줘"):
 슬라이드 3: [CONTENT] "조리 순서" — 4단계 스텝 번호 박스, 각 단계 21pt 설명
 슬라이드 4: [QUOTE] "핵심 팁" — 감칠맛 비법 인용구, 큰 따옴표 장식
 슬라이드 5: [CLOSING] "맛있는 한 끼" 마무리, 연락처/해시태그"""
+
+SEARCH_MERGER_PROMPT = (
+    "You are a research analyst. Extract ALL key facts from the search results below into a concise, "
+    "structured fact sheet. Preserve exact numbers, names, dates, percentages. "
+    "Do NOT interpret or alter any figures. Output plain text, no JSON."
+)

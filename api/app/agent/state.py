@@ -44,6 +44,7 @@ class AgentState(TypedDict):
     current_slide_spec: dict
     search_queries: list
     search_results: list
+    search_summary: str
     delete_slide: bool
     ops_queue: list
     ops_results: list

@@ -47,15 +47,12 @@ def make_slide_composer(ctx: NodeContext):
             ctx.on_event("node_start", f"✏️ 슬라이드 {idx+1} 생성 중...")
 
         search_ctx = ""
-        if state.get("search_results"):
-            search_ctx = "\n\n## 웹 검색 데이터 (슬라이드에 반영할 것 — 검색어와 무관한 결과는 무시):\n"
-            for sr in state["search_results"]:
-                search_ctx += f"\n### 검색어: {sr['query']}\n"
-                if sr.get("answer"):
-                    search_ctx += f"**요약**: {sr['answer']}\n"
-                for r in sr["results"][:4]:
-                    search_ctx += f"- **{r['title']}**: {r['snippet']}\n"
-            search_ctx += "\n※ 검색 결과 중 슬라이드 주제와 무관한 항목은 사용하지 말 것.\n"
+        if state.get("search_summary"):
+            search_ctx = (
+                "\n\n## 웹 검색 팩트시트 (모든 슬라이드 공통 — 수치/이름/날짜 그대로 사용, 변조 금지):\n"
+                + state["search_summary"]
+                + "\n"
+            )
 
         # 전체 슬라이드 계획 요약 (목차 일관성 — 내 슬라이드가 전체에서 어디에 위치하는지)
         all_specs = state.get("slide_specs", [])

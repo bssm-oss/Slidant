@@ -11,7 +11,7 @@ from app.agent.nodes.planner import (
 )
 from app.agent.nodes.composer import make_slide_composer, make_html_editor
 from app.agent.nodes.component import make_component_editor, make_component_deleter, make_slide_deleter
-from app.agent.nodes.searcher import make_web_searcher
+from app.agent.nodes.searcher import make_web_searcher, make_search_merger
 from app.agent.nodes.validator import (
     make_html_aggregator, make_html_validator, make_should_retry_html,
     make_formatter, make_patch_serializer, make_validator,
@@ -38,6 +38,7 @@ def _build_html_graph(ctx: NodeContext):
     # 노드 등록
     graph.add_node("unified_planner",   make_unified_planner(ctx))
     graph.add_node("web_searcher",      make_web_searcher(ctx))
+    graph.add_node("search_merger",     make_search_merger(ctx))
     graph.add_node("ops_dispatcher",    make_ops_dispatcher(ctx))
     graph.add_node("slide_dispatch",    lambda s: s)          # Send API 트리거용 passthrough
     graph.add_node("slide_composer",    make_slide_composer(ctx))
@@ -62,7 +63,8 @@ def _build_html_graph(ctx: NodeContext):
         "dispatcher": "ops_dispatcher",
         "dispatch":   "slide_dispatch",
     })
-    graph.add_edge("web_searcher", "ops_dispatcher")
+    graph.add_edge("web_searcher",   "search_merger")
+    graph.add_edge("search_merger",  "ops_dispatcher")
 
     graph.add_conditional_edges("ops_dispatcher", route_from_dispatcher, {
         "create":           "slide_dispatch",

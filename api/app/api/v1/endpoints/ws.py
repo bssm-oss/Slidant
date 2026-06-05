@@ -207,6 +207,10 @@ async def ws_endpoint(
         while True:
             msg = await websocket.receive()
 
+            # 클라이언트가 연결 종료 프레임 전송 시 graceful exit
+            if msg.get("type") == "websocket.disconnect":
+                break
+
             # Binary: Yjs sync 프로토콜
             if "bytes" in msg and msg["bytes"] is not None:
                 data: bytes = msg["bytes"]

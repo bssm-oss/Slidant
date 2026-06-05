@@ -59,7 +59,14 @@ def make_unified_planner(ctx: NodeContext):
         except Exception as e:
             logger.warning("  [unified_planner] failed: %s", e)
 
-        parsed = _extract_json(raw)
+        # <thinking> 안의 JSON만 파싱, <status> 내용은 사용자에게 스트리밍
+        thinking_match = re.search(r"<thinking>([\s\S]*?)</thinking>", raw)
+        json_source = thinking_match.group(1).strip() if thinking_match else raw
+        status_match = re.search(r"<status>([\s\S]*?)</status>", raw)
+        if status_match and ctx.on_token:
+            ctx.on_token(status_match.group(1).strip())
+
+        parsed = _extract_json(json_source)
 
         if not isinstance(parsed, dict):
             if ctx.on_event:
@@ -82,6 +89,27 @@ def make_unified_planner(ctx: NodeContext):
         mode = "create"
 
         if operations:
+            # 방어: edit(첫번째) + create×N 패턴 → 전체 교체 의도이므로 edit을 create로 변환
+            # 이 패턴에서 edit 결과(html_output)는 is_full_replace로 삭제되어 실제 N-1장만 생성됨
+            if (
+                len(operations) >= 2
+                and operations[0].get("type") == "edit"
+                and all(op.get("type") == "create" for op in operations[1:])
+            ):
+                edit_op = operations[0]
+                cover_create = {
+                    "type": "create",
+                    "spec": {
+                        "title": parsed.get("summary", "표지")[:20],
+                        "layout": "COVER",
+                        "key_points": [],
+                    },
+                }
+                operations = [cover_create] + list(operations[1:])
+                logger.info(
+                    "  [unified_planner] edit+create 패턴 감지 → create로 변환 (총 %d ops)",
+                    len(operations),
+                )
             ops_queue = list(operations)
             mode = operations[0].get("type", "create") if operations else "create"
         else:

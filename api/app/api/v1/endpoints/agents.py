@@ -3,7 +3,7 @@ import json as json_lib
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 
 from app.core.config import settings
 from app.core.deps import CurrentUser, UoW
@@ -17,6 +17,9 @@ router = APIRouter(prefix="/agent", tags=["agent"])
 logger = logging.getLogger("slidant.agent")
 
 from app.api.v1.endpoints.ws import manager as ws_manager
+
+# agent_run_id → asyncio.Task (취소용)
+_running_tasks: dict[str, asyncio.Task] = {}
 
 
 def _sanitize_error(e: Exception) -> str:
@@ -40,7 +43,6 @@ def _sanitize_error(e: Exception) -> str:
 @router.post("/run", response_model=AgentRunResponse, status_code=status.HTTP_202_ACCEPTED)
 async def run_agent_endpoint(
     body: AgentRunRequest,
-    background_tasks: BackgroundTasks,
     current_user: CurrentUser,
     uow: UoW,
 ):
@@ -71,9 +73,8 @@ async def run_agent_endpoint(
     uow.chat_messages.add(user_msg)
     await uow.commit()  # BackgroundTask 전에 커밋 필수 (bg에서 조회 가능하도록)
 
-    # BackgroundTask: LLM 호출 (HTTP는 즉시 202 반환)
-    background_tasks.add_task(
-        _run_agent_background,
+    # asyncio.Task로 실행 (취소 가능)
+    task = asyncio.create_task(_run_agent_background(
         body=body,
         agent_def_id=agent_def.id,
         agent_def_name=agent_def.name,
@@ -82,7 +83,9 @@ async def run_agent_endpoint(
         agent_run_id=agent_run.id,
         encrypted_api_key=api_key.encrypted_key if api_key else "",
         provider=provider,
-    )
+    ))
+    _running_tasks[str(agent_run.id)] = task
+    task.add_done_callback(lambda _: _running_tasks.pop(str(agent_run.id), None))
 
     await _broadcast(str(body.project_id), {
         "type": "agent_started",
@@ -93,6 +96,30 @@ async def run_agent_endpoint(
     })
 
     return agent_run
+
+
+@router.delete("/run/{agent_run_id}", status_code=status.HTTP_200_OK)
+async def cancel_agent_run(
+    agent_run_id: UUID,
+    current_user: CurrentUser,
+    uow: UoW,
+):
+    run_id_str = str(agent_run_id)
+    task = _running_tasks.pop(run_id_str, None)
+    if task and not task.done():
+        task.cancel()
+
+    agent_run = await uow.agent_runs.get(agent_run_id)
+    if agent_run:
+        agent_run.status = "cancelled"
+        await uow.commit()
+        await _broadcast(str(agent_run.project_id), {
+            "type": "agent_error",
+            "agent_run_id": run_id_str,
+            "error": "사용자가 작업을 취소했습니다.",
+        })
+
+    return {"status": "cancelled"}
 
 
 async def _run_agent_background(

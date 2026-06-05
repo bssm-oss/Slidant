@@ -33,6 +33,7 @@ function extractCompleteOps(text: string): any[] {
 import { create } from 'zustand'
 import type { Agent, AgentLog, AgentStatus, ChatMessage } from '@/shared/types'
 import { runAgent as apiRunAgent } from '@/shared/lib/agentRunApi'
+import { api } from '@/shared/lib/apiClient'
 import { wsClient } from '@/shared/lib/wsClient'
 import { useSlideStore } from './slideStore'
 import { useProposalStore } from './proposalStore'
@@ -61,7 +62,11 @@ interface AgentState {
   overallStatus: AgentStatus
   activeRightTab: 'agent' | 'properties'
   agentSteps: AgentStep[]
-  presenceUsers: PresenceUser[]  // 현재 접속 중인 다른 사용자
+  presenceUsers: PresenceUser[]
+  currentAgentRunId: string | null
+  pendingSlideCount: number
+  agentStartTime: number | null
+  estimatedSeconds: number | null
 
   loadAgents: (projectId?: string) => Promise<void>
   loadChatHistory: (projectId: string) => Promise<void>
@@ -71,6 +76,7 @@ interface AgentState {
   setActiveRightTab: (tab: 'agent' | 'properties') => void
   sendMessage: (command: string) => Promise<void>
   runAgent: (command: string, agentRole?: string, agentDefinitionId?: string) => Promise<void>
+  cancelAgent: () => Promise<void>
 }
 
 const USER_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899']
@@ -86,6 +92,10 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   overallStatus: 'idle',
   activeRightTab: 'agent',
   agentSteps: [],
+  currentAgentRunId: null,
+  pendingSlideCount: 0,
+  agentStartTime: null,
+  estimatedSeconds: null,
 
   loadAgents: async (projectId) => {
     try {
@@ -241,6 +251,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           return {
             overallStatus: 'running',
             runningAgentIds: newRunningIds,
+            currentAgentRunId: (msg.agent_run_id as string) ?? s.currentAgentRunId,
+            agentStartTime: Date.now(),
             agents: s.agents.map((a) =>
               a.name === agentName
                 ? {
@@ -257,6 +269,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
 
       // slide_ready: 슬라이드 완성 즉시 UI에 반영 (옵티미스틱)
       if (type === 'agent_node_event' && (msg.event_type as string) === 'slide_ready') {
+        set((s) => ({ pendingSlideCount: Math.max(0, s.pendingSlideCount - 1) }))
         try {
           const data = JSON.parse(msg.message as string) as { index: number; title: string; html: string }
           useSlideStore.setState((s) => {
@@ -289,12 +302,14 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         if (eventType === 'steps_init') {
           try {
             const raw = JSON.parse(message) as {id: string, label: string}[]
-            // replay 시: 모든 단계를 pending으로만 초기화 (이후 step_done replay로 채워짐)
             const steps: AgentStep[] = raw.map((s, i) => ({
               ...s,
               status: (isReplayed ? 'pending' : (i === 0 ? 'active' : 'pending')) as AgentStep['status'],
             }))
-            set({ agentSteps: steps })
+            const slideCount = raw.filter((s) => s.id.startsWith('slide-')).length
+            const hasSearch = raw.some((s) => s.id === 'search')
+            const estimated = slideCount > 0 ? slideCount * 7 + (hasSearch ? 25 : 5) : null
+            set({ agentSteps: steps, pendingSlideCount: slideCount, estimatedSeconds: estimated })
           } catch {}
           return
         }
@@ -335,18 +350,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         const accumulated = (msg.accumulated as string) ?? ''
         const streamOps = extractCompleteOps(accumulated)
 
-        const displayText = (() => {
-          const t = accumulated.trim()
-          if (t.startsWith('{') && t.endsWith('}')) {
-            try {
-              const p = JSON.parse(t)
-              return p.action_plan ?? p.plan ?? p.summary ?? t
-            } catch {}
-          }
-          const m = t.match(/"action_plan"\s*:\s*"([\s\S]*?)(?=",|\s*}|$)/)
-          if (m) return m[1].replace(/\\n/g, '\n')
-          return t
-        })()
+        // 백엔드가 <status> 필터링 후 plain text만 전송 — 그대로 사용
+        const displayText = accumulated.trim()
 
         set((s) => {
           const streamingAgent = s.agents.find((a) => a.status === 'running')
@@ -544,6 +549,10 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             overallStatus: newRunningIds.size > 0 ? 'running' : 'idle',
             conflictComponentIds: newConflicts,
             agentSteps: [],
+            currentAgentRunId: null,
+            pendingSlideCount: 0,
+            agentStartTime: null,
+            estimatedSeconds: null,
             agents: s.agents.map((a) =>
               a.name === doneAgentName
                 ? { ...a, status: newConflicts.size > 0 ? 'conflict' : 'done', currentTask: undefined, taskProgress: 100 }
@@ -611,6 +620,10 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           return {
             runningAgentIds: newRunningIds,
             overallStatus: newRunningIds.size > 0 ? 'running' : 'idle',
+            currentAgentRunId: null,
+            pendingSlideCount: 0,
+            agentStartTime: null,
+            estimatedSeconds: null,
             agents: s.agents.map((a) =>
               a.name === errAgentName || (errAgentName === '' && a.status === 'running')
                 ? { ...a, status: 'error', currentTask: undefined }
@@ -674,6 +687,14 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     }))
 
     await get().runAgent(command, activeAgent?.role ?? 'content', activeDefId)
+  },
+
+  cancelAgent: async () => {
+    const { currentAgentRunId } = get()
+    if (!currentAgentRunId) return
+    try {
+      await api.delete(`/agent/run/${currentAgentRunId}`)
+    } catch {}
   },
 
   runAgent: async (command, agentRole = 'content', agentDefinitionId?) => {

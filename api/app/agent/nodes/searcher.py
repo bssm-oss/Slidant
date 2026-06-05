@@ -8,7 +8,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.agent.context import NodeContext
 from app.agent.state import AgentState
-from app.agent.prompts import CONTENT_PLANNER_PROMPT, DESIGN_RESOLVER_PROMPT
+from app.agent.prompts import CONTENT_PLANNER_PROMPT, DESIGN_RESOLVER_PROMPT, SEARCH_MERGER_PROMPT
 
 logger = logging.getLogger("slidant.agent")
 
@@ -76,6 +76,46 @@ def make_web_searcher(ctx: NodeContext):
             ctx.on_event("node_done", f"✅ {len(results)}개 검색 완료")
         return {**state, "search_results": results}
     return web_searcher_node
+
+
+def make_search_merger(ctx: NodeContext):
+    """검색 결과 → 단일 팩트시트. 모든 slide_composer가 동일 데이터를 참조."""
+    async def search_merger_node(state: AgentState) -> AgentState:
+        results = state.get("search_results", [])
+        if not results:
+            return {**state, "search_summary": ""}
+
+        if ctx.on_event:
+            ctx.on_event("node_start", "📊 검색 결과 병합 중...")
+
+        raw_dump = ""
+        for sr in results:
+            raw_dump += f"\n### 검색어: {sr['query']}\n"
+            if sr.get("answer"):
+                raw_dump += f"요약: {sr['answer']}\n"
+            for r in sr.get("results", [])[:5]:
+                raw_dump += f"[{r['title']}] {r['snippet']}\n"
+
+        messages = [
+            SystemMessage(content=SEARCH_MERGER_PROMPT),
+            HumanMessage(content=f"Command: {state.get('command', '')}\n\n{raw_dump}"),
+        ]
+        summary = ""
+        try:
+            async for chunk in ctx.llm_plain.astream(messages):
+                raw_c = chunk.content if hasattr(chunk, "content") else ""
+                if isinstance(raw_c, list):
+                    summary += "".join(b.get("text", "") for b in raw_c if isinstance(b, dict) and b.get("type") == "text")
+                else:
+                    summary += str(raw_c) if raw_c else ""
+        except Exception as e:
+            logger.warning("search_merger failed: %s", e)
+            summary = raw_dump  # fallback: raw dump as-is
+
+        if ctx.on_event:
+            ctx.on_event("node_done", "✅ 검색 데이터 병합 완료")
+        return {**state, "search_summary": summary}
+    return search_merger_node
 
 
 def make_content_planner(ctx: NodeContext):

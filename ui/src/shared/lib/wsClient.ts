@@ -13,7 +13,8 @@ class WsClient {
 
   connect(projectId: string): void {
     if (this.socket && this.projectId === projectId &&
-        this.socket.readyState === WebSocket.OPEN) return
+        (this.socket.readyState === WebSocket.OPEN ||
+         this.socket.readyState === WebSocket.CONNECTING)) return
     this.projectId = projectId
     this._connect()
   }

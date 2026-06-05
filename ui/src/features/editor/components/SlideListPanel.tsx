@@ -234,12 +234,29 @@ function SortableSlideItem({
 
 const restrictToVerticalAxis: Modifier = ({ transform }) => ({ ...transform, x: 0, scaleX: 1, scaleY: 1 })
 
+function SkeletonSlideItem({ index }: { index: number }) {
+  return (
+    <div className="relative shrink-0">
+      <div className="w-full aspect-video rounded-[6px] border-2 border-[var(--border)] overflow-hidden bg-[var(--bg-muted)] animate-pulse">
+        <div className="absolute inset-0 flex flex-col gap-2 p-2 justify-center items-center opacity-30">
+          <div className="h-2 w-3/4 rounded bg-gray-300" />
+          <div className="h-1.5 w-1/2 rounded bg-gray-300" />
+          <div className="h-1.5 w-2/3 rounded bg-gray-300" />
+        </div>
+      </div>
+      <div className="absolute bottom-0.5 right-1 text-[9px] font-medium text-[var(--text-disabled)]">
+        {index + 1}
+      </div>
+    </div>
+  )
+}
+
 export default function SlideListPanel() {
   const {
     presentation, currentSlideIndex,
     setCurrentSlide, addSlide, deleteSlide, duplicateSlide, reorderSlides,
   } = useEditorStore()
-  const { presenceUsers } = useAgentStore()
+  const { presenceUsers, pendingSlideCount } = useAgentStore()
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -290,6 +307,10 @@ export default function SlideListPanel() {
             ))}
           </SortableContext>
         </DndContext>
+        {/* 생성 대기 중인 슬라이드 스켈레톤 */}
+        {Array.from({ length: pendingSlideCount }).map((_, i) => (
+          <SkeletonSlideItem key={`skeleton-${i}`} index={slides.length + i} />
+        ))}
       </div>
 
       {/* Add slide button */}

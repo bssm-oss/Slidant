@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useEditorStore } from '../store/editorStore'
 import { useAgentStore, type AgentStep } from '../store/agentStore'
 import { useSlideStore } from '../store/slideStore'
 import { cn } from '@/shared/lib/utils'
-import { Maximize2, Send, Loader2, ChevronDown, Zap, MousePointer2, Search } from 'lucide-react'
+import { Maximize2, Send, Loader2, ChevronDown, Zap, MousePointer2, Search, X } from 'lucide-react'
 import type { Agent, ChatMessage } from '@/shared/types'
 import AgentManagerPanel from './AgentManagerPanel'
 import ProposalPanel from './ProposalPanel'
@@ -352,7 +352,8 @@ function HtmlPropertiesPanel({ style }: { style: HtmlComponentStyle }) {
 export default function RightPanel() {
   const { agents, chatMessages, runningAgentIds, sendMessage, selectChatAgent,
           selectedAgentDefinitionId, proposals } = useEditorStore()
-  const { agentSteps } = useAgentStore()
+  const { agentSteps, agentStartTime, estimatedSeconds, cancelAgent } = useAgentStore()
+  const [elapsed, setElapsed] = useState(0)
   const { presentation } = useSlideStore()
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
@@ -390,11 +391,26 @@ export default function RightPanel() {
   const msgs = activeAgent
     ? chatMessages.filter((m) => m.agentDefinitionId === activeAgent.definitionId)
     : []
-  const isRunning = activeAgent?.definitionId
-    ? runningAgentIds.has(activeAgent.definitionId)
-    : false
+  // overallStatus로도 fallback — agentDefinitionId가 null일 때도 전송 차단
+  const { overallStatus } = useAgentStore()
+  const isRunning = overallStatus === 'running' || (
+    activeAgent?.definitionId
+      ? runningAgentIds.has(activeAgent.definitionId)
+      : false
+  )
   const slides = presentation?.slides ?? []
   const pendingCount = proposals.filter((p) => p.status === 'pending').length
+
+  // 경과 시간 타이머
+  useEffect(() => {
+    if (!agentStartTime) { setElapsed(0); return }
+    const id = setInterval(() => setElapsed(Math.floor((Date.now() - agentStartTime) / 1000)), 1000)
+    return () => clearInterval(id)
+  }, [agentStartTime])
+
+  const handleCancel = useCallback(async () => {
+    await cancelAgent()
+  }, [cancelAgent])
 
   // Auto-scroll
   useEffect(() => {
@@ -501,12 +517,31 @@ export default function RightPanel() {
           msgs.map((msg: ChatMessage) => <ChatBubble key={msg.id} msg={msg} />)
         )}
         {isRunning && (
-          <div className="flex justify-start">
-            <div className="bg-[var(--bg-muted)] px-3 py-2 rounded-[12px] rounded-bl-[4px] text-[12px] text-[var(--text-muted)] flex items-center gap-1.5 shadow-sm border border-[var(--border)] max-w-[90%]">
-              <Loader2 size={10} className="animate-spin shrink-0" />
-              <span className="truncate">{activeAgent?.currentTask || '처리 중...'}</span>
+          <>
+            {/* ETA + 취소 */}
+            {agentStartTime && (
+              <div className="flex items-center justify-between gap-2 px-1 py-0.5">
+                <span className="text-[10px] text-[var(--text-disabled)]">
+                  {estimatedSeconds
+                    ? `${elapsed}s / 약 ${estimatedSeconds}s`
+                    : `${elapsed}s 경과`}
+                </span>
+                <button
+                  onClick={handleCancel}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-[4px] text-[10px] text-red-500 border border-red-200 hover:bg-red-50 transition-colors"
+                >
+                  <X size={9} />
+                  취소
+                </button>
+              </div>
+            )}
+            <div className="flex justify-start">
+              <div className="bg-[var(--bg-muted)] px-3 py-2 rounded-[12px] rounded-bl-[4px] text-[12px] text-[var(--text-muted)] flex items-center gap-1.5 shadow-sm border border-[var(--border)] max-w-[90%]">
+                <Loader2 size={10} className="animate-spin shrink-0" />
+                <span className="truncate">{activeAgent?.currentTask || '처리 중...'}</span>
+              </div>
             </div>
-          </div>
+          </>
         )}
         <div ref={bottomRef} />
       </div>
