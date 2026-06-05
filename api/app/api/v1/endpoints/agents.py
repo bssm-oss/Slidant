@@ -199,13 +199,38 @@ async def _run_agent_background_inner(
                     "accumulated": "".join(token_buf),
                 })
 
+            # slide_ready 즉시 DB 저장용 인덱스 → slide_id 매핑 (생성 순서 기준)
+            _slide_ready_slots: dict[int, str] = {}  # index → placeholder slide_id
+
             def on_event(event_type: str, message: str) -> None:
                 _fire({
                     "type": "agent_node_event",
                     "agent_run_id": str(agent_run_id),
-                    "event_type": event_type,   # node_start | node_done
+                    "event_type": event_type,
                     "message": message,
                 })
+
+                # slide_ready: 생성 즉시 DB에 중간 저장 (새로고침 시 복원용)
+                if event_type == "slide_ready":
+                    import json as _json
+                    import asyncio as _asyncio
+                    try:
+                        data = _json.loads(message)
+                        idx  = data.get("index", 0)
+                        html = data.get("html", "")
+                        title = data.get("title", "")
+                        if html:
+                            _asyncio.get_running_loop().create_task(
+                                _save_slide_ready(
+                                    project_id=body.project_id,
+                                    index=idx,
+                                    title=title,
+                                    html=html,
+                                    slot_map=_slide_ready_slots,
+                                )
+                            )
+                    except Exception as _e:
+                        logger.debug("slide_ready interim save parse error: %s", _e)
 
             import re as _re
             slide_scope_locked = bool(_re.search(r'@슬라이드\d+', body.command))
@@ -527,6 +552,51 @@ async def get_agent_logs(project_id: UUID, current_user: CurrentUser, uow: UoW):
         }
         for r in runs
     ]
+
+
+async def _save_slide_ready(
+    *,
+    project_id,
+    index: int,
+    title: str,
+    html: str,
+    slot_map: dict,
+) -> None:
+    """slide_ready 이벤트 수신 즉시 DB에 중간 저장.
+
+    새로고침/SSE 단절 시 이미 생성된 슬라이드를 복원하기 위한 즉시 커밋.
+    - 같은 index의 슬라이드가 이미 DB에 있으면 html_content 업데이트
+    - 없으면 임시 슬라이드 생성 (agent_done의 is_full_replace가 나중에 정리)
+    """
+    from app.db.uow import UnitOfWork
+    from app.models.slide import Slide as SlideModel
+    from app.core.domain.slide_sanitizer import sanitize_slide_html
+
+    try:
+        async with UnitOfWork() as uow:
+            existing = await uow.slides.list_by_project(project_id)
+            # order=index 슬라이드 찾기
+            target = next((s for s in existing if s.order == index), None)
+            html_safe = sanitize_slide_html(html)
+            if target:
+                target.html_content = html_safe
+                if title:
+                    target.title = title
+                logger.debug("slide_ready interim update: project=%s idx=%d", project_id, index)
+            else:
+                new_s = SlideModel(
+                    project_id=project_id,
+                    title=title or f"슬라이드 {index + 1}",
+                    html_content=html_safe,
+                    content=[],
+                    order=index,
+                )
+                uow.slides.add(new_s)
+                slot_map[index] = str(new_s.id) if hasattr(new_s, "id") else ""
+                logger.debug("slide_ready interim insert: project=%s idx=%d", project_id, index)
+            await uow.commit()
+    except Exception as exc:
+        logger.warning("slide_ready interim save failed (non-fatal): %s", exc)
 
 
 @router.get("/events/{project_id}")
