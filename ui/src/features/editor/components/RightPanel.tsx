@@ -4,7 +4,7 @@ import { useEditorStore } from '../store/editorStore'
 import { useAgentStore, type AgentStep } from '../store/agentStore'
 import { useSlideStore } from '../store/slideStore'
 import { cn } from '@/shared/lib/utils'
-import { Maximize2, Send, Loader2, ChevronDown, Zap, MousePointer2, Search, X } from 'lucide-react'
+import { Maximize2, Send, Loader2, ChevronDown, Zap, Search, X } from 'lucide-react'
 import type { Agent, ChatMessage } from '@/shared/types'
 import AgentManagerPanel from './AgentManagerPanel'
 import ProposalPanel from './ProposalPanel'
@@ -289,63 +289,6 @@ function AgentSelector({ agents, selectedId, onSelect }: {
           ))}
         </div>
       )}
-    </div>
-  )
-}
-
-// ── HTML 속성 패널 ────────────────────────────────────────────────────────────
-function HtmlPropertiesPanel({ style }: { style: HtmlComponentStyle }) {
-  return (
-    <div className="border-t border-[var(--border)] px-4 py-3 shrink-0 bg-[var(--bg-muted)]">
-      <div className="flex items-center gap-1.5 mb-2.5">
-        <MousePointer2 size={12} className="text-[var(--accent)]" />
-        <span className="text-[11px] font-semibold text-[var(--text)] uppercase tracking-wide">선택된 요소</span>
-        <span className="ml-auto text-[10px] text-[var(--text-disabled)] font-mono bg-white px-1.5 py-0.5 rounded-[4px] border border-[var(--border)]">
-          {style.tagName}
-        </span>
-      </div>
-      {style.textContent && (
-        <p className="text-[11px] text-[var(--text-muted)] mb-2 truncate italic">&ldquo;{style.textContent}&rdquo;</p>
-      )}
-      <div className="flex flex-col gap-1.5">
-        {style.color && (
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] text-[var(--text-muted)]">글자 색상</span>
-            <div className="flex items-center gap-1.5">
-              <div
-                className="w-4 h-4 rounded-[3px] border border-[var(--border)] shrink-0"
-                style={{ background: style.color }}
-              />
-              <span className="text-[10px] font-mono text-[var(--text-disabled)]">{style.color}</span>
-            </div>
-          </div>
-        )}
-        {style.backgroundColor && style.backgroundColor !== 'rgba(0, 0, 0, 0)' && style.backgroundColor !== 'transparent' && (
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] text-[var(--text-muted)]">배경 색상</span>
-            <div className="flex items-center gap-1.5">
-              <div
-                className="w-4 h-4 rounded-[3px] border border-[var(--border)] shrink-0"
-                style={{ background: style.backgroundColor }}
-              />
-              <span className="text-[10px] font-mono text-[var(--text-disabled)]">{style.backgroundColor}</span>
-            </div>
-          </div>
-        )}
-        {style.fontSize && (
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] text-[var(--text-muted)]">폰트 크기</span>
-            <span className="text-[11px] font-mono text-[var(--text)]">{style.fontSize}</span>
-          </div>
-        )}
-        {style.opacity && style.opacity !== '1' && (
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] text-[var(--text-muted)]">투명도</span>
-            <span className="text-[11px] font-mono text-[var(--text)]">{style.opacity}</span>
-          </div>
-        )}
-      </div>
-      <p className="text-[10px] text-[var(--text-disabled)] mt-2.5">더블클릭으로 텍스트 편집 · 이미지 요소 클릭으로 업로드</p>
     </div>
   )
 }
