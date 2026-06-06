@@ -127,13 +127,25 @@ def make_html_editor(ctx: NodeContext):
         command = state.get("command", "")
         op = state.get("current_op", {})
         instruction = op.get("instruction", command)
+        # component_edit op인 경우 컴포넌트 ID 힌트를 instruction에 포함
+        if op.get("type") == "component_edit" and op.get("component_id"):
+            instruction = f"[대상 컴포넌트 ID 힌트: {op['component_id']}] {instruction}"
+
+        search_ctx = ""
+        if state.get("search_summary"):
+            search_ctx = (
+                "\n\n## 웹 검색 팩트시트 (수치/이름/날짜 그대로 사용, 변조 금지):\n"
+                + state["search_summary"]
+                + "\n"
+            )
 
         layout_budget = compute_layout_budget(spec)
         human_text = (
             f"EXISTING SLIDE HTML:\n{existing_html}\n\n"
             f"MODIFICATION INSTRUCTION: {instruction}\n"
             f"Edit spec: {json.dumps(spec, ensure_ascii=False)}\n"
-            f"Design tokens (참고용): {json.dumps(design_tokens, ensure_ascii=False)}\n\n"
+            f"Design tokens (참고용): {json.dumps(design_tokens, ensure_ascii=False)}\n"
+            f"{search_ctx}"
             f"{layout_budget}"
             "위 지시에 따라 기존 HTML을 수정하라. 내용은 보존, 요청된 것만 변경."
         )

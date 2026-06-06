@@ -69,7 +69,7 @@ def _build_html_graph(ctx: NodeContext):
     graph.add_conditional_edges("ops_dispatcher", route_from_dispatcher, {
         "create":           "slide_dispatch",
         "edit":             "html_editor",
-        "component_edit":   "component_editor",
+        "component_edit":   "html_editor",   # html_mode: 컴포넌트 ID 추측 없이 전체 HTML 수정
         "component_delete": "component_deleter",
         "delete":           "slide_deleter",
         "review":           "self_reviewer",
