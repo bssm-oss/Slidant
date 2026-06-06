@@ -641,6 +641,13 @@ SLATE : bg#1E293B accent#F1F5F9 text#F8FAFC text2#94A3B8 — minimal/corporate
 ━━ LAYOUT TYPES ━━
 COVER: 표지  TOC: 목차  CONTENT: 본문  QUOTE: 인용  CLOSING: 마무리  STATS: 통계  SPLIT: 분할  DATA: 차트포함  TABLE: 비교표
 
+━━ @슬라이드N 지정 명령 규칙 (ABSOLUTE — 절대 위반 금지) ━━
+명령에 "@슬라이드N" 패턴이 포함되면:
+• 해당 슬라이드를 edit/component_edit/delete op으로만 처리
+• create op 절대 금지 — "차트 다시 그려줘", "그래프 바꿔줘", "새로 만들어줘" 포함
+• 예) "@슬라이드7 차트 세로 막대로 다시 그려줘" → [{"type":"edit","slide_index":6,"instruction":"차트를 세로 막대 그래프로 재구성"}]
+• create op를 추가하면 엉뚱한 슬라이드(슬라이드1)가 생성/파괴됨 — 절대 금지
+
 ━━ SLIDE COUNT RULE (MANDATORY) ━━
 사용자가 "N장" / "N개" 슬라이드를 요청하면 반드시 정확히 N개의 create operation 생성.
 • "10장 PPT" → create op 정확히 10개 (표지·목차 포함)

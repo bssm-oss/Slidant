@@ -90,9 +90,10 @@ def make_unified_planner(ctx: NodeContext):
 
         if operations:
             # 방어: edit(첫번째) + create×N 패턴 → 전체 교체 의도이므로 edit을 create로 변환
-            # 이 패턴에서 edit 결과(html_output)는 is_full_replace로 삭제되어 실제 N-1장만 생성됨
+            # 단, @슬라이드N 명령(scope_locked)은 의도적 edit이므로 변환하지 않음
             if (
-                len(operations) >= 2
+                not ctx.slide_scope_locked
+                and len(operations) >= 2
                 and operations[0].get("type") == "edit"
                 and all(op.get("type") == "create" for op in operations[1:])
             ):
@@ -110,6 +111,19 @@ def make_unified_planner(ctx: NodeContext):
                     "  [unified_planner] edit+create 패턴 감지 → create로 변환 (총 %d ops)",
                     len(operations),
                 )
+            # @슬라이드N 명령 → 0-based slide_index 강제 교정 (LLM이 1-based로 잘못 출력하는 경우 방지)
+            scope_matches = re.findall(r'@슬라이드(\d+)', state.get("command", ""))
+            if len(scope_matches) == 1:
+                forced_idx = int(scope_matches[0]) - 1  # 1-based UI → 0-based
+                for op in operations:
+                    if op.get("type") in ("edit", "component_edit", "component_delete", "delete"):
+                        if op.get("slide_index", forced_idx) != forced_idx:
+                            logger.info(
+                                "  [unified_planner] @슬라이드%s 강제 보정: slide_index %s → %d",
+                                scope_matches[0], op.get("slide_index"), forced_idx,
+                            )
+                        op["slide_index"] = forced_idx
+
             ops_queue = list(operations)
             mode = operations[0].get("type", "create") if operations else "create"
         else:
@@ -247,6 +261,12 @@ def make_self_reviewer(ctx: NodeContext):
     async def self_reviewer_node(state: AgentState) -> AgentState:
         if ctx.on_event:
             ctx.on_event("node_start", "🔍 결과 검토 중...")
+
+        # scope_locked: 특정 슬라이드 편집 요청 — 다른 슬라이드 correction 생성 방지
+        if ctx.slide_scope_locked:
+            if ctx.on_event:
+                ctx.on_event("node_done", "✅ 검토 완료")
+            return {"review_ok": True, "review_count": 1}
 
         # 무한 루프 방지: 최대 1회 검토
         review_count = state.get("review_count", 0)
