@@ -258,13 +258,28 @@ export const useAgentStore = create<AgentState>((set, get) => ({
                 ? {
                     ...a,
                     status: 'running',
-                    currentTask: isResumed ? '실행 중 (복구됨)...' : (msg.command as string),
+                    // 재연결 시: 기존 currentTask 유지, 없으면 command 사용
+                    currentTask: isResumed ? (a.currentTask ?? (msg.command as string) ?? '실행 중...') : (msg.command as string),
                     taskProgress: 0,
                   }
                 : a,
             ),
           }
         })
+        // 재연결 후 replay 완료되면 첫 번째 pending step을 active로 승격
+        if (isResumed) {
+          setTimeout(() => {
+            const { agentSteps } = get()
+            if (agentSteps.length === 0) return
+            const firstPendingIdx = agentSteps.findIndex((s) => s.status === 'pending')
+            if (firstPendingIdx === -1) return
+            set((s) => ({
+              agentSteps: s.agentSteps.map((st, i) =>
+                i === firstPendingIdx ? { ...st, status: 'active' } : st
+              ),
+            }))
+          }, 600)
+        }
       }
 
       // slide_ready: 슬라이드 완성 즉시 UI에 반영 (옵티미스틱)
@@ -588,12 +603,34 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           }
         })
 
+        // HTML 변경 제안 처리 (즉시 적용 X, 사용자 승인 대기)
+        type ProposalPayload = { id: string; html_content: string; summary: string; slide_id: string; agent_name: string }
+        const proposalPayload = msg.proposal as ProposalPayload | undefined
+        if (proposalPayload) {
+          useProposalStore.getState().addProposal({
+            id: proposalPayload.id,
+            slide_id: proposalPayload.slide_id,
+            agent_run_id: (msg.agent_run_id as string) || '',
+            agent_name: proposalPayload.agent_name,
+            command: '',
+            patches: [],
+            html_content: proposalPayload.html_content,
+            summary: proposalPayload.summary,
+            status: 'pending',
+            created_at: new Date().toISOString(),
+          })
+          // 슬라이드 내용은 아직 미변경 — 채팅 히스토리만 갱신
+          const ppt2 = useSlideStore.getState().presentation
+          if (ppt2) get().loadChatHistory(ppt2.id)
+          return
+        }
+
         const ppt = useSlideStore.getState().presentation
         if (ppt) {
           // html_content 즉시 반영 (loadPresentation 전에 먼저 캐시 업데이트)
           const htmlContent = msg.html_content as string | undefined
           const slideId = msg.slide_id as string | undefined
-          if (htmlContent && slideId && ppt) {
+          if (htmlContent && slideId) {
             useSlideStore.setState((s) => ({
               presentation: s.presentation ? {
                 ...s.presentation,

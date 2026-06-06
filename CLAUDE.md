@@ -75,8 +75,11 @@ html_slides 있음  → 새 슬라이드 생성 (html_content 포함)
 - Agent 작업 로그 항상 저장
 
 ### 변경 적용 방식
-- Agent 변경: **즉시 적용** (Proposal/승인 흐름 없음)
-- `agent_done` SSE → 프론트엔드 `loadPresentation` + `html_content` 즉시 반영
+- Agent HTML 편집: `AgentProposal` 저장 → `agent_done` SSE에 `proposal` 포함 → 프론트엔드 ProposalPanel에서 컴포넌트별 승인/거절
+  - `accepted_ids: null` → 전체 승인, `accepted_ids: [...]` → 선택 컴포넌트만 `merge_component_changes()`로 병합
+- Agent 슬라이드 신규 생성 (`html_slides`): 즉시 적용 (승인 흐름 없음)
+- JSON patch (레거시): 기존 ProposalPanel 통해 전체 승인/거절
+- `data-component-id` 값은 IMMUTABLE — LLM 프롬프트에서 절대 불변 규칙으로 강제
 
 ## 기술 스택
 
@@ -95,7 +98,8 @@ html_slides 있음  → 새 슬라이드 생성 (html_content 포함)
 
 - Agent는 HTML 직접 생성 — 중간 JSON 스키마 변환 없음
 - `data-component-id` 필수 — 컴포넌트 식별 및 선택 UI 기반
-- Agent 변경 즉시 적용 — 검토 흐름은 다중 Agent 충돌 시에만
+- Agent HTML 편집 → Proposal 저장 → 사용자가 컴포넌트별 승인/거절 (즉시 적용 X)
+- Agent 슬라이드 신규 생성은 즉시 적용 (편집과 구분)
 - Agent 작업 로그 항상 저장 (디버깅 + 롤백 근거)
 - 하위 호환 유지 — `html_content` null 슬라이드는 기존 렌더러 사용
 

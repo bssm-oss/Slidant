@@ -107,6 +107,7 @@ export interface AgentProposal {
   command: string
   patches: JsonPatchOp[]
   summary: string
+  html_content?: string | null
   status: ProposalStatus
   created_at: string
 }

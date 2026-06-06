@@ -598,7 +598,7 @@ export default function RightPanel() {
             className="mb-1 bg-white border border-[var(--border)] rounded-[10px] shadow-lg py-1 z-30 max-h-48 overflow-y-auto"
           >
             <p className="px-3 py-1 text-[10px] font-semibold text-[var(--text-disabled)] uppercase tracking-wide">슬라이드 선택</p>
-            {filteredSlides.map((s, i) => {
+            {filteredSlides.map((s) => {
               const realIdx = slides.indexOf(s)
               return (
                 <button

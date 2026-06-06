@@ -154,7 +154,6 @@ function SortableSlideItem({
             )}
           </div>
         )}
-        <div className="absolute bottom-0.5 right-1 text-[9px] font-medium text-[var(--text-disabled)]">{index + 1}</div>
         {/* Presence 아바타 */}
         {viewers.length > 0 && (
           <div className="absolute top-1 left-1 flex gap-0.5">
@@ -171,6 +170,11 @@ function SortableSlideItem({
           </div>
         )}
       </button>
+
+      {/* Slide number badge */}
+      <div className="absolute bottom-1 right-1 z-10 min-w-[16px] h-[16px] flex items-center justify-center text-[9px] font-bold text-white bg-black/50 rounded-[3px] pointer-events-none px-1 leading-none">
+        {index + 1}
+      </div>
 
       {/* Regenerate overlay — bottom-right on hover */}
       {(isHovered || menuOpen) && (
@@ -244,7 +248,7 @@ function SkeletonSlideItem({ index }: { index: number }) {
           <div className="h-1.5 w-2/3 rounded bg-gray-300" />
         </div>
       </div>
-      <div className="absolute bottom-0.5 right-1 text-[9px] font-medium text-[var(--text-disabled)]">
+      <div className="absolute bottom-1 right-1 z-10 min-w-[16px] h-[16px] flex items-center justify-center text-[9px] font-bold text-white bg-black/50 rounded-[3px] pointer-events-none px-1 leading-none">
         {index + 1}
       </div>
     </div>

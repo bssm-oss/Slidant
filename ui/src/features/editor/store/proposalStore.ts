@@ -32,7 +32,7 @@ interface ProposalState {
 
   setProposals: (proposals: AgentProposal[]) => void
   addProposal: (proposal: AgentProposal) => void
-  approveProposal: (id: string) => Promise<void>
+  approveProposal: (id: string, acceptedIds?: string[] | null) => Promise<void>
   rejectProposal: (id: string) => Promise<void>
 }
 
@@ -47,12 +47,12 @@ export const useProposalStore = create<ProposalState>((set) => ({
     return { proposals, conflicts: detectConflicts(proposals) }
   }),
 
-  approveProposal: async (id) => {
+  approveProposal: async (id, acceptedIds?) => {
     const ppt = useSlideStore.getState().presentation
     if (!ppt) return
     try {
       const { approveProposal: apiApprove } = await import('@/shared/lib/proposalApi')
-      await apiApprove(id)
+      await apiApprove(id, acceptedIds ?? null)
       set((s) => {
         const proposals = s.proposals.filter((p) => p.id !== id)
         return { proposals, conflicts: detectConflicts(proposals) }

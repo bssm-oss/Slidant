@@ -140,6 +140,9 @@ from app.services.slide_parser import parse_slide_html
 ## 개발 원칙
 
 - Agent는 HTML 직접 생성 — JSON 스키마 중간 변환 없음
-- Agent 변경 즉시 적용 — Proposal/승인 흐름 없음 (다중 Agent 충돌만 별도 처리)
+- Agent HTML 편집 → `AgentProposal(html_content)` 저장, 즉시 반영 X — 사용자 승인 후 `archive_and_apply`
+- `approved_ids: null` → 전체, `approved_ids: [...]` → `merge_component_changes(old, new, ids)`로 선택 적용
+- Agent 슬라이드 신규 생성(`html_slides`)은 즉시 적용 (편집과 구분)
+- `data-component-id` 불변 규칙 — `HTML_EDITOR_PROMPT`에 ABSOLUTE RULE 명시
 - Agent 로그 항상 저장 (디버깅 + 롤백 근거)
 - key sanitization 미들웨어 — API key plaintext 절대 로그 기록 안 함

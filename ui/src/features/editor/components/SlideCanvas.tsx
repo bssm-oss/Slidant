@@ -21,6 +21,7 @@ function useHtmlSlideEdit(
   htmlContent: string,
   onHtmlChange: (newHtml: string) => void,
   onComponentSelect: (id: string | null, style: HtmlComponentStyle | null) => void,
+  ignoreHtmlSyncRef: React.RefObject<boolean>,
 ) {
   // hidden file input (이미지 업로드용)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -457,6 +458,7 @@ export default function SlideCanvas() {
     htmlContent,
     handleHtmlChange,
     handleComponentSelect,
+    ignoreHtmlSyncRef,
   )
 
   // 동적 스케일

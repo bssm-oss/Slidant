@@ -18,15 +18,19 @@ class ProposalResponse(BaseModel):
     command: str
     patches: list
     summary: str
+    html_content: str | None = None
     status: str
     created_at: datetime
     model_config = {'from_attributes': True}
 
 
+class ApproveBody(BaseModel):
+    accepted_ids: list[str] | None = None  # None → 전체 승인, list → 선택 컴포넌트만 승인
+
+
 async def _get_proposal_and_verify_ownership(
     proposal_id: UUID, current_user: CurrentUser, uow: UoW
 ):
-    """proposal 조회 + 슬라이드 → 프로젝트 소유권 검증."""
     proposal = await uow.proposals.get(proposal_id)
     if not proposal:
         raise HTTPException(status_code=404, detail='Proposal not found')
@@ -56,22 +60,45 @@ async def list_proposals_by_slide(
 
 
 @router.post('/{proposal_id}/approve', status_code=status.HTTP_204_NO_CONTENT)
-async def approve_proposal(proposal_id: UUID, current_user: CurrentUser, uow: UoW):
+async def approve_proposal(proposal_id: UUID, body: ApproveBody, current_user: CurrentUser, uow: UoW):
     proposal, slide = await _get_proposal_and_verify_ownership(proposal_id, current_user, uow)
 
     if proposal.status != 'pending':
         raise HTTPException(status_code=400, detail='Proposal already processed')
 
-    class _PatchTarget:
-        def __init__(self, content):
-            self.content = content
-
-    target = _PatchTarget(list(slide.content or []))
-    apply_patches(target, proposal.patches)
-
     reason = f'{proposal.agent_name}: {proposal.command[:120]}'
-    await slide_history_service.archive_and_apply(uow, proposal.slide_id, target.content, reason, agent_name=proposal.agent_name)
+
+    if proposal.html_content:
+        # HTML 모드: 제안된 HTML을 (부분) 적용
+        if body.accepted_ids is None:
+            # 전체 승인 → 제안 HTML 그대로 적용
+            final_html = proposal.html_content
+        else:
+            # 선택 승인 → 현재 슬라이드에 선택된 컴포넌트만 병합
+            from app.core.domain.html_slide import merge_component_changes
+            final_html = merge_component_changes(
+                slide.html_content or "",
+                proposal.html_content,
+                body.accepted_ids,
+            )
+        await slide_history_service.archive_and_apply(
+            uow, proposal.slide_id, list(slide.content or []),
+            reason, agent_name=proposal.agent_name, html_content=final_html,
+        )
+    else:
+        # JSON patch 모드 (레거시)
+        class _PatchTarget:
+            def __init__(self, content):
+                self.content = content
+        target = _PatchTarget(list(slide.content or []))
+        apply_patches(target, proposal.patches)
+        await slide_history_service.archive_and_apply(
+            uow, proposal.slide_id, target.content, reason, agent_name=proposal.agent_name,
+        )
+
     proposal.status = 'approved'
+    uow.session.add(proposal)
+    await uow.commit()
 
 
 @router.post('/{proposal_id}/reject', status_code=status.HTTP_204_NO_CONTENT)
@@ -82,3 +109,5 @@ async def reject_proposal(proposal_id: UUID, current_user: CurrentUser, uow: UoW
         raise HTTPException(status_code=400, detail='Proposal already processed')
 
     proposal.status = 'rejected'
+    uow.session.add(proposal)
+    await uow.commit()

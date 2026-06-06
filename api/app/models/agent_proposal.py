@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Column
+from sqlalchemy import Column, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
@@ -16,5 +16,6 @@ class AgentProposal(SQLModel, table=True):
     command: str
     patches: list = Field(default_factory=list, sa_column=Column(JSONB, nullable=False, server_default="[]"))
     summary: str = Field(default="")
+    html_content: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
     status: str = Field(default="pending", max_length=20)  # pending|approved|rejected
     created_at: datetime = Field(default_factory=datetime.utcnow)
