@@ -8,6 +8,8 @@ import { Maximize2, Send, Loader2, ChevronDown, Zap, MousePointer2, Search, X } 
 import type { Agent, ChatMessage } from '@/shared/types'
 import AgentManagerPanel from './AgentManagerPanel'
 import ProposalPanel from './ProposalPanel'
+import HistoryPanel from './HistoryPanel'
+import ComponentInspector from './ComponentInspector'
 import type { HtmlComponentStyle } from './SlideCanvas'
 
 // ── 단일 노드 아이템 ──────────────────────────────────────────────────────────
@@ -360,17 +362,24 @@ export default function RightPanel() {
 
   const [showManager, setShowManager] = useState(false)
   const [showProposal, setShowProposal] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
   const [localSelectedId, setLocalSelectedId] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [showSlidePicker, setShowSlidePicker] = useState(false)
   const [webSearchEnabled, setWebSearchEnabled] = useState(false)
   const [htmlStyle, setHtmlStyle] = useState<HtmlComponentStyle | null>(null)
+  const [activeTab, setActiveTab] = useState<'agent' | 'design'>('agent')
+  const prevHtmlStyleRef = useRef<HtmlComponentStyle | null>(null)
 
-  // HTML 모드에서 선택된 요소 스타일 수신
+  // HTML 모드에서 선택된 요소 스타일 수신 + 탭 자동 전환
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<HtmlComponentStyle | null>).detail
       setHtmlStyle(detail ?? null)
+      // null → non-null 전환 시 Design 탭으로 자동 이동
+      if (detail && !prevHtmlStyleRef.current) setActiveTab('design')
+      if (!detail) setActiveTab('agent')
+      prevHtmlStyleRef.current = detail ?? null
     }
     window.addEventListener('html-component-select', handler)
     return () => window.removeEventListener('html-component-select', handler)
@@ -455,7 +464,47 @@ export default function RightPanel() {
   return (
     <div className="w-80 border-l border-[var(--border)] bg-white flex flex-col shrink-0 overflow-hidden h-full">
 
-      {/* Header */}
+      {/* Tab bar */}
+      <div className="border-b border-[var(--border)] flex items-stretch shrink-0">
+        <button
+          onClick={() => setActiveTab('design')}
+          disabled={!htmlStyle}
+          className={cn(
+            'flex-1 py-2 text-[12px] font-medium transition-colors border-b-2 -mb-px',
+            activeTab === 'design' && htmlStyle
+              ? 'border-[var(--accent)] text-[var(--accent)]'
+              : 'border-transparent text-[var(--text-disabled)] hover:text-[var(--text-muted)] disabled:opacity-40 disabled:cursor-default',
+          )}
+        >
+          Design
+        </button>
+        <button
+          onClick={() => setActiveTab('agent')}
+          className={cn(
+            'flex-1 py-2 text-[12px] font-medium transition-colors border-b-2 -mb-px',
+            activeTab === 'agent'
+              ? 'border-[var(--accent)] text-[var(--accent)]'
+              : 'border-transparent text-[var(--text-disabled)] hover:text-[var(--text-muted)]',
+          )}
+        >
+          Agent
+        </button>
+      </div>
+
+      {/* Design tab */}
+      {activeTab === 'design' && htmlStyle && (
+        <div className="flex-1 overflow-y-auto min-h-0">
+          <ComponentInspector
+            style={htmlStyle}
+            onOpenHistory={() => setShowHistory(true)}
+          />
+        </div>
+      )}
+
+      {/* Agent tab */}
+      {activeTab === 'agent' && <>
+
+      {/* Agent header */}
       <div className="px-3 py-2 border-b border-[var(--border)] flex items-center gap-2 shrink-0">
         {agents.length > 0 && activeAgent ? (
           <AgentSelector
@@ -631,11 +680,11 @@ export default function RightPanel() {
         </div>
       </div>
 
-      {/* HTML 모드 속성 패널 — 요소 선택 시 하단 표시 */}
-      {htmlStyle && <HtmlPropertiesPanel style={htmlStyle} />}
+      </> /* end Agent tab */}
 
       <AgentManagerPanel open={showManager} onClose={() => setShowManager(false)} />
       {showProposal && <ProposalPanel open={showProposal} onClose={() => setShowProposal(false)} />}
+      <HistoryPanel open={showHistory} onClose={() => setShowHistory(false)} />
     </div>
   )
 }

@@ -6,6 +6,7 @@ import { cn } from '@/shared/lib/utils'
 import { api } from '@/shared/lib/apiClient'
 import type { SlideComponent } from '@/shared/types'
 import ConflictResolver from './ConflictResolver'
+import { buildSlideSrc } from '@/shared/lib/slideHtml'
 
 // ── HTML 슬라이드 편집 훅 ───────────────────────────────────────────────────────
 
@@ -24,6 +25,35 @@ function useHtmlSlideEdit(
   // hidden file input (이미지 업로드용)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const pendingImageIdRef = useRef<string | null>(null)
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // html-component-style-update: Inspector → iframe DOM → debounced API save
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { componentId, prop, value } = (e as CustomEvent<{ componentId: string; prop: string; value: string | number }>).detail
+      const doc = iframeRef.current?.contentDocument
+      if (!doc) return
+      const el = doc.querySelector<HTMLElement>(`[data-component-id="${componentId}"]`)
+      if (!el) return
+
+      applyStyleProp(el, prop, value)
+
+      const newHtml = rebuildFullHtml(doc.documentElement.innerHTML)
+      onHtmlChange(newHtml)
+
+      // re-broadcast updated style so inspector stays in sync
+      window.dispatchEvent(new CustomEvent('html-component-select', { detail: parseElementStyle(el) }))
+
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = setTimeout(async () => {
+        try {
+          await api.patch(`/projects/${projectId}/slides/${slideId}`, { html_content: newHtml })
+        } catch { /* silent */ }
+      }, 400)
+    }
+    window.addEventListener('html-component-style-update', handler)
+    return () => window.removeEventListener('html-component-style-update', handler)
+  }, [projectId, slideId, onHtmlChange])
 
   // iframe 로드 시 내부 DOM에 이벤트 등록
   const handleIframeLoad = useCallback(() => {
@@ -194,24 +224,49 @@ function rebuildFullHtml(innerHtml: string): string {
 
 export interface HtmlComponentStyle {
   componentId: string
+  left: number
+  top: number
+  width: number
+  height: number
   color: string
   backgroundColor: string
-  fontSize: string
-  opacity: string
+  fontSize: number
+  opacity: number
   tagName: string
   textContent: string
+  isText: boolean
 }
 
 function parseElementStyle(el: HTMLElement): HtmlComponentStyle {
-  const cs = el.ownerDocument.defaultView?.getComputedStyle(el) ?? el.style
+  const cs = el.ownerDocument.defaultView?.getComputedStyle(el) ?? el.style as CSSStyleDeclaration
+  const num = (inline: string, computed: string) => parseFloat(inline) || parseFloat(computed) || 0
   return {
     componentId: el.getAttribute('data-component-id') ?? '',
+    left: num(el.style.left, (cs as CSSStyleDeclaration).left ?? ''),
+    top: num(el.style.top, (cs as CSSStyleDeclaration).top ?? ''),
+    width: num(el.style.width, (cs as CSSStyleDeclaration).width ?? ''),
+    height: num(el.style.height, (cs as CSSStyleDeclaration).height ?? ''),
     color: (cs as CSSStyleDeclaration).color ?? el.style.color ?? '',
     backgroundColor: (cs as CSSStyleDeclaration).backgroundColor ?? el.style.backgroundColor ?? '',
-    fontSize: (cs as CSSStyleDeclaration).fontSize ?? el.style.fontSize ?? '',
-    opacity: (cs as CSSStyleDeclaration).opacity ?? el.style.opacity ?? '1',
+    fontSize: num(el.style.fontSize, (cs as CSSStyleDeclaration).fontSize ?? ''),
+    opacity: parseFloat((cs as CSSStyleDeclaration).opacity ?? el.style.opacity ?? '1') || 1,
     tagName: el.tagName.toLowerCase(),
     textContent: el.textContent?.trim().slice(0, 80) ?? '',
+    isText: isTextElement(el),
+  }
+}
+
+function applyStyleProp(el: HTMLElement, prop: string, value: string | number): void {
+  const px = (v: string | number) => `${v}px`
+  switch (prop) {
+    case 'left': el.style.left = px(value); break
+    case 'top': el.style.top = px(value); break
+    case 'width': el.style.width = px(value); break
+    case 'height': el.style.height = px(value); break
+    case 'color': el.style.color = String(value); break
+    case 'backgroundColor': el.style.backgroundColor = String(value); break
+    case 'fontSize': el.style.fontSize = px(value); break
+    case 'opacity': el.style.opacity = String(value); break
   }
 }
 
@@ -484,9 +539,7 @@ export default function SlideCanvas() {
   if (currentSlide?.html_content) {
     // html_content가 완전한 HTML 문서면 그대로 사용, 아니면 감싸기
     const rawHtml = htmlContent || currentSlide.html_content
-    const iframeSrc = rawHtml.trimStart().startsWith('<!DOCTYPE') || rawHtml.trimStart().startsWith('<html')
-      ? rawHtml
-      : `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{width:960px;height:540px;overflow:hidden;}</style></head><body>${rawHtml}</body></html>`
+    const iframeSrc = buildSlideSrc(rawHtml)
 
     return (
       <div ref={containerRef}
