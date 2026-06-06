@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Column, LargeBinary
+from sqlalchemy import Column, LargeBinary, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
@@ -15,5 +15,7 @@ class Project(SQLModel, table=True):
     theme: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
     share_token: str | None = Field(default=None, max_length=64)
     yjs_state: bytes | None = Field(default=None, sa_column=Column(LargeBinary, nullable=True))
+    search_summary: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
+    search_queries: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

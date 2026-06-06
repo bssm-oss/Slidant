@@ -23,6 +23,13 @@ class ProjectRepository(BaseRepository[Project]):
             project.yjs_state = state
             self.session.add(project)
 
+    async def update_search_cache(self, project_id: UUID, summary: str, queries: list) -> None:
+        project = await self.get(project_id)
+        if project:
+            project.search_summary = summary
+            project.search_queries = queries
+            self.session.add(project)
+
     async def get_owned(self, project_id: UUID, owner_id: UUID) -> Project | None:
         result = await self.session.execute(
             select(Project).where(

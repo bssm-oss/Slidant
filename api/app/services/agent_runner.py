@@ -204,7 +204,8 @@ async def run_agent(
     on_event: "Callable[[str, str], None] | None" = None,
     conversation_history: str = "",
     html_mode: bool = False,
-) -> tuple[list[dict], str, str, str, list, bool]:
+    cached_search_summary: str = "",
+) -> tuple[list[dict], str, str, str, list, bool, dict | None]:
     """
     Returns: (patch_ops, slide_context, summary, html_output, html_slides, delete_slide)
     """
@@ -289,6 +290,7 @@ CRITICAL — SCOPE LOCKED TO CURRENT SLIDE:
             "current_slide_spec": {},
             "search_queries": [],
             "search_results": [],
+            "search_summary": cached_search_summary,
             "ops_queue": [],
             "ops_results": [],
             "current_op": {},
@@ -302,6 +304,13 @@ CRITICAL — SCOPE LOCKED TO CURRENT SLIDE:
         html_output  = result.get("html_output", "")
         html_slides  = result.get("html_slides", [])
         delete_slide = result.get("delete_slide", False)
+        # 새로 검색한 경우에만 cache_update 반환 (캐시 재사용 시 search_results 비어있음)
+        new_search_results = result.get("search_results", [])
+        new_search_summary = result.get("search_summary", "")
+        new_search_queries = result.get("search_queries", [])
+        cache_update: dict | None = None
+        if new_search_results and new_search_summary:
+            cache_update = {"summary": new_search_summary, "queries": new_search_queries}
         ms = (time.perf_counter() - t0) * 1000
         logger.info("llm_done  provider=%s  patches=%d  delete=%s  summary=%r  %.0fms",
                     provider, len(patches), delete_slide, summary[:60], ms)
@@ -310,12 +319,12 @@ CRITICAL — SCOPE LOCKED TO CURRENT SLIDE:
             if msgs:
                 last = msgs[-1]
                 logger.warning("llm_empty_patches  content=%r", str(getattr(last, "content", last))[:400])
-        return patches, slide_context, summary, html_output, html_slides, delete_slide
+        return patches, slide_context, summary, html_output, html_slides, delete_slide, cache_update
     except Exception as e:
         ms = (time.perf_counter() - t0) * 1000
         err_str = str(e)
         logger.warning("llm_error  %.0fms  %s", ms, err_str[:120])
         if "credit balance" in err_str or "insufficient" in err_str.lower():
             logger.info("fallback  credit exhausted → mock")
-            return _mock_patches(role, command, components), slide_context, "[Mock fallback] 크레딧 부족", "", [], False
+            return _mock_patches(role, command, components), slide_context, "[Mock fallback] 크레딧 부족", "", [], False, None
         raise

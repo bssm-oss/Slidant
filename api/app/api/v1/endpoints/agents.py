@@ -282,8 +282,17 @@ async def _run_agent_background_inner(
                 on_event=on_event,
                 conversation_history=conversation_history,
                 html_mode=True,
+                cached_search_summary=(project.search_summary or "") if project else "",
             )
-            patches, _, llm_summary, html_output, html_slides, delete_slide = await run_agent(**run_kwargs)
+            patches, _, llm_summary, html_output, html_slides, delete_slide, search_cache = await run_agent(**run_kwargs)
+
+            # 새 검색 결과 있으면 프로젝트에 캐시 저장
+            if search_cache:
+                await uow.projects.update_search_cache(
+                    body.project_id,
+                    search_cache["summary"],
+                    search_cache["queries"],
+                )
             elapsed = (_time.perf_counter() - t0) * 1000
 
             logger.info("   ← LLM 완료  %.0fms  patches=%d  html=%d  html_slides=%d  delete=%s",

@@ -38,6 +38,14 @@ def _extract_json(text: str):
 
 def make_web_searcher(ctx: NodeContext):
     async def web_searcher_node(state: AgentState) -> AgentState:
+        # 이미 캐시된 search_summary 있으면 Tavily 호출 스킵
+        if state.get("search_summary"):
+            if ctx.on_event:
+                ctx.on_event("node_start", "⚡ 캐시된 검색 결과 재사용...")
+                ctx.on_event("step_done", "search")
+                ctx.on_event("node_done", "✅ 캐시 적용 완료")
+            return state
+
         from app.core.config import settings
         if ctx.on_event:
             ctx.on_event("node_start", f"🔍 웹 검색 중 ({len(state.get('search_queries', []))}개)...")
@@ -83,7 +91,8 @@ def make_search_merger(ctx: NodeContext):
     async def search_merger_node(state: AgentState) -> AgentState:
         results = state.get("search_results", [])
         if not results:
-            return {**state, "search_summary": ""}
+            # 캐시된 summary 있으면 그대로 통과
+            return state
 
         if ctx.on_event:
             ctx.on_event("node_start", "📊 검색 결과 병합 중...")
