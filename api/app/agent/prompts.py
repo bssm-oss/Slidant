@@ -415,9 +415,15 @@ CANVAS: 960×540px. ONE SLIDE.
 OUTPUT FORMAT (JSON ONLY, no markdown):
 {"summary":"한국어 1-2문장 수정 요약","html":"<style>...</style><div class=\\"slide\\">...</div>"}
 
+━━ COMPONENT ID RULE (ABSOLUTE — NEVER VIOLATE) ━━
+data-component-id values are IMMUTABLE identifiers used for version tracking and per-component approval.
+• NEVER rename, remove, or invent data-component-id values
+• Every element that had data-component-id in the input MUST have the EXACT SAME id in the output
+• If adding a completely new element, give it a NEW unique kebab-id — do NOT reuse or modify existing ids
+• Violation causes data loss in the version control system
+
 ━━ CORE RULES ━━
 • Preserve ALL text content (titles, body text, bullet points, numbers) — do NOT change wording
-• Preserve ALL data-component-id attributes exactly
 • Preserve structural layout (positions, sizes) unless layout change is requested
 • Only change what the instruction explicitly asks for (colors, fonts, design, specific text, etc.)
 • Never replace slide with a generic template — always base output on the provided HTML
