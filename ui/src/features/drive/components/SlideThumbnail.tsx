@@ -1,6 +1,7 @@
 import { type CSSProperties, useEffect, useRef, useState } from 'react'
 import { api } from '@/shared/lib/apiClient'
 import type { SlideComponent } from '@/shared/types'
+import { buildSlideSrc } from '@/shared/lib/slideHtml'
 
 const SLIDE_W = 960
 const SLIDE_H = 540
@@ -174,7 +175,7 @@ export default function SlideThumbnail({ projectId }: Props) {
       {status === 'ready' && htmlContent && (
         <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
           <iframe
-            srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{width:960px;height:540px;overflow:hidden;}</style></head><body>${htmlContent}</body></html>`}
+            srcDoc={buildSlideSrc(htmlContent)}
             style={{
               width: SLIDE_W,
               height: SLIDE_H,

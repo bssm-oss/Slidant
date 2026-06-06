@@ -39,7 +39,18 @@ function useHtmlSlideEdit(
       applyStyleProp(el, prop, value)
 
       const newHtml = rebuildFullHtml(doc.documentElement.innerHTML)
-      onHtmlChange(newHtml)
+
+      // store 낙관적 업데이트 — iframe reload 없이 (ignoreHtmlSyncRef로 useEffect 차단)
+      ignoreHtmlSyncRef.current = true
+      const ppt = useSlideStore.getState().presentation
+      if (ppt) {
+        useSlideStore.setState({
+          presentation: {
+            ...ppt,
+            slides: ppt.slides.map((s) => s.id === slideId ? { ...s, html_content: newHtml } : s),
+          },
+        })
+      }
 
       // re-broadcast updated style so inspector stays in sync
       window.dispatchEvent(new CustomEvent('html-component-select', { detail: parseElementStyle(el) }))
@@ -405,12 +416,23 @@ export default function SlideCanvas() {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const [htmlContent, setHtmlContent] = useState<string>(currentSlide?.html_content ?? '')
   const [selectedHtmlStyle, setSelectedHtmlStyle] = useState<HtmlComponentStyle | null>(null)
+  // inspector edit 중 html_content 변경으로 인한 iframe reload 차단 플래그
+  const ignoreHtmlSyncRef = useRef(false)
 
-  // 슬라이드 변경 시 htmlContent 동기화
+  // 슬라이드 ID 변경(슬라이드 전환) 시 리셋
   useEffect(() => {
     setHtmlContent(currentSlide?.html_content ?? '')
     setSelectedHtmlStyle(null)
-  }, [currentSlide?.id, currentSlide?.html_content])
+  }, [currentSlide?.id])
+
+  // agent 업데이트 등 외부 html_content 변경 시 반영 (inspector edit은 제외)
+  useEffect(() => {
+    if (ignoreHtmlSyncRef.current) {
+      ignoreHtmlSyncRef.current = false
+      return
+    }
+    setHtmlContent(currentSlide?.html_content ?? '')
+  }, [currentSlide?.html_content])
 
   const handleHtmlChange = useCallback((newHtml: string) => {
     setHtmlContent(newHtml)

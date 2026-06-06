@@ -10,6 +10,7 @@ from app.agent.context import NodeContext
 from app.agent.state import AgentState
 from app.agent.prompts import SLIDE_COMPOSER_PROMPT, HTML_EDITOR_PROMPT
 from app.core.domain.layout_budget import compute_layout_budget
+from app.core.domain.html_slide import HtmlSlide
 
 logger = logging.getLogger("slidant.agent")
 
@@ -98,6 +99,8 @@ def make_slide_composer(ctx: NodeContext):
 
         parsed = _extract_json(raw)
         html = parsed.get("html", "") if isinstance(parsed, dict) else ""
+        if html:
+            html = HtmlSlide(html=html).clamp_positions().html
         title = spec.get("title", f"슬라이드 {idx+1}")
 
         if ctx.on_event and html:
@@ -154,6 +157,8 @@ def make_html_editor(ctx: NodeContext):
         if isinstance(parsed, dict):
             html = parsed.get("html", "")
             summary = parsed.get("summary", "슬라이드 수정 완료")
+        if html:
+            html = HtmlSlide(html=html).clamp_positions().html
 
         if ctx.on_event and html:
             step_id = state.get("current_op", {}).get("step_id", "edit-0-0")

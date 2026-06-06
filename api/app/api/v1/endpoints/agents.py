@@ -1,5 +1,4 @@
 import asyncio
-import json as json_lib
 import logging
 from uuid import UUID
 
@@ -328,39 +327,23 @@ async def _run_agent_background_inner(
                     return
                 # delete+create 혼합: 삭제 완료, 아래에서 html_slides 전량 신규 생성 진행
 
-            # HTML 모드: html_output → 컴포넌트 레벨 CRDT 업데이트 + DB 저장
+            # HTML 모드: html_output → Proposal 저장 (사용자 승인 후 적용)
+            _proposal_obj = None
             if html_output and slide:
-                from app.services import slide_history_service
-                from app.services import crdt as crdt_svc
-
-                reason = f'{agent_def_name}: {body.command[:120]}'
-                html_output = sanitize_slide_html(html_output)
-                await slide_history_service.archive_and_apply(
-                    uow, body.slide_id, list(slide.content or []),
-                    reason, agent_name=agent_def_name, html_content=html_output
+                from app.models.agent_proposal import AgentProposal as _AgentProposal
+                html_sanitized = sanitize_slide_html(html_output)
+                _proposal_obj = _AgentProposal(
+                    slide_id=body.slide_id,
+                    agent_run_id=agent_run.id,
+                    agent_name=agent_def_name,
+                    command=body.command,
+                    patches=[],
+                    summary=llm_summary,
+                    html_content=html_sanitized,
+                    status='pending',
                 )
-                logger.info("   HTML 즉시 적용: %d chars → slide %s", len(html_output), body.slide_id)
-
-                # CRDT 컴포넌트 레벨 업데이트
-                project_id_str = str(body.project_id)
-                slide_id_str = str(body.slide_id)
-                if crdt_svc.get_doc(project_id_str):
-                    upd, conflicted = crdt_svc.apply_agent_html(
-                        project_id_str, slide_id_str, html_output, agent_name=agent_def_name
-                    )
-                    if upd:
-                        await ws_manager.broadcast_bytes(project_id_str, upd)
-                    # 충돌 발생 시 conflict 이벤트 브로드캐스트
-                    if conflicted:
-                        logger.warning("   컴포넌트 충돌 감지: %s", conflicted)
-                        await _broadcast(project_id_str, {
-                            "type": "component_conflict",
-                            "slide_id": slide_id_str,
-                            "component_ids": conflicted,
-                            "agent_name": agent_def_name,
-                        })
-                    # 작업 완료 후 컴포넌트 점유 해제
-                    crdt_svc.release_agent_lock(project_id_str, slide_id_str, agent_def_name)
+                uow.proposals.add(_proposal_obj)
+                logger.info("   HTML 변경 제안 저장: proposal=%s  %d chars", _proposal_obj.id, len(html_sanitized))
             elif comp_ops and slide:
                 # 기존 JSON patch fallback
                 from app.services.slide_content import apply_patches
@@ -504,7 +487,16 @@ async def _run_agent_background_inner(
                 "summary": agent_content,
                 "slide_id": str(body.slide_id),
             }
-            if html_output:
+            if _proposal_obj:
+                # html_output edit → 제안 대기 (미적용), 슬라이드 즉시 반영 X
+                broadcast_payload["proposal"] = {
+                    "id": str(_proposal_obj.id),
+                    "html_content": _proposal_obj.html_content,
+                    "summary": llm_summary,
+                    "slide_id": str(body.slide_id),
+                    "agent_name": agent_def_name,
+                }
+            elif html_output:
                 broadcast_payload["html_content"] = html_output
             if new_slides:
                 broadcast_payload["new_slides"] = [

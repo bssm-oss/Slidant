@@ -1,5 +1,4 @@
 from app.models.agent import AgentDefinition, AgentRun, LlmLog
-from app.models.agent_pipeline import AgentPipeline, PipelineStep
 from app.models.agent_proposal import AgentProposal
 from app.models.api_key import ApiKey, ApiKeyUsageLog
 from app.models.chat_session import ChatSession
@@ -16,7 +15,6 @@ __all__ = [
     "User", "ApiKey", "ApiKeyUsageLog",
     "Project", "Slide", "SlideHistory",
     "AgentDefinition", "AgentRun", "LlmLog",
-    "AgentPipeline", "PipelineStep",
     "AgentProposal",
     "ChatSession", "ChatMessage",
     "Version", "ComponentPatch",

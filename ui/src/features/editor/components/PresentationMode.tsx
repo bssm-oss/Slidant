@@ -2,6 +2,7 @@ import { useEffect, useCallback } from 'react'
 import { X, ChevronLeft, ChevronRight } from 'lucide-react'
 import type { Slide, SlideComponent } from '@/shared/types'
 import { type CSSProperties, useRef, useState } from 'react'
+import { buildSlideSrc } from '@/shared/lib/slideHtml'
 
 // ---- minimal JSON renderer (same logic as SlideCanvas) ----
 
@@ -102,7 +103,7 @@ function SlideView({ slide }: { slide: Slide }) {
       {slide.html_content ? (
         <div style={{ width: 960 * scale, height: 540 * scale, overflow: 'hidden', position: 'relative', flexShrink: 0 }}>
           <iframe
-            srcDoc={slide.html_content}
+            srcDoc={buildSlideSrc(slide.html_content)}
             style={{
               width: 960,
               height: 540,

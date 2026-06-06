@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { buildSlideSrc } from '@/shared/lib/slideHtml'
 
 interface SlideData {
   id: string
@@ -65,7 +66,7 @@ export default function SharePage() {
       >
         {slide?.html_content ? (
           <iframe
-            srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{width:${SLIDE_W}px;height:${SLIDE_H}px;overflow:hidden;}</style></head><body>${slide.html_content}</body></html>`}
+            srcDoc={buildSlideSrc(slide.html_content)}
             style={{
               width: SLIDE_W,
               height: SLIDE_H,
