@@ -417,6 +417,7 @@ export default function SlideCanvas() {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const [htmlContent, setHtmlContent] = useState<string>(currentSlide?.html_content ?? '')
   const [selectedHtmlStyle, setSelectedHtmlStyle] = useState<HtmlComponentStyle | null>(null)
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null)
   // inspector edit 중 html_content 변경으로 인한 iframe reload 차단 플래그
   const ignoreHtmlSyncRef = useRef(false)
 
@@ -424,6 +425,7 @@ export default function SlideCanvas() {
   useEffect(() => {
     setHtmlContent(currentSlide?.html_content ?? '')
     setSelectedHtmlStyle(null)
+    setPreviewHtml(null)
   }, [currentSlide?.id])
 
   // agent 업데이트 등 외부 html_content 변경 시 반영 (inspector edit은 제외)
@@ -461,36 +463,17 @@ export default function SlideCanvas() {
     ignoreHtmlSyncRef,
   )
 
-  // Proposal hover 미리보기: 컴포넌트 HTML 임시 교체 → mouse leave 시 복원
+  // Proposal hover 미리보기: proposal 전체 HTML을 srcDoc으로 교체 → mouse leave 시 복원
   useEffect(() => {
-    const originals = new Map<string, string>()
-
     const onPreview = (e: Event) => {
-      const { componentId, newHtml } = (e as CustomEvent<{ componentId: string; newHtml: string }>).detail
-      const doc = iframeRef.current?.contentDocument
-      if (!doc) return
-      const el = doc.querySelector<HTMLElement>(`[data-component-id="${componentId}"]`)
-      if (!el) return
-      if (!originals.has(componentId)) originals.set(componentId, el.outerHTML)
-      const tmp = doc.createElement('div')
-      tmp.innerHTML = newHtml
-      const newEl = tmp.firstElementChild
-      if (newEl) el.replaceWith(newEl)
+      const { fullProposalHtml } = (e as CustomEvent<{ componentId: string; newHtml: string; fullProposalHtml?: string }>).detail
+      if (fullProposalHtml) {
+        setPreviewHtml(fullProposalHtml)
+      }
     }
 
-    const onClear = (e: Event) => {
-      const { componentId } = (e as CustomEvent<{ componentId: string }>).detail
-      const original = originals.get(componentId)
-      if (!original) return
-      const doc = iframeRef.current?.contentDocument
-      if (!doc) return
-      const el = doc.querySelector<HTMLElement>(`[data-component-id="${componentId}"]`)
-      if (!el) return
-      const tmp = doc.createElement('div')
-      tmp.innerHTML = original
-      const origEl = tmp.firstElementChild
-      if (origEl) el.replaceWith(origEl)
-      originals.delete(componentId)
+    const onClear = () => {
+      setPreviewHtml(null)
     }
 
     window.addEventListener('html-component-preview', onPreview)
@@ -499,7 +482,7 @@ export default function SlideCanvas() {
       window.removeEventListener('html-component-preview', onPreview)
       window.removeEventListener('html-component-preview-clear', onClear)
     }
-  }, [])
+  }, []) // setPreviewHtml is stable
 
   // 동적 스케일
   useEffect(() => {
@@ -601,8 +584,8 @@ export default function SlideCanvas() {
 
   // HTML 모드 렌더링 (html_content 있으면 iframe 사용)
   if (currentSlide?.html_content) {
-    // html_content가 완전한 HTML 문서면 그대로 사용, 아니면 감싸기
-    const rawHtml = htmlContent || currentSlide.html_content
+    // previewHtml: proposal hover 중 전체 슬라이드 미리보기
+    const rawHtml = previewHtml ?? (htmlContent || currentSlide.html_content)
     const iframeSrc = buildSlideSrc(rawHtml)
 
     return (

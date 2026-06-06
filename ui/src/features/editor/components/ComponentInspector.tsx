@@ -28,9 +28,9 @@ function dispatch(componentId: string, prop: string, value: string | number) {
   }))
 }
 
-function previewComponent(componentId: string, newHtml: string) {
+function previewComponent(componentId: string, newHtml: string, fullProposalHtml?: string) {
   window.dispatchEvent(new CustomEvent('html-component-preview', {
-    detail: { componentId, newHtml },
+    detail: { componentId, newHtml, fullProposalHtml },
   }))
 }
 
@@ -487,7 +487,7 @@ export default function ComponentInspector({ style }: Props) {
                 </p>
                 <div className="flex gap-2">
                   <button
-                    onMouseEnter={() => previewComponent(id, activeProposal.proposedHtml)}
+                    onMouseEnter={() => previewComponent(id, activeProposal.proposedHtml, activeProposal.html_content ?? undefined)}
                     onMouseLeave={() => clearPreview(id)}
                     onClick={handleApproveComponent}
                     disabled={!!approvingId}
