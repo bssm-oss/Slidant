@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { History, RotateCcw, ChevronDown, Clock } from 'lucide-react'
+import { History, RotateCcw, ChevronDown, Clock, Check, X } from 'lucide-react'
 import type { HtmlComponentStyle } from './SlideCanvas'
 import { useEditorStore } from '../store/editorStore'
+import { useProposalStore } from '../store/proposalStore'
+import { useSlideStore } from '../store/slideStore'
 import { cn } from '@/shared/lib/utils'
 import { fetchSlideHistory, restoreFromHistory, type SlideHistoryEntry } from '@/shared/lib/projectApi'
+import type { AgentProposal } from '@/shared/types'
 
 // ── Util ──────────────────────────────────────────────────────────────────────
 
@@ -23,6 +26,27 @@ function dispatch(componentId: string, prop: string, value: string | number) {
   window.dispatchEvent(new CustomEvent('html-component-style-update', {
     detail: { componentId, prop, value },
   }))
+}
+
+function previewComponent(componentId: string, newHtml: string) {
+  window.dispatchEvent(new CustomEvent('html-component-preview', {
+    detail: { componentId, newHtml },
+  }))
+}
+
+function clearPreview(componentId: string) {
+  window.dispatchEvent(new CustomEvent('html-component-preview-clear', {
+    detail: { componentId },
+  }))
+}
+
+function extractComponentHtml(proposalHtml: string, componentId: string): string | null {
+  if (typeof document === 'undefined') return null
+  try {
+    const doc = new DOMParser().parseFromString(proposalHtml, 'text/html')
+    const el = doc.querySelector(`[data-component-id="${componentId}"]`)
+    return el?.outerHTML ?? null
+  } catch { return null }
 }
 
 function formatDate(iso: string) {
@@ -256,6 +280,12 @@ export default function ComponentInspector({ style }: Props) {
   const [bgColor, setBgColor] = useState(style.backgroundColor)
   const [fontSize, setFontSize] = useState(style.fontSize)
   const [showHistory, setShowHistory] = useState(false)
+  const [dismissedProposalIds, setDismissedProposalIds] = useState<Set<string>>(new Set())
+  const [approvingId, setApprovingId] = useState<string | null>(null)
+
+  const { proposals, approveProposal } = useProposalStore()
+  const { presentation, currentSlideIndex } = useSlideStore()
+  const currentSlide = presentation?.slides[currentSlideIndex]
 
   useEffect(() => {
     setPos({ x: style.left, y: style.top })
@@ -269,9 +299,39 @@ export default function ComponentInspector({ style }: Props) {
 
   const id = style.componentId
 
+  // 이 컴포넌트에 영향을 주는 pending 제안 찾기
+  const activeProposal: (AgentProposal & { proposedHtml: string }) | null = (() => {
+    for (const p of proposals) {
+      if (p.status !== 'pending') continue
+      if (p.slide_id !== currentSlide?.id) continue
+      if (!p.html_content) continue
+      if (dismissedProposalIds.has(p.id)) continue
+      const html = extractComponentHtml(p.html_content, id)
+      if (html) return { ...p, proposedHtml: html }
+    }
+    return null
+  })()
+
   const commitProp = useCallback((prop: string, value: string | number) => {
     dispatch(id, prop, value)
   }, [id])
+
+  const handleApproveComponent = async () => {
+    if (!activeProposal) return
+    setApprovingId(activeProposal.id)
+    try {
+      clearPreview(id)
+      await approveProposal(activeProposal.id, [id])
+    } finally {
+      setApprovingId(null)
+    }
+  }
+
+  const handleDismiss = () => {
+    if (!activeProposal) return
+    clearPreview(id)
+    setDismissedProposalIds((s) => new Set([...s, activeProposal.id]))
+  }
 
   return (
     <div className="flex flex-col text-[var(--text)] select-none overflow-y-auto">
@@ -373,6 +433,41 @@ export default function ComponentInspector({ style }: Props) {
           </div>
           <div className="pb-1" />
           <Divider />
+        </>
+      )}
+
+      {/* Proposal: 이 컴포넌트에 대한 변경 제안 */}
+      {activeProposal && (
+        <>
+          <Divider />
+          <div className="px-4 py-3">
+            <div className="mb-2 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-500">변경 제안</span>
+            </div>
+            <p className="text-[11px] text-[var(--text-muted)] mb-2.5 leading-snug line-clamp-2">
+              {activeProposal.agent_name}: {activeProposal.summary || activeProposal.command}
+            </p>
+            <div className="flex gap-2">
+              <button
+                onMouseEnter={() => previewComponent(id, activeProposal.proposedHtml)}
+                onMouseLeave={() => clearPreview(id)}
+                onClick={handleApproveComponent}
+                disabled={!!approvingId}
+                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-[7px] bg-[var(--accent)] text-white text-[11px] font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+              >
+                <Check size={11} />
+                {approvingId ? '적용 중...' : '적용'}
+              </button>
+              <button
+                onClick={handleDismiss}
+                className="flex items-center justify-center w-8 rounded-[7px] border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)] transition-colors"
+                title="나중에"
+              >
+                <X size={13} />
+              </button>
+            </div>
+          </div>
         </>
       )}
 

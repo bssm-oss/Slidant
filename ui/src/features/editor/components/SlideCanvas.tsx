@@ -461,6 +461,46 @@ export default function SlideCanvas() {
     ignoreHtmlSyncRef,
   )
 
+  // Proposal hover 미리보기: 컴포넌트 HTML 임시 교체 → mouse leave 시 복원
+  useEffect(() => {
+    const originals = new Map<string, string>()
+
+    const onPreview = (e: Event) => {
+      const { componentId, newHtml } = (e as CustomEvent<{ componentId: string; newHtml: string }>).detail
+      const doc = iframeRef.current?.contentDocument
+      if (!doc) return
+      const el = doc.querySelector<HTMLElement>(`[data-component-id="${componentId}"]`)
+      if (!el) return
+      if (!originals.has(componentId)) originals.set(componentId, el.outerHTML)
+      const tmp = doc.createElement('div')
+      tmp.innerHTML = newHtml
+      const newEl = tmp.firstElementChild
+      if (newEl) el.replaceWith(newEl)
+    }
+
+    const onClear = (e: Event) => {
+      const { componentId } = (e as CustomEvent<{ componentId: string }>).detail
+      const original = originals.get(componentId)
+      if (!original) return
+      const doc = iframeRef.current?.contentDocument
+      if (!doc) return
+      const el = doc.querySelector<HTMLElement>(`[data-component-id="${componentId}"]`)
+      if (!el) return
+      const tmp = doc.createElement('div')
+      tmp.innerHTML = original
+      const origEl = tmp.firstElementChild
+      if (origEl) el.replaceWith(origEl)
+      originals.delete(componentId)
+    }
+
+    window.addEventListener('html-component-preview', onPreview)
+    window.addEventListener('html-component-preview-clear', onClear)
+    return () => {
+      window.removeEventListener('html-component-preview', onPreview)
+      window.removeEventListener('html-component-preview-clear', onClear)
+    }
+  }, [])
+
   // 동적 스케일
   useEffect(() => {
     const el = containerRef.current

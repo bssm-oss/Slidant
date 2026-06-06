@@ -268,9 +268,9 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         })
         // 재연결 후 replay 완료되면 첫 번째 pending step을 active로 승격
         if (isResumed) {
-          setTimeout(() => {
+          const promoteFirstPending = () => {
             const { agentSteps } = get()
-            if (agentSteps.length === 0) return
+            if (agentSteps.length === 0) return  // steps_init 아직 안 왔음, live 이벤트 기다림
             const firstPendingIdx = agentSteps.findIndex((s) => s.status === 'pending')
             if (firstPendingIdx === -1) return
             set((s) => ({
@@ -278,7 +278,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
                 i === firstPendingIdx ? { ...st, status: 'active' } : st
               ),
             }))
-          }, 600)
+          }
+          setTimeout(promoteFirstPending, 600)
         }
       }
 

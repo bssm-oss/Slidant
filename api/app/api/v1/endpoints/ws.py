@@ -176,12 +176,23 @@ async def ws_endpoint(
         cached = await redis.lrange(key, 0, -1)
         if cached:
             # 캐시된 이벤트 순서대로 replay
+            # agent_started에 resumed:True 추가 → 프론트엔드 step 복원 타이머 트리거
+            has_steps_init = any(
+                _json.loads(r).get("event_type") == "steps_init"
+                for r in cached
+                if isinstance(r, str)
+            )
             for raw in cached:
                 try:
                     evt = _json.loads(raw)
-                    await manager.send_json(websocket, {**evt, "replayed": True})
+                    extra: dict = {"replayed": True}
+                    if evt.get("type") == "agent_started":
+                        extra["resumed"] = True
+                    await manager.send_json(websocket, {**evt, **extra})
                 except Exception:
                     pass
+            # steps_init 없이 running만 있는 경우 (refresh가 planning 이전에 발생)
+            # → 아무것도 추가 안 함, 실행 중인 agent가 곧 steps_init 전송
         else:
             # 캐시 없을 때: DB에서 running 상태 확인 후 agent_started만 전송
             async with AsyncSessionLocal() as session:
