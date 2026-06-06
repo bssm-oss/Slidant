@@ -8,7 +8,6 @@ import { Maximize2, Send, Loader2, ChevronDown, Zap, Search, X } from 'lucide-re
 import type { Agent, ChatMessage } from '@/shared/types'
 import AgentManagerPanel from './AgentManagerPanel'
 import ProposalPanel from './ProposalPanel'
-import HistoryPanel from './HistoryPanel'
 import ComponentInspector from './ComponentInspector'
 import type { HtmlComponentStyle } from './SlideCanvas'
 
@@ -293,6 +292,17 @@ function AgentSelector({ agents, selectedId, onSelect }: {
   )
 }
 
+// ── @mention highlight helper ─────────────────────────────────────────────────
+function highlightMentions(text: string): React.ReactNode {
+  if (!text) return null
+  const parts = text.split(/(@슬라이드\d+)/)
+  return parts.map((part, i) =>
+    /^@슬라이드\d+$/.test(part)
+      ? <span key={i} style={{ color: '#93C5FD' }}>{part}</span>
+      : <span key={i}>{part}</span>
+  )
+}
+
 // ── Root ──────────────────────────────────────────────────────────────────────
 export default function RightPanel() {
   const { agents, chatMessages, runningAgentIds, sendMessage, selectChatAgent,
@@ -305,14 +315,18 @@ export default function RightPanel() {
 
   const [showManager, setShowManager] = useState(false)
   const [showProposal, setShowProposal] = useState(false)
-  const [showHistory, setShowHistory] = useState(false)
   const [localSelectedId, setLocalSelectedId] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [showSlidePicker, setShowSlidePicker] = useState(false)
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null)
   const [webSearchEnabled, setWebSearchEnabled] = useState(false)
+  const [panelWidth, setPanelWidth] = useState(320)
   const [htmlStyle, setHtmlStyle] = useState<HtmlComponentStyle | null>(null)
   const [activeTab, setActiveTab] = useState<'agent' | 'design'>('agent')
   const prevHtmlStyleRef = useRef<HtmlComponentStyle | null>(null)
+  const isResizingRef = useRef(false)
+  const resizeStartXRef = useRef(0)
+  const resizeStartWidthRef = useRef(0)
 
   // HTML 모드에서 선택된 요소 스타일 수신 + 탭 자동 전환
   useEffect(() => {
@@ -399,13 +413,53 @@ export default function RightPanel() {
 
   const handleSlideSelect = (slide: { id: string; title: string; order: number }) => {
     const mention = `@슬라이드${slide.order + 1} `
-    setInput((prev) => prev + mention)
+    if (mentionQuery !== null) {
+      setInput((prev) => prev.replace(/@[^@\s]*$/, mention))
+    } else {
+      setInput((prev) => prev + mention)
+    }
+    setMentionQuery(null)
     setShowSlidePicker(false)
     inputRef.current?.focus()
   }
 
+  const handleResizeMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault()
+    isResizingRef.current = true
+    resizeStartXRef.current = e.clientX
+    resizeStartWidthRef.current = panelWidth
+    const onMove = (ev: MouseEvent) => {
+      if (!isResizingRef.current) return
+      const delta = resizeStartXRef.current - ev.clientX
+      setPanelWidth(Math.min(Math.max(resizeStartWidthRef.current + delta, 256), 600))
+    }
+    const onUp = () => {
+      isResizingRef.current = false
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }
+
+  const filteredSlides = mentionQuery !== null
+    ? slides.filter((_, i) => {
+        const label = `슬라이드${i + 1}`
+        const numStr = `${i + 1}`
+        return label.startsWith(mentionQuery) || numStr.startsWith(mentionQuery.replace(/^슬라이드/, ''))
+      })
+    : slides
+
   return (
-    <div className="w-80 border-l border-[var(--border)] bg-white flex flex-col shrink-0 overflow-hidden h-full">
+    <div
+      className="border-l border-[var(--border)] bg-white flex flex-col shrink-0 overflow-hidden h-full relative"
+      style={{ width: panelWidth }}
+    >
+      {/* Resize handle */}
+      <div
+        onMouseDown={handleResizeMouseDown}
+        className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-20 hover:bg-[var(--accent)] hover:opacity-40 transition-colors"
+      />
 
       {/* Tab bar */}
       <div className="border-b border-[var(--border)] flex items-stretch shrink-0">
@@ -437,10 +491,7 @@ export default function RightPanel() {
       {/* Design tab */}
       {activeTab === 'design' && htmlStyle && (
         <div className="flex-1 overflow-y-auto min-h-0">
-          <ComponentInspector
-            style={htmlStyle}
-            onOpenHistory={() => setShowHistory(true)}
-          />
+          <ComponentInspector style={htmlStyle} />
         </div>
       )}
 
@@ -547,46 +598,69 @@ export default function RightPanel() {
             className="mb-1 bg-white border border-[var(--border)] rounded-[10px] shadow-lg py-1 z-30 max-h-48 overflow-y-auto"
           >
             <p className="px-3 py-1 text-[10px] font-semibold text-[var(--text-disabled)] uppercase tracking-wide">슬라이드 선택</p>
-            {slides.map((s, i) => (
-              <button
-                key={s.id}
-                onClick={() => handleSlideSelect({ id: s.id, title: s.title ?? '', order: i })}
-                className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-left hover:bg-[var(--bg-muted)] transition-colors"
-              >
-                <span className="w-5 h-5 flex items-center justify-center rounded-[4px] bg-[var(--bg-muted)] text-[10px] font-bold text-[var(--text-muted)] shrink-0">
-                  {i + 1}
-                </span>
-                <span className="truncate text-[var(--text)]">{s.title || `슬라이드 ${i + 1}`}</span>
-              </button>
-            ))}
+            {filteredSlides.map((s, i) => {
+              const realIdx = slides.indexOf(s)
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => handleSlideSelect({ id: s.id, title: s.title ?? '', order: realIdx })}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-left hover:bg-[var(--bg-muted)] transition-colors"
+                >
+                  <span className="w-5 h-5 flex items-center justify-center rounded-[4px] bg-[var(--bg-muted)] text-[10px] font-bold text-[var(--text-muted)] shrink-0">
+                    {realIdx + 1}
+                  </span>
+                  <span className="truncate text-[var(--text)]">{s.title || `슬라이드 ${realIdx + 1}`}</span>
+                </button>
+              )
+            })}
           </div>
         )}
 
         <div className="flex items-end gap-2 rounded-[10px] border border-[var(--border)] focus-within:border-[var(--accent)] focus-within:ring-2 focus-within:ring-[var(--accent-subtle)] bg-white px-3 transition-all">
+          <div className="relative flex-1">
+            {input && (
+              <div
+                aria-hidden="true"
+                className="absolute inset-0 text-[13px] leading-relaxed py-2.5 pointer-events-none select-none whitespace-pre-wrap overflow-hidden break-words"
+              >
+                {highlightMentions(input)}
+              </div>
+            )}
           <textarea
             ref={inputRef}
             value={input}
             rows={1}
             onChange={(e) => {
-              setInput(e.target.value)
+              const val = e.target.value
+              setInput(val)
               const el = e.target
               el.style.height = 'auto'
               el.style.height = Math.min(Math.max(el.scrollHeight, 72), 150) + 'px'
+              const match = val.match(/@([^@\s]*)$/)
+              if (match) {
+                setMentionQuery(match[1])
+                setShowSlidePicker(true)
+              } else {
+                setMentionQuery(null)
+                setShowSlidePicker(false)
+              }
             }}
             onKeyDown={(e) => {
+              if (e.key === 'Escape') { setShowSlidePicker(false); setMentionQuery(null) }
               if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
             }}
             onFocus={() => activeAgent && selectChatAgent(activeAgent.definitionId ?? null)}
             placeholder={activeAgent ? `${activeAgent.name}에게 요청... (Shift+Enter 줄바꿈)` : '요청...'}
             disabled={isRunning}
-            className="flex-1 resize-none text-[13px] border-0 outline-none bg-transparent py-2.5 leading-relaxed disabled:opacity-50"
-            style={{ height: '72px', maxHeight: '150px' }}
+            className="relative w-full resize-none text-[13px] border-0 outline-none bg-transparent py-2.5 leading-relaxed disabled:opacity-50"
+            style={{ height: '72px', maxHeight: '150px', color: input ? 'transparent' : undefined, caretColor: 'var(--text)' }}
           />
+          </div>
           <div className="flex items-center gap-1 pb-2 shrink-0">
             {/* @ button */}
             {slides.length > 0 && (
               <button
-                onClick={() => setShowSlidePicker((v) => !v)}
+                onClick={() => { setMentionQuery(null); setShowSlidePicker((v) => !v) }}
                 className={cn(
                   'px-1.5 py-1 rounded-[6px] text-[12px] font-semibold transition-colors',
                   showSlidePicker
@@ -627,7 +701,6 @@ export default function RightPanel() {
 
       <AgentManagerPanel open={showManager} onClose={() => setShowManager(false)} />
       {showProposal && <ProposalPanel open={showProposal} onClose={() => setShowProposal(false)} />}
-      <HistoryPanel open={showHistory} onClose={() => setShowHistory(false)} />
     </div>
   )
 }

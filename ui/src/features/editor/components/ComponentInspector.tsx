@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { History } from 'lucide-react'
+import { History, RotateCcw, ChevronDown, Clock } from 'lucide-react'
 import type { HtmlComponentStyle } from './SlideCanvas'
+import { useEditorStore } from '../store/editorStore'
+import { cn } from '@/shared/lib/utils'
+import { fetchSlideHistory, restoreFromHistory, type SlideHistoryEntry } from '@/shared/lib/projectApi'
 
 // ── Util ──────────────────────────────────────────────────────────────────────
 
@@ -20,6 +23,12 @@ function dispatch(componentId: string, prop: string, value: string | number) {
   window.dispatchEvent(new CustomEvent('html-component-style-update', {
     detail: { componentId, prop, value },
   }))
+}
+
+function formatDate(iso: string) {
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -44,14 +53,17 @@ interface NumInputProps {
   onChange: (v: number) => void
   onCommit: (v: number) => void
   min?: number
+  max?: number
 }
 
-function NumInput({ label, value, onChange, onCommit, min = -9999 }: NumInputProps) {
+function NumInput({ label, value, onChange, onCommit, min = -9999, max = 99999 }: NumInputProps) {
   const [local, setLocal] = useState(String(Math.round(value)))
 
   useEffect(() => {
     setLocal(String(Math.round(value)))
   }, [value])
+
+  const clamp = (n: number) => Math.min(max, Math.max(min, n))
 
   return (
     <div className="flex items-center gap-1 flex-1 min-w-0">
@@ -60,6 +72,7 @@ function NumInput({ label, value, onChange, onCommit, min = -9999 }: NumInputPro
         type="number"
         value={local}
         min={min}
+        max={max}
         className="
           flex-1 min-w-0 h-7 px-2 rounded-[6px] text-[12px] text-[var(--text)]
           bg-[var(--bg-muted)] border border-[var(--border)]
@@ -69,17 +82,17 @@ function NumInput({ label, value, onChange, onCommit, min = -9999 }: NumInputPro
         onChange={(e) => {
           setLocal(e.target.value)
           const n = parseFloat(e.target.value)
-          if (!isNaN(n)) onChange(Math.max(min, n))
+          if (!isNaN(n)) onChange(clamp(n))
         }}
         onBlur={() => {
           const n = parseFloat(local)
-          if (!isNaN(n)) onCommit(Math.max(min, n))
+          if (!isNaN(n)) onCommit(clamp(n))
           else setLocal(String(Math.round(value)))
         }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-          if (e.key === 'ArrowUp') { e.preventDefault(); const n = value + 1; onChange(n); onCommit(n) }
-          if (e.key === 'ArrowDown') { e.preventDefault(); const n = Math.max(min, value - 1); onChange(n); onCommit(n) }
+          if (e.key === 'ArrowUp') { e.preventDefault(); const n = clamp(value + 1); onChange(n); onCommit(n) }
+          if (e.key === 'ArrowDown') { e.preventDefault(); const n = clamp(value - 1); onChange(n); onCommit(n) }
         }}
       />
     </div>
@@ -146,23 +159,104 @@ function ColorRow({ label, value, onChange }: ColorRowProps) {
   )
 }
 
+// ── Inline History ────────────────────────────────────────────────────────────
+
+function InlineHistory({ open }: { open: boolean }) {
+  const { presentation, currentSlideIndex, loadPresentation } = useEditorStore()
+  const projectId = presentation?.id
+  const currentSlide = presentation?.slides[currentSlideIndex]
+
+  const [versions, setVersions] = useState<SlideHistoryEntry[]>([])
+  const [loading, setLoading] = useState(false)
+  const [restoring, setRestoring] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open || !projectId || !currentSlide) return
+    setLoading(true)
+    fetchSlideHistory(projectId, currentSlide.id)
+      .then(setVersions)
+      .finally(() => setLoading(false))
+  }, [open, projectId, currentSlide?.id])
+
+  const handleRestore = async (versionId: string) => {
+    if (!projectId || !currentSlide) return
+    setRestoring(versionId)
+    try {
+      await restoreFromHistory(projectId, currentSlide.id, versionId)
+      await loadPresentation(projectId)
+    } finally {
+      setRestoring(null)
+    }
+  }
+
+  if (!open) return null
+
+  return (
+    <div className="border-t border-[var(--border)]">
+      {loading ? (
+        <div className="py-6 flex items-center justify-center text-[12px] text-[var(--text-disabled)]">
+          불러오는 중...
+        </div>
+      ) : versions.length === 0 ? (
+        <div className="py-6 flex flex-col items-center justify-center gap-1.5">
+          <Clock size={18} className="text-[var(--text-disabled)]" />
+          <p className="text-[11px] text-[var(--text-disabled)]">저장된 버전이 없습니다</p>
+        </div>
+      ) : (
+        <div className="flex flex-col divide-y divide-[var(--border)]">
+          {versions.map((v) => {
+            const colonIdx = v.reason.indexOf(':')
+            const agent = colonIdx > 0 ? v.reason.slice(0, colonIdx).trim() : ''
+            const command = colonIdx > 0 ? v.reason.slice(colonIdx + 1).trim() : v.reason
+            const isRestoring = restoring === v.id
+            return (
+              <div key={v.id} className="flex items-start gap-2.5 px-4 py-2.5 hover:bg-[var(--bg-muted)] group transition-colors">
+                <div className="flex-1 min-w-0">
+                  {agent && (
+                    <span className="inline-block text-[10px] font-medium px-1.5 py-0.5 rounded mb-1 bg-[var(--accent-subtle)] text-[var(--accent-text)]">
+                      {agent}
+                    </span>
+                  )}
+                  <p className="text-[11px] text-[var(--text)] leading-snug line-clamp-2">{command}</p>
+                  <p className="text-[10px] text-[var(--text-disabled)] mt-0.5">{formatDate(v.created_at)}</p>
+                </div>
+                <button
+                  onClick={() => handleRestore(v.id)}
+                  disabled={!!restoring}
+                  className={cn(
+                    'shrink-0 flex items-center gap-1 px-2 py-1 rounded-[5px] text-[10px] font-medium transition-colors',
+                    'opacity-0 group-hover:opacity-100',
+                    'bg-[var(--bg-muted)] hover:bg-[var(--border)] text-[var(--text-muted)]',
+                    'disabled:opacity-40',
+                  )}
+                >
+                  {isRestoring ? <span className="animate-spin">↻</span> : <RotateCcw size={10} />}
+                  복원
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 interface Props {
   style: HtmlComponentStyle
-  onOpenHistory: () => void
 }
 
-export default function ComponentInspector({ style, onOpenHistory }: Props) {
-  // Local state mirrors style — updated on commit
+export default function ComponentInspector({ style }: Props) {
   const [pos, setPos] = useState({ x: style.left, y: style.top })
   const [size, setSize] = useState({ w: style.width, h: style.height })
   const [opacity, setOpacity] = useState(Math.round(style.opacity * 100))
   const [color, setColor] = useState(style.color)
   const [bgColor, setBgColor] = useState(style.backgroundColor)
   const [fontSize, setFontSize] = useState(style.fontSize)
+  const [showHistory, setShowHistory] = useState(false)
 
-  // Sync when a different component is selected
   useEffect(() => {
     setPos({ x: style.left, y: style.top })
     setSize({ w: style.width, h: style.height })
@@ -170,6 +264,7 @@ export default function ComponentInspector({ style, onOpenHistory }: Props) {
     setColor(style.color)
     setBgColor(style.backgroundColor)
     setFontSize(style.fontSize)
+    setShowHistory(false)
   }, [style.componentId])
 
   const id = style.componentId
@@ -180,16 +275,6 @@ export default function ComponentInspector({ style, onOpenHistory }: Props) {
 
   return (
     <div className="flex flex-col text-[var(--text)] select-none overflow-y-auto">
-
-      {/* Component ID tag */}
-      <div className="px-4 pt-3 pb-2 flex items-center gap-2">
-        <span className="text-[10px] font-mono text-[var(--text-disabled)] bg-[var(--bg-muted)] border border-[var(--border)] px-1.5 py-0.5 rounded-[4px] max-w-full truncate">
-          {id}
-        </span>
-        <span className="text-[10px] text-[var(--text-disabled)] shrink-0">{style.tagName}</span>
-      </div>
-
-      <Divider />
 
       {/* Position */}
       <SectionLabel>Position</SectionLabel>
@@ -235,30 +320,14 @@ export default function ComponentInspector({ style, onOpenHistory }: Props) {
       <SectionLabel>Appearance</SectionLabel>
       <div className="px-4 pb-2 flex items-center gap-2">
         <span className="text-[11px] text-[var(--text-muted)] w-16 shrink-0">Opacity</span>
-        <input
-          type="range"
-          min={0}
-          max={100}
-          value={opacity}
-          className="flex-1 h-1 accent-[var(--accent)]"
-          onChange={(e) => {
-            const v = parseInt(e.target.value)
-            setOpacity(v)
-            commitProp('opacity', v / 100)
-          }}
-        />
-        <div className="flex items-center gap-0.5 w-14 h-7 px-2 rounded-[6px] bg-[var(--bg-muted)] border border-[var(--border)] focus-within:border-[var(--accent)]">
-          <input
-            type="number"
+        <div className="flex items-center gap-1 flex-1 min-w-0">
+          <NumInput
+            label=""
+            value={opacity}
             min={0}
             max={100}
-            value={opacity}
-            className="w-full text-[12px] text-[var(--text)] bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-            onChange={(e) => {
-              const v = Math.min(100, Math.max(0, parseInt(e.target.value) || 0))
-              setOpacity(v)
-              commitProp('opacity', v / 100)
-            }}
+            onChange={(v) => { setOpacity(v); commitProp('opacity', v / 100) }}
+            onCommit={(v) => { setOpacity(v); commitProp('opacity', v / 100) }}
           />
           <span className="text-[10px] text-[var(--text-disabled)] shrink-0">%</span>
         </div>
@@ -310,13 +379,16 @@ export default function ComponentInspector({ style, onOpenHistory }: Props) {
       {/* Version History */}
       <div className="px-4 py-3">
         <button
-          onClick={onOpenHistory}
+          onClick={() => setShowHistory((v) => !v)}
           className="w-full flex items-center justify-center gap-2 h-8 rounded-[8px] text-[12px] font-medium text-[var(--text-muted)] border border-[var(--border)] bg-[var(--bg-muted)] hover:bg-[var(--border)] hover:text-[var(--text)] transition-colors"
         >
           <History size={13} />
           슬라이드 변경 내역
+          <ChevronDown size={12} className={cn('ml-auto transition-transform', showHistory && 'rotate-180')} />
         </button>
       </div>
+
+      <InlineHistory open={showHistory} />
 
     </div>
   )
