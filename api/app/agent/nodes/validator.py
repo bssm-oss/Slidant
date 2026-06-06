@@ -116,18 +116,22 @@ async def _lineage_to_summary(ctx: NodeContext, command: str, ops_results: list,
     lines = []
     for r in ops_results:
         t = r.get("type", "")
-        idx = r.get("slide_index", "?")
+        raw_idx = r.get("slide_index", 0)
+        try:
+            idx_label = str(int(raw_idx) + 1)
+        except (TypeError, ValueError):
+            idx_label = str(raw_idx)
         if t == "edit":
             colors = r.get("colors_added", [])
             instr = r.get("instruction", "")
-            lines.append(f"- 슬라이드 {int(idx)+1} 수정: {instr}"
+            lines.append(f"- 슬라이드 {idx_label} 수정: {instr}"
                          + (f" | 적용 색상: {', '.join(colors[:4])}" if colors else ""))
         elif t == "component_edit":
-            lines.append(f"- 슬라이드 {int(idx)+1} 컴포넌트 [{r.get('component_id','')}] 수정")
+            lines.append(f"- 슬라이드 {idx_label} 컴포넌트 [{r.get('component_id','')}] 수정")
         elif t == "component_delete":
-            lines.append(f"- 슬라이드 {int(idx)+1} 컴포넌트 [{r.get('component_id','')}] 삭제")
+            lines.append(f"- 슬라이드 {idx_label} 컴포넌트 [{r.get('component_id','')}] 삭제")
         elif t == "delete":
-            lines.append(f"- 슬라이드 {int(idx)+1} 삭제")
+            lines.append(f"- 슬라이드 {idx_label} 삭제")
         elif t == "create":
             count = r.get("count", 0)
             titles = r.get("titles", [])
