@@ -26,6 +26,7 @@ class ProposalResponse(BaseModel):
 
 class ApproveBody(BaseModel):
     accepted_ids: list[str] | None = None  # None → 전체 승인, list → 선택 컴포넌트만 승인
+    partial: bool = False
 
 
 async def _get_proposal_and_verify_ownership(
@@ -96,7 +97,8 @@ async def approve_proposal(proposal_id: UUID, body: ApproveBody, current_user: C
             uow, proposal.slide_id, target.content, reason, agent_name=proposal.agent_name,
         )
 
-    proposal.status = 'approved'
+    if not body.partial:
+        proposal.status = 'approved'
     uow.session.add(proposal)
     await uow.commit()
 

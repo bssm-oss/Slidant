@@ -299,15 +299,23 @@ export default function ComponentInspector({ style }: Props) {
 
   const id = style.componentId
 
-  // 이 컴포넌트에 영향을 주는 pending 제안 찾기
-  const activeProposal: (AgentProposal & { proposedHtml: string }) | null = (() => {
+  // 이 컴포넌트에 영향을 주는 pending 제안 찾기 (수정 또는 삭제)
+  const activeProposal: (AgentProposal & { proposedHtml: string; isDeleted: boolean }) | null = (() => {
+    const currentHtmlRaw = currentSlide?.html_content || ''
     for (const p of proposals) {
       if (p.status !== 'pending') continue
       if (p.slide_id !== currentSlide?.id) continue
       if (!p.html_content) continue
       if (dismissedProposalIds.has(p.id)) continue
-      const html = extractComponentHtml(p.html_content, id)
-      if (html) return { ...p, proposedHtml: html }
+      const proposedHtml = extractComponentHtml(p.html_content, id)
+      if (!proposedHtml) {
+        // proposal에 없음 → 삭제 예정
+        return { ...p, proposedHtml: '', isDeleted: true }
+      }
+      // 현재 슬라이드와 동일하면 이미 적용된 것 (추가 자동 적용 후) → skip
+      const currentHtml = extractComponentHtml(currentHtmlRaw, id)
+      if (proposedHtml === currentHtml) continue
+      return { ...p, proposedHtml, isDeleted: false }
     }
     return null
   })()
@@ -321,7 +329,7 @@ export default function ComponentInspector({ style }: Props) {
     setApprovingId(activeProposal.id)
     try {
       clearPreview(id)
-      await approveProposal(activeProposal.id, [id])
+      await approveProposal(activeProposal.id, [id], true)
     } finally {
       setApprovingId(null)
     }
@@ -436,37 +444,68 @@ export default function ComponentInspector({ style }: Props) {
         </>
       )}
 
-      {/* Proposal: 이 컴포넌트에 대한 변경 제안 */}
+      {/* Proposal: 수정 또는 삭제 예정 */}
       {activeProposal && (
         <>
           <Divider />
           <div className="px-4 py-3">
-            <div className="mb-2 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-500">변경 제안</span>
-            </div>
-            <p className="text-[11px] text-[var(--text-muted)] mb-2.5 leading-snug line-clamp-2">
-              {activeProposal.agent_name}: {activeProposal.summary || activeProposal.command}
-            </p>
-            <div className="flex gap-2">
-              <button
-                onMouseEnter={() => previewComponent(id, activeProposal.proposedHtml)}
-                onMouseLeave={() => clearPreview(id)}
-                onClick={handleApproveComponent}
-                disabled={!!approvingId}
-                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-[7px] bg-[var(--accent)] text-white text-[11px] font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
-              >
-                <Check size={11} />
-                {approvingId ? '적용 중...' : '적용'}
-              </button>
-              <button
-                onClick={handleDismiss}
-                className="flex items-center justify-center w-8 rounded-[7px] border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)] transition-colors"
-                title="나중에"
-              >
-                <X size={13} />
-              </button>
-            </div>
+            {activeProposal.isDeleted ? (
+              <>
+                <div className="mb-2 flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-red-500">삭제 예정</span>
+                </div>
+                <p className="text-[11px] text-[var(--text-muted)] mb-2.5 leading-snug line-clamp-2">
+                  {activeProposal.agent_name}이(가) 이 컴포넌트를 삭제하려 합니다.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleApproveComponent}
+                    disabled={!!approvingId}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-[7px] bg-red-500 text-white text-[11px] font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+                  >
+                    <Check size={11} />
+                    {approvingId ? '삭제 중...' : '삭제 확인'}
+                  </button>
+                  <button
+                    onClick={handleDismiss}
+                    className="flex items-center justify-center w-8 rounded-[7px] border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)] transition-colors"
+                    title="유지"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="mb-2 flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-500">변경 제안</span>
+                </div>
+                <p className="text-[11px] text-[var(--text-muted)] mb-2.5 leading-snug line-clamp-2">
+                  {activeProposal.agent_name}: {activeProposal.summary || activeProposal.command}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onMouseEnter={() => previewComponent(id, activeProposal.proposedHtml)}
+                    onMouseLeave={() => clearPreview(id)}
+                    onClick={handleApproveComponent}
+                    disabled={!!approvingId}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-[7px] bg-[var(--accent)] text-white text-[11px] font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+                  >
+                    <Check size={11} />
+                    {approvingId ? '적용 중...' : '적용'}
+                  </button>
+                  <button
+                    onClick={handleDismiss}
+                    className="flex items-center justify-center w-8 rounded-[7px] border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-muted)] transition-colors"
+                    title="나중에"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </>
       )}

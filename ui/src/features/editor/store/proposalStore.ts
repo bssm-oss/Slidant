@@ -32,7 +32,7 @@ interface ProposalState {
 
   setProposals: (proposals: AgentProposal[]) => void
   addProposal: (proposal: AgentProposal) => void
-  approveProposal: (id: string, acceptedIds?: string[] | null) => Promise<void>
+  approveProposal: (id: string, acceptedIds?: string[] | null, partial?: boolean) => Promise<void>
   rejectProposal: (id: string) => Promise<void>
 }
 
@@ -47,16 +47,18 @@ export const useProposalStore = create<ProposalState>((set) => ({
     return { proposals, conflicts: detectConflicts(proposals) }
   }),
 
-  approveProposal: async (id, acceptedIds?) => {
+  approveProposal: async (id, acceptedIds?, partial = false) => {
     const ppt = useSlideStore.getState().presentation
     if (!ppt) return
     try {
       const { approveProposal: apiApprove } = await import('@/shared/lib/proposalApi')
-      await apiApprove(id, acceptedIds ?? null)
-      set((s) => {
-        const proposals = s.proposals.filter((p) => p.id !== id)
-        return { proposals, conflicts: detectConflicts(proposals) }
-      })
+      await apiApprove(id, acceptedIds ?? null, partial)
+      if (!partial) {
+        set((s) => {
+          const proposals = s.proposals.filter((p) => p.id !== id)
+          return { proposals, conflicts: detectConflicts(proposals) }
+        })
+      }
       await useSlideStore.getState().loadPresentation(ppt.id)
     } catch (e) {
       console.error('approveProposal failed', e)

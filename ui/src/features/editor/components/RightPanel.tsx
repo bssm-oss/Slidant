@@ -4,10 +4,9 @@ import { useEditorStore } from '../store/editorStore'
 import { useAgentStore, type AgentStep } from '../store/agentStore'
 import { useSlideStore } from '../store/slideStore'
 import { cn } from '@/shared/lib/utils'
-import { Maximize2, Send, Loader2, ChevronDown, Zap, Search, X } from 'lucide-react'
+import { Maximize2, Send, Loader2, ChevronDown, Search, X } from 'lucide-react'
 import type { Agent, ChatMessage } from '@/shared/types'
 import AgentManagerPanel from './AgentManagerPanel'
-import ProposalPanel from './ProposalPanel'
 import ComponentInspector from './ComponentInspector'
 import type { HtmlComponentStyle } from './SlideCanvas'
 
@@ -306,7 +305,7 @@ function highlightMentions(text: string): React.ReactNode {
 // ── Root ──────────────────────────────────────────────────────────────────────
 export default function RightPanel() {
   const { agents, chatMessages, runningAgentIds, sendMessage, selectChatAgent,
-          selectedAgentDefinitionId, proposals } = useEditorStore()
+          selectedAgentDefinitionId } = useEditorStore()
   const { agentSteps, agentStartTime, estimatedSeconds, cancelAgent } = useAgentStore()
   const [elapsed, setElapsed] = useState(0)
   const { presentation } = useSlideStore()
@@ -314,7 +313,6 @@ export default function RightPanel() {
   const { id } = useParams<{ id: string }>()
 
   const [showManager, setShowManager] = useState(false)
-  const [showProposal, setShowProposal] = useState(false)
   const [localSelectedId, setLocalSelectedId] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [showSlidePicker, setShowSlidePicker] = useState(false)
@@ -365,7 +363,6 @@ export default function RightPanel() {
       : false
   )
   const slides = presentation?.slides ?? []
-  const pendingCount = proposals.filter((p) => p.status === 'pending').length
 
   // 경과 시간 타이머
   useEffect(() => {
@@ -520,24 +517,7 @@ export default function RightPanel() {
         </div>
       </div>
 
-      {/* Proposal banner */}
-      {pendingCount > 0 && (
-        <button
-          onClick={() => {
-            const firstProposal = proposals.find((p) => p.status === 'pending')
-            if (firstProposal && presentation) {
-              const slideIdx = presentation.slides.findIndex((s) => s.id === firstProposal.slide_id)
-              if (slideIdx >= 0) useSlideStore.getState().setCurrentSlide(slideIdx)
-            }
-            setShowProposal(true)
-          }}
-          className="mx-3 mt-2 flex items-center gap-2 px-3 py-2 rounded-[8px] bg-[var(--accent-subtle)] border border-purple-200 text-[var(--accent)] text-[12px] font-medium hover:bg-purple-100 transition-colors shrink-0"
-        >
-          <Zap size={13} />
-          변경 제안 {pendingCount}건 검토 필요
-          <span className="ml-auto text-[11px] underline">보기</span>
-        </button>
-      )}
+
 
       {/* Chat messages */}
       <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2.5 min-h-0">
@@ -700,7 +680,6 @@ export default function RightPanel() {
       </> /* end Agent tab */}
 
       <AgentManagerPanel open={showManager} onClose={() => setShowManager(false)} />
-      {showProposal && <ProposalPanel open={showProposal} onClose={() => setShowProposal(false)} />}
     </div>
   )
 }
