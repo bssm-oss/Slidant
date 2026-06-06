@@ -30,6 +30,25 @@ function extractCompleteOps(text: string): any[] {
   return ops
 }
 
+function _getComponentIds(html: string): Set<string> {
+  if (!html || typeof document === 'undefined') return new Set()
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    const ids = new Set<string>()
+    doc.querySelectorAll('[data-component-id]').forEach((el) => {
+      const id = el.getAttribute('data-component-id')
+      if (id) ids.add(id)
+    })
+    return ids
+  } catch { return new Set() }
+}
+
+function _computeAddedComponentIds(currentHtml: string, proposalHtml: string): string[] {
+  const current = _getComponentIds(currentHtml)
+  const proposed = _getComponentIds(proposalHtml)
+  return [...proposed].filter((id) => !current.has(id))
+}
+
 import { create } from 'zustand'
 import type { Agent, AgentLog, AgentStatus, ChatMessage } from '@/shared/types'
 import { runAgent as apiRunAgent } from '@/shared/lib/agentRunApi'
@@ -560,11 +579,19 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             useSlideStore.setState({ presentation: { ...slideState.presentation, slides: cleanedSlides } })
           }
 
+          // step_done 이벤트가 agent_done보다 늦게 도착할 수 있으므로 즉시 done으로 마킹 후 지연 clear
+          const completedSteps = s.agentSteps.map((st) =>
+            st.status !== 'done' ? { ...st, status: 'done' as const } : st
+          )
+          setTimeout(() => {
+            set((cur) => ({ agentSteps: cur.agentSteps.every((st) => st.status === 'done') ? [] : cur.agentSteps }))
+          }, 800)
+
           return {
             runningAgentIds: newRunningIds,
             overallStatus: newRunningIds.size > 0 ? 'running' : 'idle',
             conflictComponentIds: newConflicts,
-            agentSteps: [],
+            agentSteps: completedSteps,
             currentAgentRunId: null,
             pendingSlideCount: 0,
             agentStartTime: null,
@@ -604,10 +631,22 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           }
         })
 
-        // HTML 변경 제안 처리 (즉시 적용 X, 사용자 승인 대기)
+        // HTML 변경 제안 처리
         type ProposalPayload = { id: string; html_content: string; summary: string; slide_id: string; agent_name: string }
         const proposalPayload = msg.proposal as ProposalPayload | undefined
         if (proposalPayload) {
+          const ppt2 = useSlideStore.getState().presentation
+          // 추가된 컴포넌트 즉시 적용 — 단, 삭제되는 컴포넌트도 있으면(replace 상황) auto-apply 하지 않음
+          if (ppt2) {
+            const currentSlide = ppt2.slides.find((s) => s.id === proposalPayload.slide_id)
+            const currentHtml = currentSlide?.html_content || ''
+            const addedIds = _computeAddedComponentIds(currentHtml, proposalPayload.html_content)
+            const deletedIds = _computeAddedComponentIds(proposalPayload.html_content, currentHtml) // 현재에 있는데 제안에 없는 것
+            if (addedIds.length > 0 && deletedIds.length === 0) {
+              // 순수 추가만 있을 때만 auto-apply (교체 상황은 사용자 확인 필요)
+              useProposalStore.getState().approveProposal(proposalPayload.id, addedIds, true).catch(() => {})
+            }
+          }
           useProposalStore.getState().addProposal({
             id: proposalPayload.id,
             slide_id: proposalPayload.slide_id,
@@ -620,8 +659,6 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             status: 'pending',
             created_at: new Date().toISOString(),
           })
-          // 슬라이드 내용은 아직 미변경 — 채팅 히스토리만 갱신
-          const ppt2 = useSlideStore.getState().presentation
           if (ppt2) get().loadChatHistory(ppt2.id)
           return
         }
