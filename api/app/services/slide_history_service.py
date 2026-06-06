@@ -10,6 +10,7 @@ from app.core.domain.history_diff import (
     build_component_history,
     build_slide_snapshot,
 )
+from app.models.slide_history import SlideHistory
 
 
 def utcnow() -> datetime:
@@ -44,6 +45,26 @@ async def archive_and_apply(
     slide.content = new_content
     slide.version += 1
     slide.updated_at = utcnow()
+
+
+def record_initial_slide(uow, slide, reason: str, agent_name: str | None = None) -> None:
+    """신규 생성 슬라이드 초기 이력 기록.
+
+    archive_and_apply와 달리 DB 조회 없이 SlideModel 인스턴스 직접 사용.
+    history.version=0 → 생성 이전 상태(html=None)를 나타냄.
+    이후 archive_and_apply 호출 시 version=1부터 시작하므로 충돌 없음.
+    """
+    uow.slide_history.add(SlideHistory(
+        slide_id=slide.id,
+        version=0,
+        content=[],
+        html_content=None,
+        reason=reason,
+    ))
+    for record in build_html_component_history(
+        slide.id, None, slide.html_content or "", reason, agent_name
+    ):
+        uow.component_history.add(record)
 
 
 async def restore_from_history(uow, slide_id: UUID, history_id: UUID) -> None:

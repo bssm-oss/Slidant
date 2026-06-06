@@ -387,6 +387,7 @@ async def _run_agent_background_inner(
                     for ex in existing_slides:
                         await uow.session.delete(ex)
                     logger.info("   기존 슬라이드 %d장 전량 제거 (전체 교체)", len(existing_slides))
+                    reason = f'{agent_def_name}: {body.command[:120]}'
                     for i, spec in enumerate(specs):
                         new_slide = SlideModel(
                             project_id=body.project_id,
@@ -396,6 +397,7 @@ async def _run_agent_background_inner(
                             order=i,
                         )
                         uow.slides.add(new_slide)
+                        slide_history_service.record_initial_slide(uow, new_slide, reason, agent_def_name)
                         new_slides.append(new_slide)
                         logger.info("   HTML 슬라이드 생성 (fresh %d/%d): title=%r",
                                     i + 1, len(specs), spec.get("title"))
@@ -424,6 +426,7 @@ async def _run_agent_background_inner(
                             order=base_order + i,
                         )
                         uow.slides.add(new_slide)
+                        slide_history_service.record_initial_slide(uow, new_slide, reason, agent_def_name)
                         new_slides.append(new_slide)
                         logger.info("   HTML 슬라이드 추가: title=%r", spec.get("title"))
             elif slide_ops:
