@@ -1,42 +1,79 @@
 # Slidant
 
-**AI Agent-powered collaborative HTML slide editor**
+**[한국어](README.ko.md)**
 
-Multiple AI agents work in parallel to create and edit slides as raw HTML. Users review each agent's changes component-by-component before applying. Think "Git for slides, with AI co-authors."
+**Multiple AI agents that collaborate to build and edit slides**
+
+Slidant is a platform where several AI agents divide roles to generate and edit HTML slides. Users describe what they want in plain language, agents produce a proposal, and users accept or reject changes component by component.
 
 ---
 
-## How It Works
+## What Makes It Different
+
+Most AI slide tools focus on generation — create once, done. Slidant is designed around **continuous editing and collaboration**.
+
+| | Typical AI slide tools | Slidant |
+|--|--|--|
+| Editing | Full regeneration | Per-component edits |
+| AI role | Single generator | Role-divided collaborative agents |
+| Change tracking | None | Version history + rollback |
+| Conflict handling | None | Conflict visualization + manual resolution |
+| Expressiveness | Template-bound | Full CSS (animation, SVG, etc.) |
+
+---
+
+## Core Concepts
+
+### Slides are HTML
+
+Each slide is stored as a single HTML string, rendered as-is in an `<iframe>`. Anything CSS can do is available — gradients, animations, SVG, blur effects, and more.
+
+```html
+<div class="slide">
+  <div data-component-id="bg" style="position:absolute;inset:0;background:#0A0F1E"></div>
+  <div data-component-id="title" style="position:absolute;left:80px;top:170px;font-size:68px;color:#F9FAFB">
+    Title
+  </div>
+</div>
+```
+
+Every element carries a `data-component-id`. This ID is the key for the approval UI, version diffs, and conflict detection.
+
+### Agent Pipeline
 
 ```
-User prompt
-    │
-    ▼
-planner → html_composer → html_validator → formatter
-                 ↑________________| (retry on invalid HTML)
-    │
-    ▼
+User request
+    ↓
+planner        — plans what to change and how (streamed live)
+    ↓
+html_composer  — generates HTML directly
+    ↓
+html_validator — validates output, retries on failure
+    ↓
 AgentProposal saved
-    │
-    ▼
-User approves/rejects per component
-    │
-    ▼
-merge_component_changes() → archive_and_apply()
+    ↓
+User approves / rejects per component
+    ↓
+Selected components merged → slide updated
 ```
 
-Each slide is stored as a single HTML string. Agents generate HTML directly — no intermediate JSON schema. Every element carries a `data-component-id` attribute that drives the approval UI and version diffing.
+Agents never modify slides directly. They submit a proposal (`AgentProposal`), and the user picks which components to keep.
 
----
+### Role-Divided Agents
 
-## Features
+Three built-in agents:
 
-- **Multi-agent collaboration** — Content, Design, and Layout agents run concurrently; conflicts surface in a resolver modal
-- **Component-level approval** — Accept or reject individual elements from an agent's proposal before merging
-- **Full CSS expression** — Gradient, animation, SVG, anything the browser renders
-- **Version history** — Per-component change log with rollback to any snapshot
-- **Bring your own LLM key** — User API keys stored AES-256 encrypted; plaintext exists only during the request
-- **Real-time streaming** — SSE pipeline streams planner narration and agent tokens live
+| Agent | Responsibility |
+|-------|----------------|
+| ContentAgent | Text, copy, structure |
+| DesignAgent | Color, typography, visual style |
+| LayoutAgent | Position, spacing, composition |
+
+Multiple agents can edit the same slide simultaneously. If two agents touch the same component, a conflict is detected and the user chooses which version to use.
+
+### Version History
+
+Every change is recorded. Per-component change logs are available, and any past snapshot can be restored.
 
 ---
 
@@ -45,15 +82,13 @@ Each slide is stored as a single HTML string. Agents generate HTML directly — 
 | Layer | Tech |
 |-------|------|
 | Frontend | React + TypeScript + Vite |
-| Slide rendering | `<iframe srcDoc>` (HTML) / JSON renderer (legacy) |
+| Slide rendering | `<iframe srcDoc>` |
 | Backend | FastAPI + Python 3.12 |
 | Agent orchestration | LangGraph |
 | LLM | OpenRouter (default) / Anthropic Claude |
-| Database | PostgreSQL + SQLModel (async) |
-| Cache / checkpointer | Redis |
+| Database | PostgreSQL |
+| Cache | Redis |
 | Realtime | SSE (Server-Sent Events) |
-| DB migrations | Alembic |
-| API key encryption | Fernet (AES-256) |
 
 ---
 
@@ -62,23 +97,23 @@ Each slide is stored as a single HTML string. Agents generate HTML directly — 
 ### Prerequisites
 
 - Docker & Docker Compose
-- An LLM API key (OpenRouter or Anthropic)
+- LLM API key (OpenRouter or Anthropic)
 
-### Quick Start
+### Run
 
 ```bash
-git clone https://github.com/your-org/slidant.git
+git clone https://github.com/bssm-oss/Slidant.git
 cd slidant
 
-# Copy and fill in env files
 cp .env.example .env
 cp api/.env.example api/.env
-# Edit api/.env — set OPENROUTER_API_KEY or ANTHROPIC_API_KEY
+# Set OPENROUTER_API_KEY or ANTHROPIC_API_KEY in api/.env
 
 docker compose up --build
 ```
 
-App runs at `http://localhost` (UI) and `http://localhost:8000` (API).
+- UI: `http://localhost`
+- API: `http://localhost:8000`
 
 ### Local Development
 
@@ -88,13 +123,8 @@ cd api
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-# Start infra only
-docker compose up db redis -d
-
-# Run migrations
+docker compose up db redis -d  # infra only
 alembic upgrade head
-
-# Start API
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -107,108 +137,9 @@ pnpm dev
 
 ---
 
-## Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `DATABASE_URL` | Yes | PostgreSQL async URL |
-| `REDIS_URL` | Yes | Redis URL |
-| `SECRET_KEY` | Yes | JWT signing key |
-| `FERNET_KEY` | Yes | AES-256 key for encrypting user API keys |
-| `OPENROUTER_MODEL` | No | Default: `deepseek/deepseek-v4-pro` |
-| `ANTHROPIC_MODEL` | No | Default: `claude-sonnet-4-6` |
-| `AGENT_MAX_RETRIES` | No | HTML validation retry limit (default: 2) |
-| `AGENT_MAX_TOKENS` | No | LLM output token cap (default: 4096) |
-
-Generate a Fernet key:
-```bash
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-```
-
----
-
-## Project Structure
-
-```
-slidant/
-├── api/                        # FastAPI backend
-│   └── app/
-│       ├── agent/              # LangGraph pipeline (planner, composer, validator)
-│       ├── api/v1/endpoints/   # HTTP routes
-│       ├── core/domain/        # Pure business logic (no I/O)
-│       ├── models/             # SQLModel ORM models
-│       ├── repositories/       # DB CRUD
-│       └── services/           # Orchestration layer
-├── ui/                         # React frontend
-│   └── src/
-│       ├── features/
-│       │   ├── editor/         # Slide editor, component selection
-│       │   ├── drive/          # Project list
-│       │   └── auth/           # Login / register
-│       └── shared/             # UI primitives, stores
-└── docker-compose.yml
-```
-
----
-
-## Data Model
-
-Slides store HTML directly:
-
-```html
-<style>.slide{width:960px;height:540px;position:relative;overflow:hidden;}</style>
-<div class="slide">
-  <div data-component-id="bg" style="position:absolute;inset:0;background:#0A0F1E"></div>
-  <div data-component-id="title" style="position:absolute;left:80px;top:170px;font-size:68px;color:#F9FAFB">
-    Title
-  </div>
-</div>
-```
-
-Rules:
-- Every element has `data-component-id` — **immutable once created**
-- `position: absolute` on all elements
-- Rendered as-is in `<iframe srcDoc>`
-
----
-
-## Agent Architecture
-
-Three built-in agents, all customizable:
-
-| Agent | Role |
-|-------|------|
-| `ContentAgent` | Text, copy, structure |
-| `DesignAgent` | Colors, typography, visual style |
-| `LayoutAgent` | Positioning, spacing, composition |
-
-Agents run as LangGraph threads. Each run is logged (`LLM_LOG`) with prompt, response, token counts, and cache hit status.
-
-When two agents edit the same component simultaneously, a conflict is recorded and surfaced in the UI for manual resolution.
-
----
-
-## Contributing
-
-```
-main
-└── dev-x.x.x
-    ├── feature-x.x.x/description
-    ├── fix-x.x.x/description
-    └── ...
-```
-
-Commit format: `type :: 설명` (e.g. `feat :: add component resize handle`)
-
-Types: `feat` `fix` `refactor` `style` `chore` `docs` `test` `perf` `infra` `security` `hotfix` `revert`
-
----
-
 ## Security
 
-- User LLM API keys: Fernet (AES-256) encrypted at rest; plaintext only in-memory during request handling
-- Sanitization middleware strips key material from logs and error traces
-- Key destroyed immediately on account deletion
+Users register their own LLM API keys. Keys are encrypted at rest with AES-256 (Fernet); plaintext exists only in memory during request handling and is never written to logs or error responses.
 
 ---
 

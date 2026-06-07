@@ -1,5 +1,7 @@
 # Slidant
 
+**[English](README.md)**
+
 **여러 AI Agent가 협업해서 슬라이드를 만들어주는 도구**
 
 Slidant는 AI Agent 여러 개가 역할을 나눠 HTML 슬라이드를 생성하고 편집하는 플랫폼입니다. 사용자가 자연어로 요청하면 Agent들이 슬라이드를 직접 만들어오고, 사용자는 각 Agent의 수정안을 컴포넌트 단위로 승인하거나 거절할 수 있습니다.
@@ -122,7 +124,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
 docker compose up db redis -d  # 인프라만 실행
-alembic upgrade head            # 마이그레이션
+alembic upgrade head
 uvicorn app.main:app --reload --port 8000
 ```
 
