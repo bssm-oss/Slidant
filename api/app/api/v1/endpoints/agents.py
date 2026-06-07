@@ -249,7 +249,8 @@ async def _run_agent_background_inner(
                 })
 
                 # slide_ready: 생성 즉시 DB에 중간 저장 (새로고침 시 복원용)
-                if event_type == "slide_ready":
+                # 편집 모드(@슬라이드N)에서는 기존 슬라이드 직접 덮어쓰기 금지 — proposal 흐름 사용
+                if event_type == "slide_ready" and not slide_scope_locked:
                     import json as _json
                     import asyncio as _asyncio
                     try:
