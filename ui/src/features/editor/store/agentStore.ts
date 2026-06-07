@@ -88,6 +88,7 @@ export interface PresenceUser {
   name: string
   color: string
   currentSlide: number
+  isAgentRunning: boolean
 }
 
 interface AgentState {
@@ -202,7 +203,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         set((s) => ({
           presenceUsers: s.presenceUsers.some((u) => u.userId === userId)
             ? s.presenceUsers
-            : [...s.presenceUsers, { userId, name, color: USER_COLORS[colorIdx], currentSlide: 0 }],
+            : [...s.presenceUsers, { userId, name, color: USER_COLORS[colorIdx], currentSlide: 0, isAgentRunning: false }],
         }))
         return
       }
@@ -231,8 +232,58 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             name: u.name,
             color: USER_COLORS[i % USER_COLORS.length],
             currentSlide: u.currentSlide ?? 0,
+            isAgentRunning: false,
           })),
         })
+        return
+      }
+
+      // 다른 유저의 에이전트 실행 상태 — presence 아웃라인 표시
+      if (type === 'agent_started') {
+        const runningUserId = msg.user_id as string | undefined
+        if (runningUserId) {
+          set((s) => ({
+            presenceUsers: s.presenceUsers.map((u) =>
+              u.userId === runningUserId ? { ...u, isAgentRunning: true } : u
+            ),
+          }))
+        }
+        return
+      }
+
+      if (type === 'agent_done' || type === 'agent_error') {
+        const doneUserId = msg.user_id as string | undefined
+        if (doneUserId) {
+          set((s) => ({
+            presenceUsers: s.presenceUsers.map((u) =>
+              u.userId === doneUserId ? { ...u, isAgentRunning: false } : u
+            ),
+          }))
+        }
+        // agent_done/error 기존 처리 계속 진행 (return 안 함)
+      }
+
+      // 다른 유저의 에이전트 응답 메시지 실시간 동기화
+      if (type === 'chat_message') {
+        const { currentSessionId } = useSessionStore.getState()
+        const sessionId = msg.session_id as string | undefined
+        if (sessionId && sessionId === currentSessionId) {
+          const newMsgs = (msg.messages as Array<Record<string, unknown>> | undefined) ?? []
+          set((s) => ({
+            chatMessages: [
+              ...s.chatMessages,
+              ...newMsgs.map((m) => ({
+                id: `ws-${Date.now()}-${Math.random()}`,
+                role: (m.role as 'user' | 'agent') ?? 'agent',
+                content: m.content as string,
+                agentName: m.agent_name as string | undefined,
+                agentDefinitionId: m.agent_definition_id as string | undefined,
+                timestamp: new Date().toISOString(),
+                type: 'info' as const,
+              })),
+            ],
+          }))
+        }
         return
       }
 
