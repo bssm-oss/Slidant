@@ -41,21 +41,18 @@ Every element carries a `data-component-id`. This ID is the key for the approval
 
 ### Agent Pipeline
 
-```
-User request
-    ↓
-planner        — plans what to change and how (streamed live)
-    ↓
-html_composer  — generates HTML directly
-    ↓
-html_validator — validates output, retries on failure
-    ↓
-AgentProposal saved
-    ↓
-User approves / rejects per component
-    ↓
-Selected components merged → slide updated
-```
+![Agent Pipeline](.github/assets/agent-pipeline.png)
+
+The pipeline routes each request through specialized nodes:
+
+- **unified_planner** — parses intent, decides which operations to run
+- **web_searcher / search_merger** — fetches reference content when needed
+- **ops_dispatcher** — routes to the right worker node(s)
+- **html_editor** — edits existing slide components
+- **slide_composer / html_aggregator** — composes new slides
+- **component_deleter / slide_deleter** — removes elements
+- **self_reviewer / formatter** — quality check and cleanup
+- **html_validator / retry_inc** — validates HTML, retries on failure
 
 Agents never modify slides directly. They submit a proposal (`AgentProposal`), and the user picks which components to keep.
 
