@@ -339,9 +339,18 @@ async def _run_agent_background_inner(
                     return
                 # delete+create 혼합: 삭제 완료, 아래에서 html_slides 전량 신규 생성 진행
 
+            # 전체 프레젠테이션 교체 판단 (Proposal 생성과 충돌 방지 위해 먼저 계산):
+            # - delete+create 혼합: 명시적 전체 교체 의도
+            # - create-only(2장+, not edit): 새 PPT 생성 의도 → 기존도 정리
+            _edit_keywords = ("수정", "변경", "바꿔", "적용", "고쳐", "다시")
+            is_edit_cmd = any(k in body.command for k in _edit_keywords)
+            is_full_replace = bool(html_slides) and len(html_slides) >= 2 and not is_edit_cmd
+
             # HTML 모드: html_output → Proposal 저장 (사용자 승인 후 적용)
+            # is_full_replace면 현재 슬라이드 자체가 삭제되므로 Proposal 생성 스킵
+            # (LLM이 html과 slides를 동시에 반환하는 경우 모순 연산 방지)
             _proposal_obj = None
-            if html_output and slide:
+            if html_output and slide and not is_full_replace:
                 from app.models.agent_proposal import AgentProposal as _AgentProposal
                 html_sanitized = sanitize_slide_html(html_output)
                 _proposal_obj = _AgentProposal(
@@ -376,22 +385,24 @@ async def _run_agent_background_inner(
                 from app.models.slide import Slide as SlideModel
                 from app.services import slide_history_service
                 specs = html_slides
-                edit_keywords = ("수정", "변경", "바꿔", "적용", "고쳐", "다시")
-                is_edit_cmd = any(k in body.command for k in edit_keywords)
-
-                # 전체 프레젠테이션 교체 판단:
-                # - delete+create 혼합: 명시적 전체 교체 의도
-                # - create-only(2장+, not edit): 새 PPT 생성 의도 → 기존도 정리
-                is_full_replace = (len(specs) >= 2 and not is_edit_cmd)
 
                 if is_full_replace:
                     # 기존 슬라이드 전량 삭제 후 fresh 생성 (order 0부터 재배치)
                     # body.slide_id는 이미 삭제됐을 수 있음(delete_slide=True), 아니면 지금 삭제
                     existing_slides = await uow.slides.list_by_project(body.project_id)
-                    for ex in existing_slides:
-                        await uow.session.delete(ex)
+                    existing_ids = [str(ex.id) for ex in existing_slides]
+                    if existing_ids:
+                        from sqlalchemy import text as _sql_text
+                        id_list = ", ".join(f"'{eid}'" for eid in existing_ids)
+                        # 자식 rows 먼저 삭제 (relationship + CASCADE 미선언으로 ORM이 순서 보장 못 함)
+                        await uow.session.execute(_sql_text(f"DELETE FROM component_history WHERE slide_id IN ({id_list})"))
+                        await uow.session.execute(_sql_text(f"DELETE FROM slide_history WHERE slide_id IN ({id_list})"))
+                        await uow.session.execute(_sql_text(f"DELETE FROM agent_proposals WHERE slide_id IN ({id_list})"))
+                        await uow.session.execute(_sql_text(f"DELETE FROM slides WHERE id IN ({id_list})"))
+                        await uow.session.flush()
                     logger.info("   기존 슬라이드 %d장 전량 제거 (전체 교체)", len(existing_slides))
                     reason = f'{agent_def_name}: {body.command[:120]}'
+                    created: list[tuple] = []
                     for i, spec in enumerate(specs):
                         new_slide = SlideModel(
                             project_id=body.project_id,
@@ -401,6 +412,11 @@ async def _run_agent_background_inner(
                             order=i,
                         )
                         uow.slides.add(new_slide)
+                        created.append((new_slide, spec))
+                    # Slide INSERT를 먼저 flush — component_history.slide_id FK가
+                    # 아직 존재하지 않는 슬라이드를 참조하지 않도록 보장
+                    await uow.session.flush()
+                    for i, (new_slide, spec) in enumerate(created):
                         slide_history_service.record_initial_slide(uow, new_slide, reason, agent_def_name)
                         new_slides.append(new_slide)
                         logger.info("   HTML 슬라이드 생성 (fresh %d/%d): title=%r",
@@ -470,9 +486,13 @@ async def _run_agent_background_inner(
             fallback_content = "、".join(stats) if stats else "변경 없음"
             agent_content = llm_summary if llm_summary else fallback_content
 
+            # is_full_replace: 원본 슬라이드 삭제됐으므로 chat_message.slide_id를
+            # 첫 새 슬라이드 ID로 교체 (nullable이지만 새 슬라이드 연결이 더 올바름)
+            effective_slide_id = new_slides[0].id if (is_full_replace and new_slides) else body.slide_id
+
             agent_msg = ChatMessage(
                 project_id=body.project_id,
-                slide_id=body.slide_id,
+                slide_id=effective_slide_id,
                 role="agent",
                 content=agent_content,
                 agent_run_id=agent_run.id,
@@ -533,21 +553,26 @@ async def _run_agent_background_inner(
 
         except Exception as e:
             logger.error("━━ ERROR  agent_run=%s  %s", agent_run_id, str(e), exc_info=True)
-            await agent_service.finalize_agent_run(
-                uow.agent_runs, uow.llm_logs, agent_run, body.command, [], status="error", error=str(e)
-            )
-            error_msg = ChatMessage(
-                project_id=body.project_id,
-                slide_id=body.slide_id,
-                role="agent",
-                content=f"오류: {_sanitize_error(e)}",
-                agent_run_id=agent_run.id,
-                agent_definition_id=agent_def_id,
-                agent_name=agent_def_name,
-                session_id=body.session_id,
-            )
-            uow.chat_messages.add(error_msg)
-            await uow.commit()
+            # 원본 uow는 flush 실패로 PendingRollbackError 상태일 수 있음 (예: FK 위반).
+            # 같은 세션을 재사용하면 finalize도 함께 실패해 agent_run.status가
+            # "running"에 영원히 묶여 새로고침마다 무한 "처리 중"이 재현됨 → 새 세션으로 종료 처리.
+            from app.db.uow import UnitOfWork as _ErrUoW
+            async with _ErrUoW() as err_uow:
+                err_run = await err_uow.agent_runs.get(agent_run_id)
+                if err_run:
+                    await agent_service.finalize_agent_run(
+                        err_uow.agent_runs, err_uow.llm_logs, err_run, body.command, [], status="error", error=str(e)
+                    )
+                err_uow.chat_messages.add(ChatMessage(
+                    project_id=body.project_id,
+                    slide_id=body.slide_id,
+                    role="agent",
+                    content=f"오류: {_sanitize_error(e)}",
+                    agent_run_id=agent_run_id,
+                    agent_definition_id=agent_def_id,
+                    agent_name=agent_def_name,
+                    session_id=body.session_id,
+                ))
             await _broadcast(str(body.project_id), {
                 "type": "agent_error",
                 "agent_run_id": str(agent_run.id),

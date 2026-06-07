@@ -589,8 +589,6 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       }
 
       if (type === 'agent_done') {
-        // replay된 agent_done은 채팅 버블 추가 안 함 (이미 chat history에 있음)
-        if (isReplayed) return
         const { agents } = get()
         const doneAgentName = (msg.agent_name as string) ?? ''
         const doneAgent = agents.find((a) => a.name === doneAgentName || a.status === 'running')
@@ -630,9 +628,11 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             set((cur) => ({ agentSteps: cur.agentSteps.every((st) => st.status === 'done') ? [] : cur.agentSteps }))
           }, 800)
 
-          return {
+          // 실행 상태 정리 — replay 여부와 무관하게 항상 수행 (재연결로 놓친 agent_done이
+          // 채팅 버블 중복을 피해 일찍 return 하면서 isRunning이 영구히 멈추는 버그 방지)
+          const base = {
             runningAgentIds: newRunningIds,
-            overallStatus: newRunningIds.size > 0 ? 'running' : 'idle',
+            overallStatus: (newRunningIds.size > 0 ? 'running' : 'idle') as AgentStatus,
             conflictComponentIds: newConflicts,
             agentSteps: completedSteps,
             currentAgentRunId: null,
@@ -641,9 +641,16 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             estimatedSeconds: null,
             agents: s.agents.map((a) =>
               a.name === doneAgentName
-                ? { ...a, status: newConflicts.size > 0 ? 'conflict' : 'done', currentTask: undefined, taskProgress: 100 }
+                ? { ...a, status: (newConflicts.size > 0 ? 'conflict' : 'done') as AgentStatus, currentTask: undefined, taskProgress: 100 }
                 : a,
             ),
+          }
+
+          // replay된 agent_done은 채팅 버블/로그 재추가 안 함 (이미 chat history에 있음)
+          if (isReplayed) return base
+
+          return {
+            ...base,
             chatMessages: [
               ...s.chatMessages.filter((m) =>
                 m.id !== `streaming-${doneAgent?.definitionId}` &&
@@ -673,6 +680,9 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             activeRightTab: 'agent',
           }
         })
+
+        // replay된 agent_done은 제안/슬라이드 반영도 건너뜀 (재연결 시 별도 로드 흐름이 처리)
+        if (isReplayed) return
 
         // HTML 변경 제안 처리
         type ProposalPayload = { id: string; html_content: string; summary: string; slide_id: string; agent_name: string }

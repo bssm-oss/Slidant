@@ -233,13 +233,32 @@ function rebuildFullHtml(innerHtml: string): string {
   return `<!DOCTYPE html><html><head>${head}</head><body>${body}</body></html>`
 }
 
+// outerHTML 그대로 비교하면 속성 순서만 다른 동일 마크업도 "변경"으로 오판함
+// (LLM이 슬라이드 전체를 재생성하면서 장식용 SVG 속성 순서가 매번 바뀌는 경우가 흔함)
+// → 속성을 이름순 정렬해 직렬화한 정규형으로 비교
+function canonicalizeElement(el: Element): string {
+  const attrs = [...el.attributes]
+    .map((a) => `${a.name}="${a.value}"`)
+    .sort()
+    .join(' ')
+  const tag = el.tagName.toLowerCase()
+  const children = [...el.childNodes]
+    .map((node) => {
+      if (node.nodeType === Node.ELEMENT_NODE) return canonicalizeElement(node as Element)
+      if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? ''
+      return ''
+    })
+    .join('')
+  return `<${tag} ${attrs}>${children}</${tag}>`
+}
+
 function getProposalDiff(currentHtml: string, proposalHtml: string): { changed: string[]; deleted: string[] } {
   try {
     const parseComponents = (html: string) => {
       const doc = new DOMParser().parseFromString(html, 'text/html')
       const map = new Map<string, string>()
       doc.querySelectorAll('[data-component-id]').forEach((el) => {
-        map.set(el.getAttribute('data-component-id')!, el.outerHTML)
+        map.set(el.getAttribute('data-component-id')!, canonicalizeElement(el))
       })
       return map
     }
