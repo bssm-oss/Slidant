@@ -43,3 +43,17 @@ export const deleteAgent = (id: string) =>
 
 export const cloneAgentToProject = (id: string, projectId: string) =>
   api.post<AgentDefinition>(`/agent-definitions/${id}/clone`, { project_id: projectId })
+
+export interface AgentRunHistoryItem {
+  id: string
+  status: 'running' | 'done' | 'error' | 'cancelled' | string
+  agent_name: string | null
+  task_description: string | null
+  result_summary: string | null
+  affected_slide_id: string | null
+  started_at: string | null
+  finished_at: string | null
+}
+
+export const fetchAgentRuns = (projectId: string) =>
+  api.get<AgentRunHistoryItem[]>(`/agent/logs/${projectId}`)

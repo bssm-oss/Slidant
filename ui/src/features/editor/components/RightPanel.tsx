@@ -4,9 +4,10 @@ import { useEditorStore } from '../store/editorStore'
 import { useAgentStore, type AgentStep } from '../store/agentStore'
 import { useSlideStore } from '../store/slideStore'
 import { cn } from '@/shared/lib/utils'
-import { Maximize2, Send, Loader2, ChevronDown, Search, X } from 'lucide-react'
+import { Maximize2, Send, Loader2, ChevronDown, Search, X, History } from 'lucide-react'
 import type { Agent, ChatMessage } from '@/shared/types'
 import AgentManagerPanel from './AgentManagerPanel'
+import AgentHistoryPanel from './AgentHistoryPanel'
 import ComponentInspector from './ComponentInspector'
 import SessionSelector from './SessionSelector'
 import { useSessionStore } from '../store/sessionStore'
@@ -327,6 +328,7 @@ export default function RightPanel() {
   const [panelWidth, setPanelWidth] = useState(320)
   const [htmlStyle, setHtmlStyle] = useState<HtmlComponentStyle | null>(null)
   const [activeTab, setActiveTab] = useState<'agent' | 'design'>('agent')
+  const [historyOpen, setHistoryOpen] = useState(false)
   const prevHtmlStyleRef = useRef<HtmlComponentStyle | null>(null)
   const isResizingRef = useRef(false)
   const resizeStartXRef = useRef(0)
@@ -525,6 +527,13 @@ export default function RightPanel() {
         )}
         <div className="flex items-center gap-0.5 ml-auto">
           <button
+            onClick={() => setHistoryOpen(true)}
+            className="p-1.5 rounded-[6px] text-[var(--text-disabled)] hover:text-[var(--text-muted)] hover:bg-[var(--bg-muted)] transition-colors"
+            title="작업 이력"
+          >
+            <History size={14} />
+          </button>
+          <button
             onClick={() => navigate(`/edit/${id}/agent`)}
             className="p-1.5 rounded-[6px] text-[var(--text-disabled)] hover:text-[var(--text-muted)] hover:bg-[var(--bg-muted)] transition-colors"
             title="전체 화면"
@@ -707,6 +716,14 @@ export default function RightPanel() {
           </div>
         </div>
       </div>
+
+      {id && (
+        <AgentHistoryPanel
+          projectId={id}
+          open={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+        />
+      )}
 
       </> /* end Agent tab */}
 
