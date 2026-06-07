@@ -181,13 +181,14 @@ async def _run_agent_background_inner(
         project_theme = project.theme if project else None
 
         # @슬라이드N 멘션 → 타겟 슬라이드 early override (context/components/proposal 모두 반영)
+        # UI는 1-indexed, DB order는 0-indexed → N-1 변환
         _mention_match = _re.search(r'@슬라이드(\d+)', body.command)
         if _mention_match:
-            _target_order = int(_mention_match.group(1))
+            _target_order = int(_mention_match.group(1)) - 1
             _target_slide = next((s for s in all_slides if s.order == _target_order), None)
             if _target_slide:
                 slide = _target_slide
-                logger.info("   @슬라이드%d 멘션 → target slide override: %s", _target_order, _target_slide.id)
+                logger.info("   @슬라이드%d 멘션 → target slide override: %s (order=%d)", int(_mention_match.group(1)), _target_slide.id, _target_order)
 
         components = sc.list_components(slide) if slide else []
 
