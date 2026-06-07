@@ -9,6 +9,7 @@ import AgentFullPage from '@/pages/AgentFullPage'
 import AgentsPage from '@/pages/AgentsPage'
 import SettingsPage from '@/pages/SettingsPage'
 import SharePage from '@/pages/SharePage'
+import InvitePage from '@/pages/InvitePage'
 import ToastContainer from '@/shared/components/ui/Toast'
 
 const queryClient = new QueryClient()
@@ -25,6 +26,7 @@ export default function App() {
           <Route path="/edit/:id" element={<EditPage />} />
           <Route path="/edit/:id/agent" element={<AgentFullPage />} />
           <Route path="/share/:token" element={<SharePage />} />
+          <Route path="/invite/:token" element={<InvitePage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
         </Routes>

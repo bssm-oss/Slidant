@@ -8,6 +8,7 @@ from app.repositories.chat import ChatMessageRepository
 from app.repositories.chat_session import ChatSessionRepository
 from app.repositories.component_history import ComponentHistoryRepository
 from app.repositories.project import ProjectRepository
+from app.repositories.project_invite import ProjectInviteRepository
 from app.repositories.project_member import ProjectMemberRepository
 from app.repositories.slide import SlideRepository
 from app.repositories.slide_history import SlideHistoryRepository
@@ -21,6 +22,7 @@ class UnitOfWork:
     # Repositories
     users: UserRepository
     projects: ProjectRepository
+    project_invites: ProjectInviteRepository
     project_members: ProjectMemberRepository
     slides: SlideRepository
     slide_history: SlideHistoryRepository
@@ -38,6 +40,7 @@ class UnitOfWork:
         self.session = AsyncSessionLocal()
         self.users = UserRepository(self.session)
         self.projects = ProjectRepository(self.session)
+        self.project_invites = ProjectInviteRepository(self.session)
         self.project_members = ProjectMemberRepository(self.session)
         self.slides = SlideRepository(self.session)
         self.slide_history = SlideHistoryRepository(self.session)

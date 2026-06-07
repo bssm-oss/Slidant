@@ -89,7 +89,21 @@ async def create_project(body: ProjectCreate, current_user: CurrentUser, uow: Uo
 
 @router.get("/{project_id}", response_model=ProjectResponse)
 async def get_project(project_id: UUID, current_user: CurrentUser, uow: UoW):
-    return await project_service.get_project_or_404(uow.projects, project_id, current_user.id)
+    project = await project_service.get_project_for_viewer_or_404(uow.projects, uow.project_members, project_id, current_user.id)
+    if project.owner_id == current_user.id:
+        my_role = "owner"
+    else:
+        member = await uow.project_members.get_member(project_id, current_user.id)
+        my_role = member.role if member else "viewer"
+    return ProjectResponse(
+        id=project.id,
+        owner_id=project.owner_id,
+        title=project.title,
+        theme=project.theme,
+        my_role=my_role,
+        created_at=project.created_at,
+        updated_at=project.updated_at,
+    )
 
 
 @router.patch("/{project_id}", response_model=ProjectResponse)
@@ -104,7 +118,7 @@ async def delete_project(project_id: UUID, current_user: CurrentUser, uow: UoW):
 
 @router.get("/{project_id}/slides", response_model=list[SlideResponse])
 async def list_slides(project_id: UUID, current_user: CurrentUser, uow: UoW):
-    slides = await project_service.list_slides(uow.projects, uow.slides, project_id, current_user.id)
+    slides = await project_service.list_slides(uow.projects, uow.slides, project_id, current_user.id, uow.project_members)
     return [SlideResponse.from_slide(s) for s in slides]
 
 

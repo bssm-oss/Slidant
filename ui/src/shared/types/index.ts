@@ -37,6 +37,7 @@ export interface Presentation {
   createdAt: string
   updatedAt: string
   ownerId: string
+  myRole: 'owner' | 'editor' | 'viewer'
 }
 
 // Agent 타입
@@ -88,6 +89,7 @@ export interface ChatSession {
   project_id: string
   name: string
   user_id?: string | null
+  user_email?: string | null
   created_at: string
 }
 

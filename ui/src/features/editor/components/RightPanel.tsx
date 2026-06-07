@@ -214,7 +214,10 @@ function formatContent(content: string, isUser: boolean): React.ReactNode {
 function ChatBubble({ msg }: { msg: ChatMessage }) {
   const isUser = msg.role === 'user'
   return (
-    <div className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
+    <div className={cn('flex flex-col', isUser ? 'items-end' : 'items-start')}>
+      {!isUser && msg.agentName && (
+        <span className="text-[10px] text-[var(--text-disabled)] px-1 mb-0.5">{msg.agentName}</span>
+      )}
       <div className={cn(
         'max-w-[86%] px-3 py-2 rounded-[12px] text-[13px] leading-relaxed',
         isUser
@@ -355,9 +358,7 @@ export default function RightPanel() {
   const activeId = localSelectedId ?? selectedAgentDefinitionId ?? agents[0]?.definitionId ?? null
   const activeAgent = agents.find((a) => a.definitionId === activeId) ?? agents[0]
 
-  const msgs = activeAgent
-    ? chatMessages.filter((m) => m.agentDefinitionId === activeAgent.definitionId)
-    : []
+  const msgs = chatMessages
   // overallStatus로도 fallback — agentDefinitionId가 null일 때도 전송 차단
   const { overallStatus } = useAgentStore()
   const isRunning = overallStatus === 'running' || (
@@ -400,10 +401,12 @@ export default function RightPanel() {
     if (id && currentSessionId) loadChatHistory(id)
   }, [currentSessionId]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const isViewer = presentation?.myRole === 'viewer'
+
   const isCurrentSessionMine = (() => {
     if (!currentSessionId) return true
     const s = sessions.find((ss) => ss.id === currentSessionId)
-    return !s?.user_id || s.user_id === currentUserId
+    return s?.user_id === currentUserId
   })()
 
   const handleSend = async () => {
@@ -535,7 +538,7 @@ export default function RightPanel() {
       <div className="px-3 py-1.5 border-b border-[var(--border)] flex items-center gap-2 shrink-0 bg-[var(--bg-muted)]">
         <span className="text-[10px] text-[var(--text-disabled)] shrink-0">세션</span>
         <SessionSelector />
-        {!isCurrentSessionMine && (
+        {(!isCurrentSessionMine || isViewer) && (
           <span className="text-[10px] text-[var(--text-disabled)] ml-auto shrink-0">읽기 전용</span>
         )}
       </div>
@@ -653,12 +656,17 @@ export default function RightPanel() {
               if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
             }}
             onFocus={() => activeAgent && selectChatAgent(activeAgent.definitionId ?? null)}
-            placeholder={!isCurrentSessionMine ? '다른 유저의 세션 — 읽기 전용' : activeAgent ? `${activeAgent.name}에게 요청... (Shift+Enter 줄바꿈)` : '요청...'}
-            disabled={isRunning || !isCurrentSessionMine}
+            placeholder={(!isCurrentSessionMine || isViewer) ? '읽기 전용' : activeAgent ? `${activeAgent.name}에게 요청... (Shift+Enter 줄바꿈)` : '요청...'}
+            disabled={isRunning || !isCurrentSessionMine || isViewer}
             className="relative w-full resize-none text-[13px] border-0 outline-none bg-transparent py-2.5 leading-relaxed disabled:opacity-50"
             style={{ height: '72px', maxHeight: '150px', color: input ? 'transparent' : undefined, caretColor: 'var(--text)' }}
           />
           </div>
+          {/\d+\s*장|\d+\s*개|PPT|프레젠테이션|슬라이드.*만들/i.test(input) && (
+            <div className="px-1 pb-1 text-[10px] text-[var(--text-disabled)]">
+              슬라이드 최대 20장
+            </div>
+          )}
           <div className="flex items-center gap-1 pb-2 shrink-0">
             {/* @ button */}
             {slides.length > 0 && (

@@ -12,6 +12,7 @@ import SlideListPanel from '@/features/editor/components/SlideListPanel'
 import SlideCanvas from '@/features/editor/components/SlideCanvas'
 import RightPanel from '@/features/editor/components/RightPanel'
 import PresentationMode from '@/features/editor/components/PresentationMode'
+import ShareModal from '@/features/editor/components/ShareModal'
 import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-react'
 import { fetchSlideHistory, restoreFromHistory } from '@/shared/lib/projectApi'
 
@@ -105,6 +106,7 @@ export default function EditPage() {
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
   const [presenting, setPresenting] = useState(false)
+  const [showShareModal, setShowShareModal] = useState(false)
   // historyOffset: 0 = 현재, 1 = 1단계 전, ... (undo 할수록 증가)
   const [historyOffset, setHistoryOffset] = useState(0)
 
@@ -143,22 +145,7 @@ export default function EditPage() {
     }
   }
 
-  const handleShare = async () => {
-    if (!id) return
-    try {
-      const token = localStorage.getItem('access_token')
-      const res = await fetch(`/api/v1/projects/${id}/share`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      const data = await res.json()
-      const url = `${window.location.origin}/share/${data.share_token}`
-      await navigator.clipboard.writeText(url)
-      alert('공유 링크가 복사되었습니다!')
-    } catch {
-      alert('공유 링크 생성 실패')
-    }
-  }
+  const handleShare = () => setShowShareModal(true)
 
   const handleExport = () => {
     const exportSlides = presentation?.slides ?? []
@@ -188,6 +175,9 @@ ${exportSlides.map(s => s.html_content ? `<div class="slide-page">${s.html_conte
           startIndex={currentSlideIndex}
           onClose={() => setPresenting(false)}
         />
+      )}
+      {showShareModal && id && (
+        <ShareModal projectId={id} onClose={() => setShowShareModal(false)} />
       )}
       <div className="flex flex-col h-screen overflow-hidden">
         <EditorTopbar

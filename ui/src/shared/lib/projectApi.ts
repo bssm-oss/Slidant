@@ -6,6 +6,7 @@ interface ProjectResponse {
   id: string
   owner_id: string
   title: string
+  my_role?: string
   created_at: string
   updated_at: string
 }
@@ -21,6 +22,7 @@ function toPresentation(p: ProjectResponse, slides: Slide[] = []): Presentation 
     createdAt: p.created_at,
     updatedAt: p.updated_at,
     ownerId: p.owner_id,
+    myRole: (p.my_role as Presentation['myRole']) ?? 'owner',
   }
 }
 
