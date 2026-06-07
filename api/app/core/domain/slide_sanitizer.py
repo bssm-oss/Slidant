@@ -18,6 +18,42 @@ _TABLE_ROW_H = 52
 _TABLE_HEADER_H = 44
 _TABLE_MAX_BOTTOM = 500
 
+_CANVAS_HEIGHT = 540
+_CONTENT_TOP_THRESHOLD = 100  # top < 100 → 배경/장식 요소로 간주, 스케일 대상 제외
+_SAFE_BOTTOM = 500             # 콘텐츠 최대 top 목표값 (540 - 여유 40px)
+
+
+def _auto_fix_overflow(html: str) -> str:
+    """position:absolute 요소의 top 값이 _SAFE_BOTTOM을 초과하면 비례 축소."""
+    top_re = re.compile(r'top\s*:\s*(\d+(?:\.\d+)?)px', re.IGNORECASE)
+
+    content_tops = [
+        float(m.group(1)) for m in top_re.finditer(html)
+        if float(m.group(1)) >= _CONTENT_TOP_THRESHOLD
+    ]
+    if not content_tops or max(content_tops) <= _SAFE_BOTTOM:
+        return html
+
+    max_top = max(content_tops)
+    min_top = min(content_tops)
+
+    if max_top == min_top:
+        def _clamp(m: re.Match) -> str:
+            v = float(m.group(1))
+            return f"top: {_SAFE_BOTTOM}px" if v > _SAFE_BOTTOM else m.group(0)
+        return top_re.sub(_clamp, html)
+
+    scale = (_SAFE_BOTTOM - min_top) / (max_top - min_top)
+
+    def _scale(m: re.Match) -> str:
+        v = float(m.group(1))
+        if v < _CONTENT_TOP_THRESHOLD:
+            return m.group(0)
+        return f"top: {round(min_top + (v - min_top) * scale)}px"
+
+    logger.info("  [sanitizer] auto_fix_overflow: max_top=%.0fpx → scale=%.3f", max_top, scale)
+    return top_re.sub(_scale, html)
+
 
 def _inject_style(style: str, additions: dict[str, str]) -> str:
     """Add CSS properties only if not already present."""
@@ -234,6 +270,9 @@ def sanitize_slide_html(html: str) -> str:
             return f"<div{new_attrs}>"
 
         html = re.sub(r'<div(\s[^>]*)?>', fix_abs_div, html)
+
+        # ── 4. 수직 오버플로 자동 보정 ─────────────────────────────────────────
+        html = _auto_fix_overflow(html)
 
         return html
 
