@@ -204,6 +204,7 @@ function InlineHistory({ open }: { open: boolean }) {
 
   const handleRestore = async (versionId: string) => {
     if (!projectId || !currentSlide) return
+    clearPreview()
     setRestoring(versionId)
     try {
       await restoreFromHistory(projectId, currentSlide.id, versionId)
@@ -211,6 +212,18 @@ function InlineHistory({ open }: { open: boolean }) {
     } finally {
       setRestoring(null)
     }
+  }
+
+  function showPreview(html: string) {
+    window.dispatchEvent(new CustomEvent('html-component-preview', {
+      detail: { componentId: '__history_preview__', newHtml: '', fullProposalHtml: html },
+    }))
+  }
+
+  function clearPreview() {
+    window.dispatchEvent(new CustomEvent('html-component-preview-clear', {
+      detail: { componentId: '__history_preview__' },
+    }))
   }
 
   if (!open) return null
@@ -247,14 +260,18 @@ function InlineHistory({ open }: { open: boolean }) {
                 <button
                   onClick={() => handleRestore(v.id)}
                   disabled={!!restoring}
+                  onMouseEnter={() => v.html_content && showPreview(v.html_content)}
+                  onMouseLeave={clearPreview}
                   className={cn(
-                    'shrink-0 flex items-center gap-1 px-2 py-1 rounded-[5px] text-[10px] font-medium transition-colors',
+                    'shrink-0 flex items-center gap-1 px-2 py-1.5 rounded-[6px] text-[10px] font-semibold transition-all',
                     'opacity-0 group-hover:opacity-100',
-                    'bg-[var(--bg-muted)] hover:bg-[var(--border)] text-[var(--text-muted)]',
-                    'disabled:opacity-40',
+                    'bg-[var(--accent-subtle)] text-[var(--accent-text)]',
+                    'hover:bg-[var(--accent)] hover:text-white hover:shadow-sm',
+                    'disabled:opacity-40 disabled:cursor-not-allowed',
                   )}
+                  title={v.html_content ? '복원 (hover: 미리보기)' : '복원'}
                 >
-                  {isRestoring ? <span className="animate-spin">↻</span> : <RotateCcw size={10} />}
+                  {isRestoring ? <span className="animate-spin inline-block">↻</span> : <RotateCcw size={10} />}
                   복원
                 </button>
               </div>
