@@ -53,6 +53,7 @@ export default function HistoryPanel({ open, onClose }: Props) {
 
   const handleRestore = async (versionId: string) => {
     if (!projectId || !currentSlide) return
+    clearPreview()
     setRestoring(versionId)
     try {
       await restoreFromHistory(projectId, currentSlide.id, versionId)
@@ -61,6 +62,18 @@ export default function HistoryPanel({ open, onClose }: Props) {
     } finally {
       setRestoring(null)
     }
+  }
+
+  function showPreview(html: string) {
+    window.dispatchEvent(new CustomEvent('html-component-preview', {
+      detail: { componentId: '__history_preview__', newHtml: '', fullProposalHtml: html },
+    }))
+  }
+
+  function clearPreview() {
+    window.dispatchEvent(new CustomEvent('html-component-preview-clear', {
+      detail: { componentId: '__history_preview__' },
+    }))
   }
 
   return (
@@ -117,15 +130,19 @@ export default function HistoryPanel({ open, onClose }: Props) {
                     <button
                       onClick={() => handleRestore(v.id)}
                       disabled={!!restoring}
+                      onMouseEnter={() => v.html_content && showPreview(v.html_content)}
+                      onMouseLeave={clearPreview}
                       className={cn(
-                        'shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-[6px] text-[11px] font-medium transition-colors',
+                        'shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-[11px] font-semibold transition-all',
                         'opacity-0 group-hover:opacity-100',
-                        'bg-[var(--bg-muted)] hover:bg-[var(--border)] text-[var(--text-muted)]',
-                        'disabled:opacity-40',
+                        'bg-[var(--accent-subtle)] text-[var(--accent-text)]',
+                        'hover:bg-[var(--accent)] hover:text-white hover:shadow-sm',
+                        'disabled:opacity-40 disabled:cursor-not-allowed',
                       )}
+                      title="이 버전으로 복원 (hover: 미리보기)"
                     >
                       {isRestoring ? (
-                        <span className="animate-spin">↻</span>
+                        <span className="animate-spin inline-block">↻</span>
                       ) : (
                         <RotateCcw size={11} />
                       )}

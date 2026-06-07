@@ -56,6 +56,7 @@ export interface SlideHistoryEntry {
   slide_id: string
   version: number
   reason: string
+  html_content?: string | null
   created_at: string
 }
 

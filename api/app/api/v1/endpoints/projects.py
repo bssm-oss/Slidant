@@ -26,6 +26,7 @@ class SlideHistoryResponse(BaseModel):
     slide_id: UUID
     version: int
     reason: str
+    html_content: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
