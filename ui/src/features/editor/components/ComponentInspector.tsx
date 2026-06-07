@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { History, RotateCcw, ChevronDown, Clock, Check, X, ImageUp } from 'lucide-react'
+import { History, RotateCcw, ChevronDown, Clock, Check, X, ImageUp, Trash2, AlignLeft, AlignCenter, AlignRight, ChevronUp } from 'lucide-react'
 import type { HtmlComponentStyle } from './SlideCanvas'
 import { useEditorStore } from '../store/editorStore'
 import { useProposalStore } from '../store/proposalStore'
@@ -183,6 +183,46 @@ function ColorRow({ label, value, onChange }: ColorRowProps) {
   )
 }
 
+// ── Image Position Grid ───────────────────────────────────────────────────────
+
+const POSITION_CELLS = [
+  ['left top', 'center top', 'right top'],
+  ['left center', 'center center', 'right center'],
+  ['left bottom', 'center bottom', 'right bottom'],
+]
+
+function ImagePositionGrid({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const normalize = (v: string) => v.trim().toLowerCase().replace(/\s+/g, ' ')
+  const current = normalize(value)
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-[11px] text-[var(--text-muted)] w-16 shrink-0">위치</span>
+      <div className="grid grid-cols-3 gap-0.5 p-1 rounded-[6px] bg-[var(--bg-muted)] border border-[var(--border)]">
+        {POSITION_CELLS.map((row) =>
+          row.map((cell) => {
+            const active = normalize(cell) === current
+            return (
+              <button
+                key={cell}
+                title={cell}
+                onClick={() => onChange(cell)}
+                className={cn(
+                  'w-5 h-5 rounded-[3px] transition-colors',
+                  active ? 'bg-[var(--accent)]' : 'hover:bg-[var(--border)]'
+                )}
+              >
+                <div className="w-full h-full flex items-center justify-center">
+                  <div className={cn('w-1.5 h-1.5 rounded-full', active ? 'bg-white' : 'bg-[var(--text-disabled)]')} />
+                </div>
+              </button>
+            )
+          })
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Inline History ────────────────────────────────────────────────────────────
 
 function InlineHistory({ open, componentId }: { open: boolean; componentId: string }) {
@@ -356,6 +396,16 @@ export default function ComponentInspector({ style }: Props) {
   const [color, setColor] = useState(style.color)
   const [bgColor, setBgColor] = useState(style.backgroundColor)
   const [fontSize, setFontSize] = useState(style.fontSize)
+  const [fontWeight, setFontWeight] = useState(style.fontWeight ?? 400)
+  const [textAlign, setTextAlign] = useState(style.textAlign || 'left')
+  const [lineHeight, setLineHeight] = useState(style.lineHeight ?? 1.4)
+  const [letterSpacing, setLetterSpacing] = useState(style.letterSpacing ?? 0)
+  const [borderRadius, setBorderRadius] = useState(style.borderRadius ?? 0)
+  const [aspectLock, setAspectLock] = useState(false)
+  const [objectFit, setObjectFit] = useState(style.objectFit || 'cover')
+  const [objectPosition, setObjectPosition] = useState(style.objectPosition || 'center center')
+  const [backgroundSize, setBackgroundSize] = useState(style.backgroundSize || 'cover')
+  const [backgroundPosition, setBackgroundPosition] = useState(style.backgroundPosition || 'center center')
   const [showHistory, setShowHistory] = useState(false)
   const [dismissedProposalIds, setDismissedProposalIds] = useState<Set<string>>(new Set())
   const [approvingId, setApprovingId] = useState<string | null>(null)
@@ -371,6 +421,16 @@ export default function ComponentInspector({ style }: Props) {
     setColor(style.color)
     setBgColor(style.backgroundColor)
     setFontSize(style.fontSize)
+    setFontWeight(style.fontWeight ?? 400)
+    setTextAlign(style.textAlign || 'left')
+    setLineHeight(style.lineHeight ?? 1.4)
+    setLetterSpacing(style.letterSpacing ?? 0)
+    setBorderRadius(style.borderRadius ?? 0)
+    setAspectLock(false)
+    setObjectFit(style.objectFit || 'cover')
+    setObjectPosition(style.objectPosition || 'center center')
+    setBackgroundSize(style.backgroundSize || 'cover')
+    setBackgroundPosition(style.backgroundPosition || 'center center')
     setShowHistory(false)
   }, [style.componentId])
 
@@ -421,8 +481,22 @@ export default function ComponentInspector({ style }: Props) {
   return (
     <div className="flex flex-col text-[var(--text)] select-none overflow-y-auto">
 
-      {/* Position */}
-      <SectionLabel>Position</SectionLabel>
+      {/* 헤더: 컴포넌트 타입 + 삭제 버튼 */}
+      <div className="px-4 py-2 flex items-center justify-between border-b border-[var(--border)]">
+        <span className="text-[11px] font-medium text-[var(--text-muted)]">
+          {style.isImage ? '이미지' : style.isText ? '텍스트' : '요소'}
+        </span>
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent('html-component-delete-request', { detail: { componentId: id } }))}
+          className="w-6 h-6 rounded-[5px] flex items-center justify-center text-[var(--text-muted)] hover:bg-red-50 hover:text-red-500 transition-colors"
+          title="컴포넌트 삭제 (Delete)"
+        >
+          <Trash2 size={12} />
+        </button>
+      </div>
+
+      {/* 위치 */}
+      <SectionLabel>위치</SectionLabel>
       <div className="px-4 pb-2 flex gap-2">
         <NumInput
           label="X"
@@ -440,38 +514,70 @@ export default function ComponentInspector({ style }: Props) {
 
       <Divider />
 
-      {/* Size */}
-      <SectionLabel>Size</SectionLabel>
-      <div className="px-4 pb-2 flex gap-2">
+      {/* 크기 + 비율 고정 */}
+      <SectionLabel>크기</SectionLabel>
+      <div className="px-4 pb-2 flex gap-2 items-center">
         <NumInput
           label="W"
           value={size.w}
           min={1}
-          onChange={(v) => setSize((s) => ({ ...s, w: v }))}
-          onCommit={(v) => { setSize((s) => ({ ...s, w: v })); commitProp('width', v) }}
+          onChange={(v) => {
+            if (aspectLock && size.h > 0) setSize({ w: v, h: Math.round(v / (size.w / size.h)) })
+            else setSize((s) => ({ ...s, w: v }))
+          }}
+          onCommit={(v) => {
+            if (aspectLock && size.h > 0) {
+              const newH = Math.round(v / (size.w / size.h))
+              setSize({ w: v, h: newH })
+              commitProp('width', v); commitProp('height', newH)
+            } else { setSize((s) => ({ ...s, w: v })); commitProp('width', v) }
+          }}
         />
         <NumInput
           label="H"
           value={size.h}
           min={1}
-          onChange={(v) => setSize((s) => ({ ...s, h: v }))}
-          onCommit={(v) => { setSize((s) => ({ ...s, h: v })); commitProp('height', v) }}
+          onChange={(v) => {
+            if (aspectLock && size.w > 0) setSize({ w: Math.round(v * (size.w / size.h)), h: v })
+            else setSize((s) => ({ ...s, h: v }))
+          }}
+          onCommit={(v) => {
+            if (aspectLock && size.w > 0) {
+              const newW = Math.round(v * (size.w / size.h))
+              setSize({ w: newW, h: v })
+              commitProp('width', newW); commitProp('height', v)
+            } else { setSize((s) => ({ ...s, h: v })); commitProp('height', v) }
+          }}
         />
+        <button
+          title={aspectLock ? '비율 고정 해제' : '비율 고정'}
+          onClick={() => setAspectLock((v) => !v)}
+          className={cn(
+            'w-6 h-6 rounded-[5px] shrink-0 flex items-center justify-center transition-colors',
+            aspectLock
+              ? 'bg-[var(--accent)] text-white'
+              : 'bg-[var(--bg-muted)] border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--border)]'
+          )}
+        >
+          <svg width="10" height="12" viewBox="0 0 10 12" fill="none">
+            <rect x="1" y="5" width="8" height="7" rx="1" stroke="currentColor" strokeWidth="1.2" fill={aspectLock ? 'currentColor' : 'none'} />
+            <path d="M3 5V3.5a2 2 0 0 1 4 0V5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+          </svg>
+        </button>
       </div>
 
       <Divider />
 
-      {/* Appearance */}
-      <SectionLabel>Appearance</SectionLabel>
+      {/* 투명도 */}
+      <SectionLabel>투명도</SectionLabel>
       <div className="px-4 pb-2 flex items-center gap-2">
-        <span className="text-[11px] text-[var(--text-muted)] w-16 shrink-0">Opacity</span>
         <div className="flex items-center gap-1 flex-1 min-w-0">
           <NumInput
             label=""
             value={opacity}
             min={0}
             max={100}
-            onChange={(v) => { setOpacity(v); commitProp('opacity', v / 100) }}
+            onChange={(v) => setOpacity(v)}
             onCommit={(v) => { setOpacity(v); commitProp('opacity', v / 100) }}
           />
           <span className="text-[10px] text-[var(--text-disabled)] shrink-0">%</span>
@@ -480,12 +586,51 @@ export default function ComponentInspector({ style }: Props) {
 
       <Divider />
 
-      {/* Fill */}
+      {/* 모서리 반경 + 레이어 */}
+      <SectionLabel>스타일</SectionLabel>
+      <div className="px-4 pb-2 flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-[var(--text-muted)] w-16 shrink-0">모서리</span>
+          <div className="flex items-center gap-1 flex-1 min-w-0">
+            <NumInput
+              label=""
+              value={borderRadius}
+              min={0}
+              onChange={(v) => setBorderRadius(v)}
+              onCommit={(v) => { setBorderRadius(v); commitProp('borderRadius', v) }}
+            />
+            <span className="text-[10px] text-[var(--text-disabled)] shrink-0">px</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-[var(--text-muted)] w-16 shrink-0">레이어</span>
+          <div className="flex gap-1">
+            <button
+              onClick={() => { const z = style.zIndex + 1; commitProp('zIndex', z) }}
+              className="flex items-center gap-1 px-2 h-7 rounded-[6px] text-[11px] text-[var(--text-muted)] bg-[var(--bg-muted)] border border-[var(--border)] hover:bg-[var(--border)] transition-colors"
+              title="앞으로 가져오기"
+            >
+              <ChevronUp size={11} />앞으로
+            </button>
+            <button
+              onClick={() => { const z = Math.max(0, style.zIndex - 1); commitProp('zIndex', z) }}
+              className="flex items-center gap-1 px-2 h-7 rounded-[6px] text-[11px] text-[var(--text-muted)] bg-[var(--bg-muted)] border border-[var(--border)] hover:bg-[var(--border)] transition-colors"
+              title="뒤로 보내기"
+            >
+              <ChevronDown size={11} />뒤로
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <Divider />
+
+      {/* 배경색 */}
       {!isTransparent(bgColor) && (
         <>
-          <SectionLabel>Fill</SectionLabel>
+          <SectionLabel>배경색</SectionLabel>
           <ColorRow
-            label="배경"
+            label="색상"
             value={bgColor}
             onChange={(hex) => { setBgColor(hex); commitProp('backgroundColor', hex) }}
           />
@@ -494,11 +639,11 @@ export default function ComponentInspector({ style }: Props) {
         </>
       )}
 
-      {/* Image upload */}
+      {/* 이미지 */}
       {style.isImage && (
         <>
-          <SectionLabel>Image</SectionLabel>
-          <div className="px-4 py-2">
+          <SectionLabel>이미지</SectionLabel>
+          <div className="px-4 py-2 flex flex-col gap-2">
             <button
               onClick={() => window.dispatchEvent(new CustomEvent('html-image-upload-request', { detail: { componentId: id } }))}
               className="w-full flex items-center justify-center gap-2 h-8 rounded-[7px] border border-[var(--border)] text-[var(--text-muted)] text-[11px] font-medium hover:bg-[var(--bg-muted)] transition-colors"
@@ -506,23 +651,120 @@ export default function ComponentInspector({ style }: Props) {
               <ImageUp size={13} />
               이미지 업로드
             </button>
+            {/* object-fit (img 태그) */}
+            {style.tagName === 'img' && (
+              <>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-[var(--text-muted)] w-16 shrink-0">맞춤</span>
+                  <select
+                    value={objectFit}
+                    onChange={(e) => { setObjectFit(e.target.value); commitProp('objectFit', e.target.value) }}
+                    className="flex-1 h-7 px-2 rounded-[6px] text-[11px] text-[var(--text)] bg-[var(--bg-muted)] border border-[var(--border)] focus:outline-none focus:border-[var(--accent)]"
+                  >
+                    <option value="cover">꽉 채우기 (cover)</option>
+                    <option value="contain">전체 보기 (contain)</option>
+                    <option value="fill">늘리기 (fill)</option>
+                    <option value="none">원본 크기</option>
+                  </select>
+                </div>
+                {(objectFit === 'cover' || objectFit === 'contain') && (
+                  <ImagePositionGrid
+                    value={objectPosition}
+                    onChange={(v) => { setObjectPosition(v); commitProp('objectPosition', v) }}
+                  />
+                )}
+              </>
+            )}
+            {/* background-size (div 배경 이미지) */}
+            {style.tagName !== 'img' && (
+              <>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-[var(--text-muted)] w-16 shrink-0">맞춤</span>
+                  <select
+                    value={backgroundSize}
+                    onChange={(e) => {
+                      setBackgroundSize(e.target.value)
+                      commitProp('backgroundSize', e.target.value)
+                    }}
+                    className="flex-1 h-7 px-2 rounded-[6px] text-[11px] text-[var(--text)] bg-[var(--bg-muted)] border border-[var(--border)] focus:outline-none focus:border-[var(--accent)]"
+                  >
+                    <option value="cover">꽉 채우기 (cover)</option>
+                    <option value="contain">전체 보기 (contain)</option>
+                    <option value="100% 100%">늘리기</option>
+                    <option value="auto">원본 크기</option>
+                  </select>
+                </div>
+                {(backgroundSize === 'cover' || backgroundSize === 'contain') && (
+                  <ImagePositionGrid
+                    value={backgroundPosition}
+                    onChange={(v) => { setBackgroundPosition(v); commitProp('backgroundPosition', v) }}
+                  />
+                )}
+              </>
+            )}
           </div>
           <div className="pb-1" />
           <Divider />
         </>
       )}
 
-      {/* Text properties */}
+      {/* 텍스트 */}
       {style.isText && (
         <>
-          <SectionLabel>Text</SectionLabel>
+          <SectionLabel>텍스트</SectionLabel>
           <ColorRow
             label="색상"
             value={color}
             onChange={(hex) => { setColor(hex); commitProp('color', hex) }}
           />
+          {/* 글꼴 굵기 */}
           <div className="px-4 py-1.5 flex items-center gap-2">
-            <span className="text-[11px] text-[var(--text-muted)] w-16 shrink-0">Font size</span>
+            <span className="text-[11px] text-[var(--text-muted)] w-16 shrink-0">굵기</span>
+            <div className="flex gap-0.5">
+              {([400, 500, 600, 700] as const).map((w) => (
+                <button
+                  key={w}
+                  onClick={() => { setFontWeight(w); commitProp('fontWeight', w) }}
+                  className={cn(
+                    'h-7 px-2 rounded-[5px] text-[10px] transition-colors',
+                    fontWeight === w
+                      ? 'bg-[var(--accent)] text-white'
+                      : 'bg-[var(--bg-muted)] border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--border)]'
+                  )}
+                  style={{ fontWeight: w }}
+                >
+                  {w === 400 ? 'R' : w === 500 ? 'M' : w === 600 ? 'SB' : 'B'}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* 텍스트 정렬 */}
+          <div className="px-4 py-1.5 flex items-center gap-2">
+            <span className="text-[11px] text-[var(--text-muted)] w-16 shrink-0">정렬</span>
+            <div className="flex gap-0.5">
+              {([
+                { value: 'left', icon: <AlignLeft size={12} /> },
+                { value: 'center', icon: <AlignCenter size={12} /> },
+                { value: 'right', icon: <AlignRight size={12} /> },
+              ] as const).map(({ value, icon }) => (
+                <button
+                  key={value}
+                  onClick={() => { setTextAlign(value); commitProp('textAlign', value) }}
+                  className={cn(
+                    'w-7 h-7 rounded-[5px] flex items-center justify-center transition-colors',
+                    textAlign === value
+                      ? 'bg-[var(--accent)] text-white'
+                      : 'bg-[var(--bg-muted)] border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--border)]'
+                  )}
+                >
+                  {icon}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* 글자 크기 */}
+          <div className="px-4 py-1.5 flex items-center gap-2">
+            <span className="text-[11px] text-[var(--text-muted)] w-16 shrink-0">글자 크기</span>
             <div className="flex items-center gap-1 flex-1 min-w-0">
               <NumInput
                 label=""
@@ -530,6 +772,35 @@ export default function ComponentInspector({ style }: Props) {
                 min={6}
                 onChange={(v) => setFontSize(v)}
                 onCommit={(v) => { setFontSize(v); commitProp('fontSize', v) }}
+              />
+              <span className="text-[10px] text-[var(--text-disabled)] shrink-0">px</span>
+            </div>
+          </div>
+          {/* 줄 간격 */}
+          <div className="px-4 py-1.5 flex items-center gap-2">
+            <span className="text-[11px] text-[var(--text-muted)] w-16 shrink-0">줄 간격</span>
+            <div className="flex items-center gap-1 flex-1 min-w-0">
+              <NumInput
+                label=""
+                value={parseFloat(lineHeight.toFixed(2))}
+                min={0.5}
+                max={5}
+                onChange={(v) => setLineHeight(v)}
+                onCommit={(v) => { setLineHeight(v); commitProp('lineHeight', v) }}
+              />
+            </div>
+          </div>
+          {/* 자간 */}
+          <div className="px-4 py-1.5 flex items-center gap-2">
+            <span className="text-[11px] text-[var(--text-muted)] w-16 shrink-0">자간</span>
+            <div className="flex items-center gap-1 flex-1 min-w-0">
+              <NumInput
+                label=""
+                value={letterSpacing}
+                min={-10}
+                max={50}
+                onChange={(v) => setLetterSpacing(v)}
+                onCommit={(v) => { setLetterSpacing(v); commitProp('letterSpacing', v) }}
               />
               <span className="text-[10px] text-[var(--text-disabled)] shrink-0">px</span>
             </div>
@@ -612,7 +883,7 @@ export default function ComponentInspector({ style }: Props) {
           className="w-full flex items-center justify-center gap-2 h-8 rounded-[8px] text-[12px] font-medium text-[var(--text-muted)] border border-[var(--border)] bg-[var(--bg-muted)] hover:bg-[var(--border)] hover:text-[var(--text)] transition-colors"
         >
           <History size={13} />
-          슬라이드 변경 내역
+          변경 내역
           <ChevronDown size={12} className={cn('ml-auto transition-transform', showHistory && 'rotate-180')} />
         </button>
       </div>

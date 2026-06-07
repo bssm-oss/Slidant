@@ -7,7 +7,10 @@ import { api } from '@/shared/lib/apiClient'
 import type { SlideComponent } from '@/shared/types'
 import ConflictResolver from './ConflictResolver'
 import SlideProposalBanner from './SlideProposalBanner'
+import CropModal from './CropModal'
 import { buildSlideSrc } from '@/shared/lib/slideHtml'
+import { crdtStore } from '@/shared/lib/crdtStore'
+import SelectionOverlay from './SelectionOverlay'
 
 // ── HTML 슬라이드 편집 훅 ───────────────────────────────────────────────────────
 
@@ -19,15 +22,17 @@ function useHtmlSlideEdit(
   iframeRef: React.RefObject<HTMLIFrameElement | null>,
   projectId: string,
   slideId: string,
-  htmlContent: string,
+  _htmlContent: string,
   onHtmlChange: (newHtml: string) => void,
   onComponentSelect: (id: string | null, style: HtmlComponentStyle | null) => void,
   ignoreHtmlSyncRef: React.RefObject<boolean>,
+  onStyleUpdate: (style: HtmlComponentStyle) => void,
 ) {
   // hidden file input (이미지 업로드용)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const pendingImageIdRef = useRef<string | null>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [pendingCrop, setPendingCrop] = useState<{ dataUrl: string; targetId: string; elW: number; elH: number } | null>(null)
 
   // html-component-style-update: Inspector → iframe DOM → debounced API save
   useEffect(() => {
@@ -42,31 +47,32 @@ function useHtmlSlideEdit(
 
       const newHtml = rebuildFullHtml(doc.documentElement.innerHTML)
 
-      // store 낙관적 업데이트 — iframe reload 없이 (ignoreHtmlSyncRef로 useEffect 차단)
-      ignoreHtmlSyncRef.current = true
-      const ppt = useSlideStore.getState().presentation
-      if (ppt) {
-        useSlideStore.setState({
-          presentation: {
-            ...ppt,
-            slides: ppt.slides.map((s) => s.id === slideId ? { ...s, html_content: newHtml } : s),
-          },
-        })
-      }
+      // inspector + overlay 동기화
+      onStyleUpdate(parseElementStyle(el))
 
-      // re-broadcast updated style so inspector stays in sync
-      window.dispatchEvent(new CustomEvent('html-component-select', { detail: parseElementStyle(el) }))
-
+      // DOM 직접 업데이트 → API 저장 후 store/CRDT 반영 (즉시 store 업데이트 시 iframe reload 유발)
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
       saveTimerRef.current = setTimeout(async () => {
         try {
           await api.patch(`/projects/${projectId}/slides/${slideId}`, { html_content: newHtml })
+          const ppt = useSlideStore.getState().presentation
+          if (ppt) {
+            ignoreHtmlSyncRef.current = true
+            useSlideStore.setState({
+              presentation: {
+                ...ppt,
+                slides: ppt.slides.map((s) => s.id === slideId ? { ...s, html_content: newHtml } : s),
+              },
+            })
+            // CRDT 브로드캐스트 — 다른 사용자 실시간 반영
+            crdtStore.setSlideHtml(slideId, newHtml)
+          }
         } catch { /* silent */ }
       }, 400)
     }
     window.addEventListener('html-component-style-update', handler)
     return () => window.removeEventListener('html-component-style-update', handler)
-  }, [projectId, slideId, onHtmlChange])
+  }, [projectId, slideId])
 
   // html-image-upload-request: Inspector → file picker
   useEffect(() => {
@@ -104,6 +110,7 @@ function useHtmlSlideEdit(
         const isTextEl = isTextElement(el)
         if (!isTextEl) return
 
+        window.dispatchEvent(new CustomEvent('html-text-editing', { detail: true }))
         el.contentEditable = 'true'
         el.focus()
 
@@ -119,11 +126,13 @@ function useHtmlSlideEdit(
           el.removeEventListener('blur', onBlur)
           el.removeEventListener('keydown', onKeyDown)
           el.contentEditable = 'false'
+          window.dispatchEvent(new CustomEvent('html-text-editing', { detail: false }))
           const newHtml = doc.documentElement.innerHTML
           const fullHtml = rebuildFullHtml(newHtml)
           onHtmlChange(fullHtml)
           try {
             await api.patch(`/projects/${projectId}/slides/${slideId}`, { html_content: fullHtml })
+            crdtStore.setSlideHtml(slideId, fullHtml)
           } catch (err) {
             console.error('html slide text update failed', err)
           }
@@ -138,6 +147,7 @@ function useHtmlSlideEdit(
             el.removeEventListener('blur', onBlur)
             el.removeEventListener('keydown', onKeyDown)
             el.contentEditable = 'false'
+            window.dispatchEvent(new CustomEvent('html-text-editing', { detail: false }))
             onComponentSelect(null, null)
           }
         }
@@ -156,15 +166,28 @@ function useHtmlSlideEdit(
     doc.body.addEventListener('click', () => onComponentSelect(null, null))
   }, [iframeRef, projectId, slideId, onHtmlChange, onComponentSelect])
 
-  // 파일 input onChange
+  // 파일 선택 → 크롭 모달 오픈 (직접 적용 X)
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     const targetId = pendingImageIdRef.current
     if (!file || !targetId) return
-    // reset so same file can be picked again
     e.target.value = ''
 
+    const doc = iframeRef.current?.contentDocument
+    const el = doc?.querySelector<HTMLElement>(`[data-component-id="${targetId}"]`)
+    const elW = el ? (parseFloat(el.style.width) || el.offsetWidth || 200) : 200
+    const elH = el ? (parseFloat(el.style.height) || el.offsetHeight || 200) : 200
+
     const dataUrl = await readFileAsDataURL(file)
+    pendingImageIdRef.current = null
+    setPendingCrop({ dataUrl, targetId, elW, elH })
+  }, [iframeRef])
+
+  // 크롭 완료 → iframe DOM 업데이트 + 저장
+  const applyImage = useCallback(async (dataUrl: string) => {
+    const targetId = pendingCrop?.targetId
+    if (!targetId) return
+    setPendingCrop(null)
 
     const iframe = iframeRef.current
     const doc = iframe?.contentDocument
@@ -173,30 +196,64 @@ function useHtmlSlideEdit(
     const el = doc.querySelector<HTMLElement>(`[data-component-id="${targetId}"]`)
     if (!el) return
 
-    // img 요소면 src 교체, 아니면 background-image 설정
     const imgTag = el.tagName === 'IMG' ? el as HTMLImageElement : el.querySelector<HTMLImageElement>('img')
     if (imgTag) {
       imgTag.src = dataUrl
       imgTag.classList.remove('img-placeholder')
+      // 플레이스홀더 형제 요소(SVG, 텍스트) 숨김
+      Array.from(el.children).forEach((child) => {
+        if (child !== imgTag) (child as HTMLElement).style.display = 'none'
+      })
     } else {
+      el.innerHTML = ''  // 플레이스홀더 텍스트/아이콘 제거
       el.style.backgroundImage = `url(${dataUrl})`
       el.style.backgroundSize = 'cover'
       el.style.backgroundPosition = 'center'
       el.classList.remove('img-placeholder')
     }
+    el.setAttribute('data-image-component', 'true')
 
     const newHtml = doc.documentElement.innerHTML
     const fullHtml = rebuildFullHtml(newHtml)
     onHtmlChange(fullHtml)
+
+    // inspector 동기화
+    window.dispatchEvent(new CustomEvent('html-component-select', { detail: parseElementStyle(el) }))
+
     try {
       await api.patch(`/projects/${projectId}/slides/${slideId}`, { html_content: fullHtml })
     } catch (err) {
       console.error('html slide image update failed', err)
     }
-    pendingImageIdRef.current = null
-  }, [iframeRef, projectId, slideId, htmlContent, onHtmlChange])
+  }, [pendingCrop, iframeRef, projectId, slideId, onHtmlChange])
 
-  return { handleIframeLoad, handleFileChange, fileInputRef }
+  const cancelCrop = useCallback(() => setPendingCrop(null), [])
+
+  const deleteHtmlComponent = useCallback((componentId: string) => {
+    const doc = iframeRef.current?.contentDocument
+    if (!doc) return
+    const el = doc.querySelector(`[data-component-id="${componentId}"]`)
+    if (!el) return
+    el.remove()
+    const newHtml = rebuildFullHtml(doc.documentElement.innerHTML)
+    onHtmlChange(newHtml)
+    onComponentSelect(null, null)
+    api.patch(`/projects/${projectId}/slides/${slideId}`, { html_content: newHtml })
+      .then(() => { crdtStore.setSlideHtml(slideId, newHtml) })
+      .catch(console.error)
+  }, [iframeRef, projectId, slideId, onHtmlChange, onComponentSelect])
+
+  // Inspector 패널의 삭제 버튼 이벤트
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { componentId } = (e as CustomEvent<{ componentId: string }>).detail
+      deleteHtmlComponent(componentId)
+    }
+    window.addEventListener('html-component-delete-request', handler)
+    return () => window.removeEventListener('html-component-delete-request', handler)
+  }, [deleteHtmlComponent])
+
+  return { handleIframeLoad, handleFileChange, fileInputRef, pendingCrop, applyImage, cancelCrop, deleteHtmlComponent }
 }
 
 // ── 헬퍼 함수들 ───────────────────────────────────────────────────────────────
@@ -213,6 +270,7 @@ function isImagePlaceholder(el: HTMLElement): boolean {
   return (
     el.tagName === 'IMG' ||
     el.classList.contains('img-placeholder') ||
+    el.hasAttribute('data-image-component') ||
     el.querySelector('img') !== null
   )
 }
@@ -293,16 +351,27 @@ export interface HtmlComponentStyle {
   color: string
   backgroundColor: string
   fontSize: number
+  fontWeight: number
+  textAlign: string
+  lineHeight: number
+  letterSpacing: number
   opacity: number
+  borderRadius: number
+  zIndex: number
   tagName: string
   textContent: string
   isText: boolean
   isImage: boolean
+  objectFit: string
+  objectPosition: string
+  backgroundSize: string
+  backgroundPosition: string
 }
 
 function parseElementStyle(el: HTMLElement): HtmlComponentStyle {
   const cs = el.ownerDocument.defaultView?.getComputedStyle(el) ?? el.style as CSSStyleDeclaration
   const num = (inline: string, computed: string) => parseFloat(inline) || parseFloat(computed) || 0
+  const opStr = el.style.opacity || (cs as CSSStyleDeclaration).opacity
   return {
     componentId: el.getAttribute('data-component-id') ?? '',
     left: num(el.style.left, (cs as CSSStyleDeclaration).left ?? ''),
@@ -312,11 +381,21 @@ function parseElementStyle(el: HTMLElement): HtmlComponentStyle {
     color: (cs as CSSStyleDeclaration).color ?? el.style.color ?? '',
     backgroundColor: (cs as CSSStyleDeclaration).backgroundColor ?? el.style.backgroundColor ?? '',
     fontSize: num(el.style.fontSize, (cs as CSSStyleDeclaration).fontSize ?? ''),
-    opacity: parseFloat((cs as CSSStyleDeclaration).opacity ?? el.style.opacity ?? '1') || 1,
+    fontWeight: parseInt(el.style.fontWeight || (cs as CSSStyleDeclaration).fontWeight || '400') || 400,
+    textAlign: el.style.textAlign || (cs as CSSStyleDeclaration).textAlign || 'left',
+    lineHeight: parseFloat(el.style.lineHeight || (cs as CSSStyleDeclaration).lineHeight || '0') || 1.4,
+    letterSpacing: parseFloat(el.style.letterSpacing || (cs as CSSStyleDeclaration).letterSpacing || '0') || 0,
+    opacity: opStr ? parseFloat(opStr) : 1,
+    borderRadius: parseFloat(el.style.borderRadius || (cs as CSSStyleDeclaration).borderRadius || '0') || 0,
+    zIndex: parseInt(el.style.zIndex || (cs as CSSStyleDeclaration).zIndex || '0') || 0,
     tagName: el.tagName.toLowerCase(),
     textContent: el.textContent?.trim().slice(0, 80) ?? '',
     isText: isTextElement(el),
     isImage: isImagePlaceholder(el),
+    objectFit: el.style.objectFit || (cs as CSSStyleDeclaration).objectFit || '',
+    objectPosition: el.style.objectPosition || (cs as CSSStyleDeclaration).objectPosition || 'center center',
+    backgroundSize: el.style.backgroundSize || (cs as CSSStyleDeclaration).backgroundSize || '',
+    backgroundPosition: el.style.backgroundPosition || (cs as CSSStyleDeclaration).backgroundPosition || 'center center',
   }
 }
 
@@ -331,6 +410,16 @@ function applyStyleProp(el: HTMLElement, prop: string, value: string | number): 
     case 'backgroundColor': el.style.backgroundColor = String(value); break
     case 'fontSize': el.style.fontSize = px(value); break
     case 'opacity': el.style.opacity = String(value); break
+    case 'objectFit': el.style.objectFit = String(value); break
+    case 'objectPosition': el.style.objectPosition = String(value); break
+    case 'backgroundSize': el.style.backgroundSize = String(value); break
+    case 'backgroundPosition': el.style.backgroundPosition = String(value); break
+    case 'fontWeight': el.style.fontWeight = String(value); break
+    case 'textAlign': el.style.textAlign = String(value); break
+    case 'lineHeight': el.style.lineHeight = String(value); break
+    case 'letterSpacing': el.style.letterSpacing = `${value}px`; break
+    case 'borderRadius': el.style.borderRadius = `${value}px`; break
+    case 'zIndex': el.style.zIndex = String(value); break
   }
 }
 
@@ -525,12 +614,24 @@ export default function SlideCanvas() {
     useSlideStore.setState({ presentation: { ...ppt, slides: updatedSlides } })
   }, [currentSlide])
 
+  const [isTextEditing, setIsTextEditing] = useState(false)
+
+  useEffect(() => {
+    const handler = (e: Event) => setIsTextEditing((e as CustomEvent<boolean>).detail)
+    window.addEventListener('html-text-editing', handler)
+    return () => window.removeEventListener('html-text-editing', handler)
+  }, [])
+
   const handleComponentSelect = useCallback((id: string | null, style: HtmlComponentStyle | null) => {
     setSelectedHtmlStyle(style)
     selectComponent(id)
   }, [selectComponent])
 
-  const { handleIframeLoad: _handleIframeLoad, handleFileChange, fileInputRef } = useHtmlSlideEdit(
+  const handleStyleUpdate = useCallback((newStyle: HtmlComponentStyle) => {
+    setSelectedHtmlStyle(newStyle)
+  }, [])
+
+  const { handleIframeLoad: _handleIframeLoad, handleFileChange, fileInputRef, pendingCrop, applyImage, cancelCrop, deleteHtmlComponent } = useHtmlSlideEdit(
     iframeRef,
     presentation?.id ?? '',
     currentSlide?.id ?? '',
@@ -538,6 +639,7 @@ export default function SlideCanvas() {
     handleHtmlChange,
     handleComponentSelect,
     ignoreHtmlSyncRef,
+    handleStyleUpdate,
   )
 
   const handleIframeLoad = useCallback(() => {
@@ -732,7 +834,18 @@ export default function SlideCanvas() {
           accept="image/*"
           className="hidden"
           onChange={handleFileChange}
+          onClick={(e) => e.stopPropagation()}
         />
+        {/* Crop modal */}
+        {pendingCrop && (
+          <CropModal
+            imageUrl={pendingCrop.dataUrl}
+            elementW={pendingCrop.elW}
+            elementH={pendingCrop.elH}
+            onApply={applyImage}
+            onCancel={cancelCrop}
+          />
+        )}
         <div
           className="relative rounded-[8px] shadow-[0_8px_40px_rgba(0,0,0,0.18)] overflow-hidden shrink-0"
           style={{ width: SLIDE_W * scale, height: SLIDE_H * scale }}
@@ -780,13 +893,14 @@ export default function SlideCanvas() {
               </div>
             </div>
           ))}
-          {/* 선택된 요소 툴팁 힌트 */}
-          {selectedHtmlStyle && (
-            <div
-              className="absolute bottom-2 left-2 z-10 bg-black/70 text-white text-[10px] rounded-[6px] px-2 py-1 pointer-events-none max-w-[200px] truncate"
-            >
-              {selectedHtmlStyle.tagName} · 더블클릭으로 편집
-            </div>
+          {/* 선택 컴포넌트 오버레이 (드래그/리사이즈/키보드) */}
+          {selectedHtmlStyle && !isTextEditing && !previewHtml && (
+            <SelectionOverlay
+              style={selectedHtmlStyle}
+              scale={scale}
+              iframeRef={iframeRef}
+              onDelete={() => deleteHtmlComponent(selectedHtmlStyle.componentId)}
+            />
           )}
         </div>
         {/* Proposal 전체 적용 배너 */}

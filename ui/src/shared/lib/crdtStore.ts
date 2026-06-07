@@ -19,12 +19,14 @@ class CrdtStore {
   }
 
   private _observe() {
-    this.slides.observe(() => {
+    this.slides.observe((event) => {
+      if (event.transaction.origin === 'local') return
       this._syncToSlideStore()
     })
 
     this.slides.observeDeep((events: Y.YEvent<any>[]) => {
       for (const event of events) {
+        if (event.transaction.origin === 'local') continue
         if (event instanceof Y.YMapEvent && event.target !== this.slides) {
           // 슬라이드 내부 변경 (html_content, title)
           const slideId = this._findSlideId(event.target)
@@ -148,7 +150,7 @@ class CrdtStore {
     this.doc.transact(() => {
       text.delete(0, text.length)
       text.insert(0, html)
-    })
+    }, 'local')  // 자신에게 echo 차단 — observer에서 local origin 무시
   }
 
   /**
