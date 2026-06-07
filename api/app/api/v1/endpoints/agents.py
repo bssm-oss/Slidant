@@ -174,11 +174,22 @@ async def _run_agent_background_inner(
             return
 
         from app.services import slide_content as sc
+        import re as _re
         slide = await uow.slides.get(body.slide_id)
-        components = sc.list_components(slide) if slide else []
         all_slides = await uow.slides.list_by_project(body.project_id)
         project = await uow.projects.get(body.project_id)
         project_theme = project.theme if project else None
+
+        # @슬라이드N 멘션 → 타겟 슬라이드 early override (context/components/proposal 모두 반영)
+        _mention_match = _re.search(r'@슬라이드(\d+)', body.command)
+        if _mention_match:
+            _target_order = int(_mention_match.group(1))
+            _target_slide = next((s for s in all_slides if s.order == _target_order), None)
+            if _target_slide:
+                slide = _target_slide
+                logger.info("   @슬라이드%d 멘션 → target slide override: %s", _target_order, _target_slide.id)
+
+        components = sc.list_components(slide) if slide else []
 
         # 에이전트별 최근 대화 10턴 조회 (세션 유지)
         recent_msgs = await uow.chat_messages.list_by_project(
@@ -258,7 +269,6 @@ async def _run_agent_background_inner(
                     except Exception as _e:
                         logger.debug("slide_ready interim save parse error: %s", _e)
 
-            import re as _re
             slide_scope_locked = bool(_re.search(r'@슬라이드\d+', body.command))
 
             run_kwargs = dict(
@@ -333,7 +343,7 @@ async def _run_agent_background_inner(
                 from app.models.agent_proposal import AgentProposal as _AgentProposal
                 html_sanitized = sanitize_slide_html(html_output)
                 _proposal_obj = _AgentProposal(
-                    slide_id=body.slide_id,
+                    slide_id=slide.id,
                     agent_run_id=agent_run.id,
                     agent_name=agent_def_name,
                     command=body.command,
