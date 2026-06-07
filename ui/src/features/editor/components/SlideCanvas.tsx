@@ -35,7 +35,7 @@ const PROP_CHANGE_LABEL: Record<string, string> = {
 
 function buildStyleReason(componentId: string, props: Set<string>): string {
   const labels = [...new Set([...props].map((p) => PROP_CHANGE_LABEL[p] ?? p))].join('·')
-  return `사용자: [${componentId}] ${labels} 변경`
+  return `사용자: ${componentId} ${labels} 변경`
 }
 
 /**
@@ -51,6 +51,7 @@ function useHtmlSlideEdit(
   onComponentSelect: (id: string | null, style: HtmlComponentStyle | null) => void,
   ignoreHtmlSyncRef: React.RefObject<boolean>,
   onStyleUpdate: (style: HtmlComponentStyle) => void,
+  isViewer: boolean = false,
 ) {
   // hidden file input (이미지 업로드용)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -111,13 +112,14 @@ function useHtmlSlideEdit(
   // html-image-upload-request: Inspector → file picker
   useEffect(() => {
     const handler = (e: Event) => {
+      if (isViewer) return
       const { componentId } = (e as CustomEvent<{ componentId: string }>).detail
       pendingImageIdRef.current = componentId
       fileInputRef.current?.click()
     }
     window.addEventListener('html-image-upload-request', handler)
     return () => window.removeEventListener('html-image-upload-request', handler)
-  }, [])
+  }, [isViewer])
 
   // iframe 로드 시 내부 DOM에 이벤트 등록
   const handleIframeLoad = useCallback(() => {
@@ -142,7 +144,7 @@ function useHtmlSlideEdit(
       el.addEventListener('dblclick', (e) => {
         e.stopPropagation()
         const isTextEl = isTextElement(el)
-        if (!isTextEl) return
+        if (!isTextEl || isViewer) return
 
         window.dispatchEvent(new CustomEvent('html-text-editing', { detail: true }))
         el.contentEditable = 'true'
@@ -166,7 +168,7 @@ function useHtmlSlideEdit(
           onHtmlChange(fullHtml)
           try {
             const textId = el.getAttribute('data-component-id') ?? ''
-            await api.patch(`/projects/${projectId}/slides/${slideId}`, { html_content: fullHtml, reason: `사용자: [${textId}] 텍스트 수정` })
+            await api.patch(`/projects/${projectId}/slides/${slideId}`, { html_content: fullHtml, reason: `사용자: ${textId} 텍스트 수정` })
             crdtStore.setSlideHtml(slideId, fullHtml)
           } catch (err) {
             console.error('html slide text update failed', err)
@@ -257,7 +259,7 @@ function useHtmlSlideEdit(
 
     try {
       const targetId = pendingCrop?.targetId ?? ''
-      await api.patch(`/projects/${projectId}/slides/${slideId}`, { html_content: fullHtml, reason: `사용자: [${targetId}] 이미지 변경` })
+      await api.patch(`/projects/${projectId}/slides/${slideId}`, { html_content: fullHtml, reason: `사용자: ${targetId} 이미지 변경` })
     } catch (err) {
       console.error('html slide image update failed', err)
     }
@@ -274,7 +276,7 @@ function useHtmlSlideEdit(
     const newHtml = rebuildFullHtml(doc.documentElement.innerHTML)
     onHtmlChange(newHtml)
     onComponentSelect(null, null)
-    api.patch(`/projects/${projectId}/slides/${slideId}`, { html_content: newHtml, reason: `사용자: [${componentId}] 컴포넌트 삭제` })
+    api.patch(`/projects/${projectId}/slides/${slideId}`, { html_content: newHtml, reason: `사용자: ${componentId} 컴포넌트 삭제` })
       .then(() => { crdtStore.setSlideHtml(slideId, newHtml) })
       .catch(console.error)
   }, [iframeRef, projectId, slideId, onHtmlChange, onComponentSelect])
@@ -582,6 +584,7 @@ type DragState = {
 export default function SlideCanvas() {
   const { presentation, currentSlideIndex, selectedComponentId, selectComponent, loadPresentation } = useEditorStore()
   const currentSlide = presentation?.slides[currentSlideIndex]
+  const isViewer = presentation?.myRole === 'viewer'
   const { conflicts, proposals } = useProposalStore()
   const conflictedIds = new Set(conflicts.map((c) => c.componentId))
   // 현재 슬라이드의 가장 최근 pending proposal (html_content 있는 것)
@@ -676,6 +679,7 @@ export default function SlideCanvas() {
     handleComponentSelect,
     ignoreHtmlSyncRef,
     handleStyleUpdate,
+    isViewer,
   )
 
   const handleIframeLoad = useCallback(() => {
