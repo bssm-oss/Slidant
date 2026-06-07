@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from app.api.v1.endpoints.ws import manager as ws_manager
 from app.core.deps import CurrentUser, UoW
-from app.services import slide_history_service
+from app.services import project_service, slide_history_service
 from app.services.slide_content import apply_patches
 
 router = APIRouter(prefix='/proposals', tags=['proposals'])
@@ -66,7 +66,11 @@ async def list_proposals_by_slide(
     if not slide:
         raise HTTPException(status_code=404, detail='Slide not found')
     project = await uow.projects.get(slide.project_id)
-    if not project or project.owner_id != current_user.id:
+    if not project:
+        raise HTTPException(status_code=404, detail='Project not found')
+    is_owner = project.owner_id == current_user.id
+    is_member = await project_service.is_project_member(uow.project_members, project.id, current_user.id)
+    if not is_owner and not is_member:
         raise HTTPException(status_code=403, detail='Not authorized')
     return await uow.proposals.list_by_slide(slide_id, status=status_filter)
 

@@ -24,6 +24,7 @@ def make_dispatch_slides(_ctx: NodeContext):
             ]
         if not specs:
             specs = [{"title": "슬라이드", "layout": "COVER", "key_points": [], "image_needed": False}]
+        specs = specs[:20]  # LLM 오버생성 방어: 최대 20장
         return [
             Send("slide_composer", {
                 **state,

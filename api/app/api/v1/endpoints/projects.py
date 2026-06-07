@@ -58,9 +58,10 @@ async def _notify_slide_changed(project_id: UUID, slide_id: UUID | None = None) 
 
 @router.get("", response_model=list[ProjectResponse])
 async def list_projects(current_user: CurrentUser, uow: UoW):
-    projects = await project_service.list_projects(uow.projects, current_user.id)
-    if not projects:
+    rows = await uow.projects.list_accessible(current_user.id)
+    if not rows:
         return []
+    projects = [p for p, _ in rows]
     project_ids = [p.id for p in projects]
     counts_result = await uow.session.execute(
         select(Slide.project_id, func.count(Slide.id).label("cnt"))
@@ -75,10 +76,11 @@ async def list_projects(current_user: CurrentUser, uow: UoW):
             title=p.title,
             slide_count=count_map.get(p.id, 0),
             theme=p.theme,
+            my_role=role,
             created_at=p.created_at,
             updated_at=p.updated_at,
         )
-        for p in projects
+        for p, role in rows
     ]
 
 
@@ -143,7 +145,7 @@ async def update_slide_html(project_id: UUID, slide_id: UUID, body: dict, curren
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Slide not found")
     if "html_content" in body:
-        reason = "사용자: 직접 편집"
+        reason = body.get("reason") or "사용자: 직접 편집"
         await slide_history_service.archive_and_apply(
             uow, slide_id, list(slide.content or []),
             reason, html_content=body["html_content"]

@@ -69,6 +69,23 @@ async def get_project_or_404(project_repo: ProjectRepository, project_id: UUID, 
     return await _get_project_or_404(project_repo, project_id, owner_id)
 
 
+async def get_project_for_viewer_or_404(
+    project_repo: ProjectRepository,
+    member_repo: ProjectMemberRepository,
+    project_id: UUID,
+    user_id: UUID,
+) -> Project:
+    """owner 또는 member면 접근 허용 (읽기 전용 엔드포인트용)."""
+    project = await project_repo.get(project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    if project.owner_id == user_id:
+        return project
+    if await member_repo.is_member(project_id, user_id):
+        return project
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+
 async def update_project_title(
     project_repo: ProjectRepository, project_id: UUID, owner_id: UUID, title: str
 ) -> Project:
@@ -86,9 +103,13 @@ async def delete_project(project_repo: ProjectRepository, project_id: UUID, owne
 
 
 async def list_slides(
-    project_repo: ProjectRepository, slide_repo: SlideRepository, project_id: UUID, owner_id: UUID
+    project_repo: ProjectRepository, slide_repo: SlideRepository, project_id: UUID, owner_id: UUID,
+    member_repo: ProjectMemberRepository | None = None,
 ) -> list[Slide]:
-    await _get_project_or_404(project_repo, project_id, owner_id)
+    if member_repo is not None:
+        await get_project_for_viewer_or_404(project_repo, member_repo, project_id, owner_id)
+    else:
+        await _get_project_or_404(project_repo, project_id, owner_id)
     return await slide_repo.list_by_project(project_id)
 
 

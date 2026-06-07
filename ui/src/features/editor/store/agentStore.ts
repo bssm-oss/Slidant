@@ -150,6 +150,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       })
       const allAgents: Agent[] = [
         ...data.system.map(toAgent('sys')),
+        ...(data.library ?? []).map(toAgent('lib')),
         ...(data.project ?? []).map(toAgent('proj')),
       ]
       set({ agents: allAgents })

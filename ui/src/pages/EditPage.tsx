@@ -36,7 +36,9 @@ export default function EditPage() {
         (async () => {
           const { loadSessions, createSession } = useSessionStore.getState()
           await loadSessions(id)
-          if (useSessionStore.getState().sessions.length === 0) {
+          const state = useSessionStore.getState()
+          const mySessionCount = state.sessions.filter(s => s.user_id === state.currentUserId).length
+          if (mySessionCount === 0) {
             await createSession(id, '기본 세션')
           }
         })(),

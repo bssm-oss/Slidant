@@ -414,6 +414,7 @@ export default function ComponentInspector({ style }: Props) {
   const { presentation, currentSlideIndex } = useSlideStore()
   const currentSlide = presentation?.slides[currentSlideIndex]
 
+  // 컴포넌트 교체 시 전체 리셋
   useEffect(() => {
     setPos({ x: style.left, y: style.top })
     setSize({ w: style.width, h: style.height })
@@ -433,6 +434,17 @@ export default function ComponentInspector({ style }: Props) {
     setBackgroundPosition(style.backgroundPosition || 'center center')
     setShowHistory(false)
   }, [style.componentId])
+
+  // 같은 컴포넌트에서 외부(오버레이/onStyleUpdate) 변경 반영
+  useEffect(() => { setOpacity(Math.round(style.opacity * 100)) }, [style.opacity])
+  useEffect(() => { setPos({ x: style.left, y: style.top }) }, [style.left, style.top])
+  useEffect(() => { setSize({ w: style.width, h: style.height }) }, [style.width, style.height])
+  useEffect(() => { setFontSize(style.fontSize) }, [style.fontSize])
+  useEffect(() => { setFontWeight(style.fontWeight ?? 400) }, [style.fontWeight])
+  useEffect(() => { setTextAlign(style.textAlign || 'left') }, [style.textAlign])
+  useEffect(() => { setLineHeight(style.lineHeight ?? 1.4) }, [style.lineHeight])
+  useEffect(() => { setLetterSpacing(style.letterSpacing ?? 0) }, [style.letterSpacing])
+  useEffect(() => { setBorderRadius(style.borderRadius ?? 0) }, [style.borderRadius])
 
   const id = style.componentId
 

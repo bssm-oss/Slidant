@@ -103,7 +103,13 @@ class CrdtStore {
 
     if (innerType === 0) {
       // SYNC_STEP1: 서버 state vector → 내 상태로 reply
-      const step2Content = Y.encodeStateAsUpdate(this.doc, bytes.slice(2))
+      let step2Content: Uint8Array
+      try {
+        step2Content = Y.encodeStateAsUpdate(this.doc, bytes.slice(2))
+      } catch (e) {
+        console.warn('[crdt] encodeStateAsUpdate failed', e)
+        return
+      }
       // SYNC_STEP2 메시지 구성: [0(SYNC)][1(STEP2)][length][data]
       const reply = this._buildSyncStep2(step2Content)
       wsClient.sendBinary(reply)

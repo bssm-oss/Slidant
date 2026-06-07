@@ -14,6 +14,30 @@ import SelectionOverlay from './SelectionOverlay'
 
 // ── HTML 슬라이드 편집 훅 ───────────────────────────────────────────────────────
 
+const PROP_CHANGE_LABEL: Record<string, string> = {
+  left: '위치', top: '위치',
+  width: '크기', height: '크기',
+  color: '글자색',
+  backgroundColor: '배경색',
+  fontSize: '글자 크기',
+  opacity: '투명도',
+  fontWeight: '글자 굵기',
+  textAlign: '텍스트 정렬',
+  lineHeight: '줄 간격',
+  letterSpacing: '자간',
+  borderRadius: '모서리 반경',
+  zIndex: '레이어 순서',
+  objectFit: '이미지 맞춤',
+  objectPosition: '이미지 위치',
+  backgroundSize: '배경 크기',
+  backgroundPosition: '배경 위치',
+}
+
+function buildStyleReason(componentId: string, props: Set<string>): string {
+  const labels = [...new Set([...props].map((p) => PROP_CHANGE_LABEL[p] ?? p))].join('·')
+  return `사용자: [${componentId}] ${labels} 변경`
+}
+
 /**
  * iframe 내부 DOM에 인라인 텍스트 편집 + 이미지 업로드 이벤트를 주입하고,
  * 변경사항을 html_content string에 반영 → API 저장한다.
@@ -35,6 +59,7 @@ function useHtmlSlideEdit(
   const [pendingCrop, setPendingCrop] = useState<{ dataUrl: string; targetId: string; elW: number; elH: number } | null>(null)
 
   // html-component-style-update: Inspector → iframe DOM → debounced API save
+  const pendingChangeRef = useRef<{ componentId: string; props: Set<string> } | null>(null)
   useEffect(() => {
     const handler = (e: Event) => {
       const { componentId, prop, value } = (e as CustomEvent<{ componentId: string; prop: string; value: string | number }>).detail
@@ -50,11 +75,20 @@ function useHtmlSlideEdit(
       // inspector + overlay 동기화
       onStyleUpdate(parseElementStyle(el))
 
+      // 변경된 prop 누적 (debounce 창 내에서 여러 prop 변경 시 reason 합산)
+      if (!pendingChangeRef.current || pendingChangeRef.current.componentId !== componentId) {
+        pendingChangeRef.current = { componentId, props: new Set() }
+      }
+      pendingChangeRef.current.props.add(prop)
+
       // DOM 직접 업데이트 → API 저장 후 store/CRDT 반영 (즉시 store 업데이트 시 iframe reload 유발)
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
       saveTimerRef.current = setTimeout(async () => {
+        const pending = pendingChangeRef.current
+        pendingChangeRef.current = null
+        const reason = pending ? buildStyleReason(pending.componentId, pending.props) : '사용자: 직접 편집'
         try {
-          await api.patch(`/projects/${projectId}/slides/${slideId}`, { html_content: newHtml })
+          await api.patch(`/projects/${projectId}/slides/${slideId}`, { html_content: newHtml, reason })
           const ppt = useSlideStore.getState().presentation
           if (ppt) {
             ignoreHtmlSyncRef.current = true
@@ -131,7 +165,8 @@ function useHtmlSlideEdit(
           const fullHtml = rebuildFullHtml(newHtml)
           onHtmlChange(fullHtml)
           try {
-            await api.patch(`/projects/${projectId}/slides/${slideId}`, { html_content: fullHtml })
+            const textId = el.getAttribute('data-component-id') ?? ''
+            await api.patch(`/projects/${projectId}/slides/${slideId}`, { html_content: fullHtml, reason: `사용자: [${textId}] 텍스트 수정` })
             crdtStore.setSlideHtml(slideId, fullHtml)
           } catch (err) {
             console.error('html slide text update failed', err)
@@ -221,7 +256,8 @@ function useHtmlSlideEdit(
     window.dispatchEvent(new CustomEvent('html-component-select', { detail: parseElementStyle(el) }))
 
     try {
-      await api.patch(`/projects/${projectId}/slides/${slideId}`, { html_content: fullHtml })
+      const targetId = pendingCrop?.targetId ?? ''
+      await api.patch(`/projects/${projectId}/slides/${slideId}`, { html_content: fullHtml, reason: `사용자: [${targetId}] 이미지 변경` })
     } catch (err) {
       console.error('html slide image update failed', err)
     }
@@ -238,7 +274,7 @@ function useHtmlSlideEdit(
     const newHtml = rebuildFullHtml(doc.documentElement.innerHTML)
     onHtmlChange(newHtml)
     onComponentSelect(null, null)
-    api.patch(`/projects/${projectId}/slides/${slideId}`, { html_content: newHtml })
+    api.patch(`/projects/${projectId}/slides/${slideId}`, { html_content: newHtml, reason: `사용자: [${componentId}] 컴포넌트 삭제` })
       .then(() => { crdtStore.setSlideHtml(slideId, newHtml) })
       .catch(console.error)
   }, [iframeRef, projectId, slideId, onHtmlChange, onComponentSelect])

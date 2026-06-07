@@ -211,6 +211,7 @@ def make_ops_dispatcher(ctx: NodeContext):
             create_ops = [op]
             while queue and queue[0].get("type") == "create":
                 create_ops.append(queue.pop(0))
+            create_ops = create_ops[:20]  # LLM 오버생성 방어: 최대 20장
             slide_specs = [
                 co.get("spec", {"title": f"슬라이드 {i+1}", "layout": "CONTENT", "key_points": []})
                 for i, co in enumerate(create_ops)

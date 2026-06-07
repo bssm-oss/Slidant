@@ -2,9 +2,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import select
 
 from app.core.deps import CurrentUser, UoW
 from app.models.chat_session import ChatSession
+from app.models.user import User
 from app.services import project_service
 
 router = APIRouter(prefix="/projects/{project_id}/sessions", tags=["chat-sessions"])
@@ -19,15 +21,16 @@ class SessionResponse(BaseModel):
     project_id: UUID
     name: str
     user_id: UUID | None = None
+    user_email: str | None = None
     created_at: str
 
     model_config = {"from_attributes": True}
 
     @classmethod
-    def from_session(cls, s: ChatSession) -> "SessionResponse":
+    def from_session(cls, s: ChatSession, user_email: str | None = None) -> "SessionResponse":
         return cls(
             id=s.id, project_id=s.project_id, name=s.name,
-            user_id=s.user_id, created_at=s.created_at.isoformat(),
+            user_id=s.user_id, user_email=user_email, created_at=s.created_at.isoformat(),
         )
 
 
@@ -57,7 +60,12 @@ async def _require_session_owner(session_id: UUID, project_id: UUID, current_use
 async def list_sessions(project_id: UUID, current_user: CurrentUser, uow: UoW):
     await _require_project_access(project_id, current_user, uow)
     sessions = await uow.chat_sessions.list_by_project(project_id)
-    return [SessionResponse.from_session(s) for s in sessions]
+    user_ids = list({s.user_id for s in sessions if s.user_id})
+    email_map: dict[UUID, str] = {}
+    if user_ids:
+        result = await uow.session.execute(select(User.id, User.email).where(User.id.in_(user_ids)))
+        email_map = {row.id: row.email for row in result}
+    return [SessionResponse.from_session(s, email_map.get(s.user_id)) for s in sessions]
 
 
 @router.post("", response_model=SessionResponse, status_code=201)

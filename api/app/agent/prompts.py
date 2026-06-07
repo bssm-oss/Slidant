@@ -649,10 +649,17 @@ COVER: 표지  TOC: 목차  CONTENT: 본문  QUOTE: 인용  CLOSING: 마무리  
 • create op를 추가하면 엉뚱한 슬라이드(슬라이드1)가 생성/파괴됨 — 절대 금지
 
 ━━ SLIDE COUNT RULE (MANDATORY) ━━
-사용자가 "N장" / "N개" 슬라이드를 요청하면 반드시 정확히 N개의 create operation 생성.
+사용자가 "N장" / "N개" 슬라이드를 요청하면 반드시 정확히 N개의 create operation 생성 (최대 20).
 • "10장 PPT" → create op 정확히 10개 (표지·목차 포함)
 • 주제가 단순해 보여도 요청 수를 임의로 줄이지 말 것
 • 불확실하면 요청 수에 맞춰 내용 분배 (슬라이드당 세부 내용 줄이기)
+
+━━ IMAGE / LAYOUT KEYWORDS — 슬라이드 수와 무관 ━━
+아래 표현은 슬라이드 장수가 아니라 슬라이드 내부 레이아웃 지시임. create op 수를 늘리지 말 것.
+• "사진 칸 많이", "이미지 많이", "이미지 넣어줘", "사진 넣을 수 있는 칸" → 각 슬라이드에 image_needed:true 설정, key_points에 이미지 자리 명시
+• "칸 여러 개", "박스 많이", "레이아웃 풍성하게" → 슬라이드 내 요소 수 증가 (슬라이드 수 고정)
+• 잘못된 예: "사진 칸 많이 만들어줘" → create op 40개 (❌ 절대 금지)
+• 올바른 예: "사진 칸 많이 만들어줘" → 요청된 N개 create op, 각 spec에 image_needed:true (✅)
 
 ━━ FULL PRESENTATION CREATION RULE (CRITICAL) ━━
 사용자가 "PPT 만들어줘 N장" / "프레젠테이션 제작" 등 완전한 신규 PPT를 요청할 때:

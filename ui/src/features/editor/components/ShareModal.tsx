@@ -106,15 +106,15 @@ export default function ShareModal({ projectId, onClose }: ShareModalProps) {
             {loading ? '링크 생성 중…' : `${role === 'editor' ? '편집자' : '뷰어'} 링크 생성`}
           </button>
         ) : (
-          <div className="flex items-center gap-2 bg-[var(--bg-muted)] rounded-xl px-3 py-2.5">
-            <span className="flex-1 text-[12px] text-[var(--text-muted)] truncate">{generatedLink}</span>
-            <button
-              onClick={copyLink}
-              className="shrink-0 p-1.5 rounded-lg hover:bg-[var(--border)] transition-colors"
-              title="링크 복사"
-            >
+          <div
+            className="flex items-center gap-2 bg-[var(--bg-muted)] rounded-xl px-3 py-2.5 cursor-pointer hover:bg-[var(--border)] transition-colors"
+            onClick={copyLink}
+            title="클릭하여 복사"
+          >
+            <span className="flex-1 text-[12px] text-[var(--text-muted)] truncate select-all">{generatedLink}</span>
+            <span className="shrink-0 p-1.5">
               {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} className="text-[var(--text-muted)]" />}
-            </button>
+            </span>
           </div>
         )}
 
