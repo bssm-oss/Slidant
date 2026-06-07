@@ -49,6 +49,22 @@ function _computeAddedComponentIds(currentHtml: string, proposalHtml: string): s
   return [...proposed].filter((id) => !current.has(id))
 }
 
+function _extractComponentHtml(html: string, id: string): string | null {
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    return doc.querySelector(`[data-component-id="${id}"]`)?.outerHTML ?? null
+  } catch { return null }
+}
+
+function _anyExistingComponentModified(currentHtml: string, proposalHtml: string): boolean {
+  const currentIds = _getComponentIds(currentHtml)
+  const proposedIds = _getComponentIds(proposalHtml)
+  const commonIds = [...currentIds].filter((id) => proposedIds.has(id))
+  return commonIds.some(
+    (id) => _extractComponentHtml(currentHtml, id) !== _extractComponentHtml(proposalHtml, id)
+  )
+}
+
 import { create } from 'zustand'
 import type { Agent, AgentLog, AgentStatus, ChatMessage } from '@/shared/types'
 import { runAgent as apiRunAgent } from '@/shared/lib/agentRunApi'
@@ -642,8 +658,9 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             const currentHtml = currentSlide?.html_content || ''
             const addedIds = _computeAddedComponentIds(currentHtml, proposalPayload.html_content)
             const deletedIds = _computeAddedComponentIds(proposalPayload.html_content, currentHtml) // 현재에 있는데 제안에 없는 것
-            if (addedIds.length > 0 && deletedIds.length === 0) {
-              // 순수 추가만 있을 때만 auto-apply (교체 상황은 사용자 확인 필요)
+            const anyModified = _anyExistingComponentModified(currentHtml, proposalPayload.html_content)
+            if (addedIds.length > 0 && deletedIds.length === 0 && !anyModified) {
+              // 순수 추가만 있을 때만 auto-apply (기존 컴포넌트 수정/교체가 있으면 사용자 확인 필요)
               useProposalStore.getState().approveProposal(proposalPayload.id, addedIds, true).catch(() => {})
             }
           }

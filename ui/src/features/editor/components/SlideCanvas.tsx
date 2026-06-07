@@ -6,6 +6,7 @@ import { cn } from '@/shared/lib/utils'
 import { api } from '@/shared/lib/apiClient'
 import type { SlideComponent } from '@/shared/types'
 import ConflictResolver from './ConflictResolver'
+import SlideProposalBanner from './SlideProposalBanner'
 import { buildSlideSrc } from '@/shared/lib/slideHtml'
 
 // ── HTML 슬라이드 편집 훅 ───────────────────────────────────────────────────────
@@ -405,8 +406,12 @@ type DragState = {
 export default function SlideCanvas() {
   const { presentation, currentSlideIndex, selectedComponentId, selectComponent, loadPresentation } = useEditorStore()
   const currentSlide = presentation?.slides[currentSlideIndex]
-  const { conflicts } = useProposalStore()
+  const { conflicts, proposals } = useProposalStore()
   const conflictedIds = new Set(conflicts.map((c) => c.componentId))
+  // 현재 슬라이드의 가장 최근 pending proposal (html_content 있는 것)
+  const pendingProposal = proposals
+    .filter((p) => p.status === 'pending' && p.slide_id === currentSlide?.id && !!p.html_content)
+    .at(-1) ?? null
   const containerRef = useRef<HTMLDivElement>(null)
   const [scale, setScale] = useState(0.75)
   const drag = useRef<DragState | null>(null)
@@ -590,7 +595,7 @@ export default function SlideCanvas() {
 
     return (
       <div ref={containerRef}
-        className="flex-1 flex items-center justify-center bg-[var(--bg-muted)] overflow-hidden"
+        className="flex-1 relative flex items-center justify-center bg-[var(--bg-muted)] overflow-hidden"
         onClick={() => { setSelectedHtmlStyle(null); selectComponent(null) }}>
         {/* hidden file input for image upload */}
         <input
@@ -628,6 +633,10 @@ export default function SlideCanvas() {
             </div>
           )}
         </div>
+        {/* Proposal 전체 적용 배너 */}
+        {pendingProposal && (
+          <SlideProposalBanner proposal={pendingProposal} />
+        )}
         {/* 우측 속성 패널과 상태 공유 */}
         <HtmlStyleBroadcaster style={selectedHtmlStyle} />
       </div>
