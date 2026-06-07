@@ -603,6 +603,7 @@ async def _run_agent_background_inner(
                     session_id=body.session_id,
                     user_id=user_id,
                 ))
+                await err_uow.commit()
             await _broadcast(str(body.project_id), {
                 "type": "agent_error",
                 "agent_run_id": str(agent_run.id),

@@ -49,6 +49,8 @@ export default function AgentHistoryPanel({ projectId, open, onClose }: Props) {
     try {
       const data = await fetchAgentRuns(projectId)
       setRuns(data)
+    } catch {
+      // fetch failed — keep stale data, loading spinner stops
     } finally {
       setLoading(false)
     }
