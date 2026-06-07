@@ -4,8 +4,10 @@ from uuid import UUID
 from fastapi import HTTPException, status
 
 from app.models.project import Project
+from app.models.project_member import ProjectMember
 from app.models.slide import Slide
 from app.repositories.project import ProjectRepository
+from app.repositories.project_member import ProjectMemberRepository
 from app.repositories.slide import SlideRepository
 from app.services import slide_content
 
@@ -33,15 +35,34 @@ async def create_project(
     slide_repo: SlideRepository,
     owner_id: UUID,
     title: str,
+    member_repo: ProjectMemberRepository | None = None,
 ) -> Project:
     project = Project(owner_id=owner_id, title=title)
     project_repo.add(project)
     await project_repo.session.flush()
     slide = Slide(project_id=project.id, order=0, content=[])
     slide_repo.add(slide)
+    if member_repo is not None:
+        member_repo.add(ProjectMember(project_id=project.id, user_id=owner_id, role="owner"))
     await project_repo.session.flush()
     await project_repo.session.refresh(project)
     return project
+
+
+async def is_project_member(member_repo: ProjectMemberRepository, project_id: UUID, user_id: UUID) -> bool:
+    return await member_repo.is_member(project_id, user_id)
+
+
+async def add_project_member(
+    member_repo: ProjectMemberRepository, project_id: UUID, user_id: UUID, role: str = "editor"
+) -> ProjectMember:
+    existing = await member_repo.get_member(project_id, user_id)
+    if existing:
+        return existing
+    member = ProjectMember(project_id=project_id, user_id=user_id, role=role)
+    member_repo.add(member)
+    await member_repo.session.flush()
+    return member
 
 
 async def get_project_or_404(project_repo: ProjectRepository, project_id: UUID, owner_id: UUID) -> Project:

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { History, RotateCcw, ChevronDown, Clock, Check, X } from 'lucide-react'
+import { History, RotateCcw, ChevronDown, Clock, Check, X, ImageUp } from 'lucide-react'
 import type { HtmlComponentStyle } from './SlideCanvas'
 import { useEditorStore } from '../store/editorStore'
 import { useProposalStore } from '../store/proposalStore'
@@ -489,6 +489,24 @@ export default function ComponentInspector({ style }: Props) {
             value={bgColor}
             onChange={(hex) => { setBgColor(hex); commitProp('backgroundColor', hex) }}
           />
+          <div className="pb-1" />
+          <Divider />
+        </>
+      )}
+
+      {/* Image upload */}
+      {style.isImage && (
+        <>
+          <SectionLabel>Image</SectionLabel>
+          <div className="px-4 py-2">
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('html-image-upload-request', { detail: { componentId: id } }))}
+              className="w-full flex items-center justify-center gap-2 h-8 rounded-[7px] border border-[var(--border)] text-[var(--text-muted)] text-[11px] font-medium hover:bg-[var(--bg-muted)] transition-colors"
+            >
+              <ImageUp size={13} />
+              이미지 업로드
+            </button>
+          </div>
           <div className="pb-1" />
           <Divider />
         </>

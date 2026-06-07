@@ -68,6 +68,17 @@ function useHtmlSlideEdit(
     return () => window.removeEventListener('html-component-style-update', handler)
   }, [projectId, slideId, onHtmlChange])
 
+  // html-image-upload-request: Inspector → file picker
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { componentId } = (e as CustomEvent<{ componentId: string }>).detail
+      pendingImageIdRef.current = componentId
+      fileInputRef.current?.click()
+    }
+    window.addEventListener('html-image-upload-request', handler)
+    return () => window.removeEventListener('html-image-upload-request', handler)
+  }, [])
+
   // iframe 로드 시 내부 DOM에 이벤트 등록
   const handleIframeLoad = useCallback(() => {
     const iframe = iframeRef.current
@@ -135,14 +146,9 @@ function useHtmlSlideEdit(
         el.addEventListener('keydown', onKeyDown)
       })
 
-      // ── 이미지 플레이스홀더 클릭 → 파일 picker ──
+      // 이미지 컴포넌트 커서
       if (isImagePlaceholder(el)) {
         el.style.cursor = 'pointer'
-        el.addEventListener('click', (e) => {
-          e.stopPropagation()
-          pendingImageIdRef.current = id
-          fileInputRef.current?.click()
-        })
       }
     })
 
@@ -291,6 +297,7 @@ export interface HtmlComponentStyle {
   tagName: string
   textContent: string
   isText: boolean
+  isImage: boolean
 }
 
 function parseElementStyle(el: HTMLElement): HtmlComponentStyle {
@@ -309,6 +316,7 @@ function parseElementStyle(el: HTMLElement): HtmlComponentStyle {
     tagName: el.tagName.toLowerCase(),
     textContent: el.textContent?.trim().slice(0, 80) ?? '',
     isText: isTextElement(el),
+    isImage: isImagePlaceholder(el),
   }
 }
 

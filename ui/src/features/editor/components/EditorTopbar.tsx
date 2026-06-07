@@ -97,9 +97,12 @@ export default function EditorTopbar({ onPresent, onExport, onShare, onUndo, onR
             {presenceUsers.slice(0, 5).map((u) => (
               <div
                 key={u.userId}
-                title={u.name}
-                style={{ background: u.color }}
-                className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-sm ring-2 ring-white"
+                title={u.isAgentRunning ? `${u.name} (에이전트 실행 중)` : u.name}
+                style={{
+                  background: u.color,
+                  boxShadow: u.isAgentRunning ? `0 0 0 2px white, 0 0 0 4px ${u.color}` : undefined,
+                }}
+                className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-sm ring-2 ring-white transition-all${u.isAgentRunning ? ' animate-pulse' : ''}`}
               >
                 {u.name[0]?.toUpperCase()}
               </div>

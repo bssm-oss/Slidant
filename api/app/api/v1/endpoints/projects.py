@@ -84,7 +84,7 @@ async def list_projects(current_user: CurrentUser, uow: UoW):
 
 @router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
 async def create_project(body: ProjectCreate, current_user: CurrentUser, uow: UoW):
-    return await project_service.create_project(uow.projects, uow.slides, current_user.id, body.title)
+    return await project_service.create_project(uow.projects, uow.slides, current_user.id, body.title, uow.project_members)
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)
@@ -351,3 +351,26 @@ async def revoke_share_token(project_id: UUID, current_user: CurrentUser, uow: U
         raise HTTPException(status_code=403, detail="Not authorized")
     project.share_token = None
     await uow.commit()
+
+
+class ProjectMemberResponse(BaseModel):
+    user_id: UUID
+    role: str
+    joined_at: str
+
+    model_config = {"from_attributes": True}
+
+
+@router.get("/{project_id}/members", response_model=list[ProjectMemberResponse])
+async def list_members(project_id: UUID, current_user: CurrentUser, uow: UoW):
+    project = await uow.projects.get(project_id)
+    if not project or not await project_service.is_project_member(uow.project_members, project_id, current_user.id):
+        if project and project.owner_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        elif not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+    members = await uow.project_members.list_by_project(project_id)
+    return [
+        ProjectMemberResponse(user_id=m.user_id, role=m.role, joined_at=m.joined_at.isoformat())
+        for m in members
+    ]

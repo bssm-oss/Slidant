@@ -87,6 +87,7 @@ export interface ChatSession {
   id: string
   project_id: string
   name: string
+  user_id?: string | null
   created_at: string
 }
 

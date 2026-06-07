@@ -9,5 +9,6 @@ class ChatSession(SQLModel, table=True):
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     project_id: UUID = Field(foreign_key="projects.id", index=True)
+    user_id: UUID | None = Field(default=None, foreign_key="users.id", index=True)
     name: str = Field(max_length=200, default="새 세션")
     created_at: datetime = Field(default_factory=datetime.utcnow)

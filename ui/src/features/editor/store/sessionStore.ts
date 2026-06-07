@@ -1,10 +1,12 @@
 import { create } from 'zustand'
 import type { ChatSession } from '@/shared/types'
 import { fetchSessions, createSession as apiCreateSession, deleteSession as apiDeleteSession } from '@/shared/lib/chatSessionApi'
+import { getMe } from '@/shared/lib/auth'
 
 interface SessionState {
   sessions: ChatSession[]
   currentSessionId: string | null
+  currentUserId: string | null
 
   loadSessions: (projectId: string) => Promise<void>
   createSession: (projectId: string, name?: string) => Promise<ChatSession>
@@ -15,13 +17,18 @@ interface SessionState {
 export const useSessionStore = create<SessionState>((set, get) => ({
   sessions: [],
   currentSessionId: null,
+  currentUserId: null,
 
   loadSessions: async (projectId) => {
     try {
-      const sessions = await fetchSessions(projectId)
-      set({ sessions })
+      const [sessions, me] = await Promise.all([
+        fetchSessions(projectId),
+        get().currentUserId ? Promise.resolve(null) : getMe().catch(() => null),
+      ])
+      set({ sessions, ...(me ? { currentUserId: me.id } : {}) })
       if (sessions.length > 0 && !get().currentSessionId) {
-        set({ currentSessionId: sessions[0].id })
+        const mySession = sessions.find((s) => s.user_id === (get().currentUserId || me?.id))
+        set({ currentSessionId: mySession?.id ?? sessions[0].id })
       }
     } catch (e) {
       console.error('loadSessions failed', e)

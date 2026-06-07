@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from app.core.deps import CurrentUser, UoW
 from app.models.chat_session import ChatSession
+from app.services import project_service
 
 router = APIRouter(prefix="/projects/{project_id}/sessions", tags=["chat-sessions"])
 
@@ -17,30 +18,52 @@ class SessionResponse(BaseModel):
     id: UUID
     project_id: UUID
     name: str
+    user_id: UUID | None = None
     created_at: str
 
     model_config = {"from_attributes": True}
 
     @classmethod
     def from_session(cls, s: ChatSession) -> "SessionResponse":
-        return cls(id=s.id, project_id=s.project_id, name=s.name, created_at=s.created_at.isoformat())
+        return cls(
+            id=s.id, project_id=s.project_id, name=s.name,
+            user_id=s.user_id, created_at=s.created_at.isoformat(),
+        )
+
+
+async def _require_project_access(project_id: UUID, current_user: CurrentUser, uow: UoW):
+    """owner 또는 프로젝트 멤버면 통과."""
+    project = await uow.projects.get(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    is_owner = project.owner_id == current_user.id
+    is_member = await project_service.is_project_member(uow.project_members, project_id, current_user.id)
+    if not is_owner and not is_member:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    return project
+
+
+async def _require_session_owner(session_id: UUID, project_id: UUID, current_user: CurrentUser, uow: UoW):
+    """세션 rename/delete — 본인 세션만."""
+    session = await uow.chat_sessions.get(session_id)
+    if not session or session.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session.user_id and session.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your session")
+    return session
 
 
 @router.get("", response_model=list[SessionResponse])
 async def list_sessions(project_id: UUID, current_user: CurrentUser, uow: UoW):
-    project = await uow.projects.get(project_id)
-    if not project or project.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized")
+    await _require_project_access(project_id, current_user, uow)
     sessions = await uow.chat_sessions.list_by_project(project_id)
     return [SessionResponse.from_session(s) for s in sessions]
 
 
 @router.post("", response_model=SessionResponse, status_code=201)
 async def create_session(project_id: UUID, body: SessionCreate, current_user: CurrentUser, uow: UoW):
-    project = await uow.projects.get(project_id)
-    if not project or project.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized")
-    session = ChatSession(project_id=project_id, name=body.name)
+    await _require_project_access(project_id, current_user, uow)
+    session = ChatSession(project_id=project_id, name=body.name, user_id=current_user.id)
     uow.chat_sessions.add(session)
     await uow.flush()
     await uow.refresh(session)
@@ -49,22 +72,14 @@ async def create_session(project_id: UUID, body: SessionCreate, current_user: Cu
 
 @router.patch("/{session_id}", response_model=SessionResponse)
 async def rename_session(project_id: UUID, session_id: UUID, body: SessionCreate, current_user: CurrentUser, uow: UoW):
-    project = await uow.projects.get(project_id)
-    if not project or project.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized")
-    session = await uow.chat_sessions.get(session_id)
-    if not session or session.project_id != project_id:
-        raise HTTPException(status_code=404, detail="Session not found")
+    await _require_project_access(project_id, current_user, uow)
+    session = await _require_session_owner(session_id, project_id, current_user, uow)
     session.name = body.name
     return SessionResponse.from_session(session)
 
 
 @router.delete("/{session_id}", status_code=204)
 async def delete_session(project_id: UUID, session_id: UUID, current_user: CurrentUser, uow: UoW):
-    project = await uow.projects.get(project_id)
-    if not project or project.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized")
-    session = await uow.chat_sessions.get(session_id)
-    if not session or session.project_id != project_id:
-        raise HTTPException(status_code=404, detail="Session not found")
+    await _require_project_access(project_id, current_user, uow)
+    session = await _require_session_owner(session_id, project_id, current_user, uow)
     await uow.chat_sessions.delete(session)

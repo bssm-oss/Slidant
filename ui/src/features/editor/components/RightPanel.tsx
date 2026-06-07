@@ -8,6 +8,8 @@ import { Maximize2, Send, Loader2, ChevronDown, Search, X } from 'lucide-react'
 import type { Agent, ChatMessage } from '@/shared/types'
 import AgentManagerPanel from './AgentManagerPanel'
 import ComponentInspector from './ComponentInspector'
+import SessionSelector from './SessionSelector'
+import { useSessionStore } from '../store/sessionStore'
 import type { HtmlComponentStyle } from './SlideCanvas'
 
 // ── 단일 노드 아이템 ──────────────────────────────────────────────────────────
@@ -305,8 +307,9 @@ function highlightMentions(text: string): React.ReactNode {
 // ── Root ──────────────────────────────────────────────────────────────────────
 export default function RightPanel() {
   const { agents, chatMessages, runningAgentIds, sendMessage, selectChatAgent,
-          selectedAgentDefinitionId } = useEditorStore()
+          selectedAgentDefinitionId, loadChatHistory } = useEditorStore()
   const { agentSteps, agentStartTime, estimatedSeconds, cancelAgent } = useAgentStore()
+  const { currentSessionId, currentUserId, sessions } = useSessionStore()
   const [elapsed, setElapsed] = useState(0)
   const { presentation } = useSlideStore()
   const navigate = useNavigate()
@@ -391,6 +394,17 @@ export default function RightPanel() {
     document.addEventListener('mousedown', handle)
     return () => document.removeEventListener('mousedown', handle)
   }, [showSlidePicker])
+
+  // 세션 전환 시 채팅 히스토리 재로드
+  useEffect(() => {
+    if (id && currentSessionId) loadChatHistory(id)
+  }, [currentSessionId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const isCurrentSessionMine = (() => {
+    if (!currentSessionId) return true
+    const s = sessions.find((ss) => ss.id === currentSessionId)
+    return !s?.user_id || s.user_id === currentUserId
+  })()
 
   const handleSend = async () => {
     let cmd = input.trim()
@@ -517,6 +531,15 @@ export default function RightPanel() {
         </div>
       </div>
 
+      {/* Session selector row */}
+      <div className="px-3 py-1.5 border-b border-[var(--border)] flex items-center gap-2 shrink-0 bg-[var(--bg-muted)]">
+        <span className="text-[10px] text-[var(--text-disabled)] shrink-0">세션</span>
+        <SessionSelector />
+        {!isCurrentSessionMine && (
+          <span className="text-[10px] text-[var(--text-disabled)] ml-auto shrink-0">읽기 전용</span>
+        )}
+      </div>
+
 
 
       {/* Chat messages */}
@@ -630,8 +653,8 @@ export default function RightPanel() {
               if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
             }}
             onFocus={() => activeAgent && selectChatAgent(activeAgent.definitionId ?? null)}
-            placeholder={activeAgent ? `${activeAgent.name}에게 요청... (Shift+Enter 줄바꿈)` : '요청...'}
-            disabled={isRunning}
+            placeholder={!isCurrentSessionMine ? '다른 유저의 세션 — 읽기 전용' : activeAgent ? `${activeAgent.name}에게 요청... (Shift+Enter 줄바꿈)` : '요청...'}
+            disabled={isRunning || !isCurrentSessionMine}
             className="relative w-full resize-none text-[13px] border-0 outline-none bg-transparent py-2.5 leading-relaxed disabled:opacity-50"
             style={{ height: '72px', maxHeight: '150px', color: input ? 'transparent' : undefined, caretColor: 'var(--text)' }}
           />

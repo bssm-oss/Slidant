@@ -68,6 +68,7 @@ async def run_agent_endpoint(
         agent_definition_id=agent_def.id,
         agent_name=agent_def.name,
         session_id=body.session_id,
+        user_id=current_user.id,
     )
     uow.chat_messages.add(user_msg)
     await uow.commit()  # BackgroundTask 전에 커밋 필수 (bg에서 조회 가능하도록)
@@ -82,6 +83,7 @@ async def run_agent_endpoint(
         agent_run_id=agent_run.id,
         encrypted_api_key=api_key.encrypted_key if api_key else "",
         provider=provider,
+        user_id=current_user.id,
     ))
     _running_tasks[str(agent_run.id)] = task
     task.add_done_callback(lambda _: _running_tasks.pop(str(agent_run.id), None))
@@ -92,6 +94,7 @@ async def run_agent_endpoint(
         "agent_name": agent_def.name,
         "role": agent_def.role,
         "command": body.command,
+        "user_id": str(current_user.id),
     })
 
     return agent_run
@@ -131,6 +134,7 @@ async def _run_agent_background(
     agent_run_id: UUID,
     encrypted_api_key: str,
     provider: str,
+    user_id: UUID,
 ) -> None:
     """LLM 호출 + patch 적용 — HTTP 응답과 분리된 백그라운드 작업"""
     logger.info("bg_start  agent_run=%s  role=%s  command=%r",
@@ -140,12 +144,14 @@ async def _run_agent_background(
             body=body, agent_def_role=agent_def_role, agent_def_id=agent_def_id,
             agent_def_name=agent_def_name, system_prompt=system_prompt,
             agent_run_id=agent_run_id, encrypted_api_key=encrypted_api_key, provider=provider,
+            user_id=user_id,
         )
     except Exception as e:
         logger.error("bg_fatal  agent_run=%s  %s", agent_run_id, str(e), exc_info=True)
         await _broadcast(str(body.project_id), {
             "type": "agent_error",
             "agent_run_id": str(agent_run_id),
+            "user_id": str(user_id),
             "error": _sanitize_error(e),
         })
 
@@ -160,6 +166,7 @@ async def _run_agent_background_inner(
     agent_run_id: UUID,
     encrypted_api_key: str,
     provider: str,
+    user_id: UUID,
 ) -> None:
     import time as _time
     logger.info("━━ agent_run=%s  agent=%s  role=%s", agent_run_id, agent_def_name, agent_def_role)
@@ -194,7 +201,7 @@ async def _run_agent_background_inner(
 
         # 에이전트별 최근 대화 10턴 조회 (세션 유지)
         recent_msgs = await uow.chat_messages.list_by_project(
-            body.project_id, agent_definition_id=agent_def_id, session_id=body.session_id, limit=20
+            body.project_id, session_id=body.session_id, limit=20
         )
         conversation_history = ""
         if recent_msgs:
@@ -500,6 +507,7 @@ async def _run_agent_background_inner(
                 agent_name=agent_def_name,
                 affected_component_ids=affected_ids,
                 session_id=body.session_id,
+                user_id=user_id,
             )
             uow.chat_messages.add(agent_msg)
 
@@ -516,6 +524,7 @@ async def _run_agent_background_inner(
                 "agent_name": agent_def_name,
                 "summary": agent_content,
                 "slide_id": str(body.slide_id),
+                "user_id": str(user_id),
             }
             if _proposal_obj:
                 # html_output edit → 제안 대기 (미적용), 슬라이드 즉시 반영 X
@@ -537,6 +546,18 @@ async def _run_agent_background_inner(
 
             await uow.commit()  # broadcast 전에 먼저 커밋
             logger.info("━━ DONE  agent_run=%s  affected=%s", agent_run_id, affected_ids)
+
+            # 다른 커넥션에 새 대화 메시지 알림 (크로스유저 실시간 동기화)
+            if body.session_id:
+                await ws_manager.broadcast_json(str(body.project_id), {
+                    "type": "chat_message",
+                    "session_id": str(body.session_id),
+                    "user_id": str(user_id),
+                    "messages": [
+                        {"role": "agent", "content": agent_content,
+                         "agent_name": agent_def_name, "agent_definition_id": str(agent_def_id)},
+                    ],
+                })
 
             # 새 슬라이드 CRDT 등록
             from app.services import crdt as crdt_svc
@@ -572,11 +593,13 @@ async def _run_agent_background_inner(
                     agent_definition_id=agent_def_id,
                     agent_name=agent_def_name,
                     session_id=body.session_id,
+                    user_id=user_id,
                 ))
             await _broadcast(str(body.project_id), {
                 "type": "agent_error",
                 "agent_run_id": str(agent_run.id),
                 "agent_name": agent_def_name,
+                "user_id": str(user_id),
                 "error": _sanitize_error(e),
             })
 
