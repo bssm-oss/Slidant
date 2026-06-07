@@ -271,7 +271,7 @@ export default function SlideListPanel() {
     if (!over || active.id === over.id || !presentation) return
     const oldIndex = presentation.slides.findIndex((s) => s.id === active.id)
     const newIndex = presentation.slides.findIndex((s) => s.id === over.id)
-    if (oldIndex !== -1 && newIndex !== -1) reorderSlides(oldIndex, newIndex)
+    if (!isViewer && oldIndex !== -1 && newIndex !== -1) reorderSlides(oldIndex, newIndex)
   }, [presentation, reorderSlides])
 
   const handleRegenerate = useCallback((slideIndex: number) => {
@@ -280,6 +280,7 @@ export default function SlideListPanel() {
   }, [])
 
   const slides = presentation?.slides ?? []
+  const isViewer = presentation?.myRole === 'viewer'
 
   return (
     <div className="w-52 border-r border-[var(--border)] bg-white flex flex-col shrink-0 overflow-hidden h-full">
@@ -302,10 +303,10 @@ export default function SlideListPanel() {
                 isCurrent={currentSlideIndex === i}
                 totalSlides={slides.length}
                 onSelect={setCurrentSlide}
-                onDelete={deleteSlide}
-                onDuplicate={duplicateSlide}
-                onMoveUp={(idx) => reorderSlides(idx, idx - 1)}
-                onMoveDown={(idx) => reorderSlides(idx, idx + 1)}
+                onDelete={isViewer ? () => {} : deleteSlide}
+                onDuplicate={isViewer ? () => {} : duplicateSlide}
+                onMoveUp={isViewer ? () => {} : (idx) => reorderSlides(idx, idx - 1)}
+                onMoveDown={isViewer ? () => {} : (idx) => reorderSlides(idx, idx + 1)}
                 onRegenerate={handleRegenerate}
               />
             ))}
@@ -320,8 +321,9 @@ export default function SlideListPanel() {
       {/* Add slide button */}
       <div className="px-2 py-2 shrink-0 border-t border-[var(--border)]">
         <button
-          onClick={addSlide}
-          className="w-full py-1.5 rounded-[6px] border border-dashed border-[var(--border)] hover:border-[var(--accent)] hover:bg-[var(--accent-subtle)] flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer group"
+          onClick={isViewer ? undefined : addSlide}
+          disabled={isViewer}
+          className={`w-full py-1.5 rounded-[6px] border border-dashed border-[var(--border)] flex items-center justify-center gap-1.5 transition-all duration-150 ${isViewer ? 'opacity-30 cursor-not-allowed' : 'hover:border-[var(--accent)] hover:bg-[var(--accent-subtle)] cursor-pointer group'}`}
         >
           <Plus size={13} className="text-[var(--text-disabled)] group-hover:text-[var(--accent)] transition-colors" />
           <span className="text-[11px] text-[var(--text-disabled)] group-hover:text-[var(--accent)] transition-colors">슬라이드 추가</span>
