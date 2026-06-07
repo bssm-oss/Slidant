@@ -23,6 +23,7 @@ function toPresentation(p: ProjectResponse, slides: Slide[] = []): Presentation 
     updatedAt: p.updated_at,
     ownerId: p.owner_id,
     myRole: (p.my_role as Presentation['myRole']) ?? 'owner',
+    shareToken: (p as any).share_token ?? null,
   }
 }
 

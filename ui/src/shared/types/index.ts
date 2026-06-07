@@ -38,6 +38,7 @@ export interface Presentation {
   updatedAt: string
   ownerId: string
   myRole: 'owner' | 'editor' | 'viewer'
+  shareToken?: string | null
 }
 
 // Agent 타입

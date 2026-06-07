@@ -179,7 +179,7 @@ ${exportSlides.map(s => s.html_content ? `<div class="slide-page">${s.html_conte
         />
       )}
       {showShareModal && id && (
-        <ShareModal projectId={id} onClose={() => setShowShareModal(false)} />
+        <ShareModal projectId={id} initialShareToken={presentation?.shareToken} onClose={() => setShowShareModal(false)} />
       )}
       <div className="flex flex-col h-screen overflow-hidden">
         <EditorTopbar

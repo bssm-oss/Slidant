@@ -19,6 +19,7 @@ class ProjectResponse(BaseModel):
     slide_count: int = 0
     theme: dict | None = None
     my_role: str = "owner"  # owner | editor | viewer
+    share_token: str | None = None
     created_at: datetime
     updated_at: datetime
 
