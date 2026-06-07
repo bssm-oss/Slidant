@@ -841,6 +841,7 @@ export default function SlideCanvas() {
     e.stopPropagation()
     e.preventDefault()
     selectComponent(comp.id)
+    if (isViewer) return
     drag.current = {
       compId: comp.id,
       mode,
