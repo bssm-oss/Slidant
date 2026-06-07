@@ -426,11 +426,17 @@ export default function SlideCanvas() {
   // inspector edit 중 html_content 변경으로 인한 iframe reload 차단 플래그
   const ignoreHtmlSyncRef = useRef(false)
 
-  // 슬라이드 ID 변경(슬라이드 전환) 시 리셋
+  // 슬라이드 ID 변경(슬라이드 전환) 시 리셋 + pending proposals 로드
   useEffect(() => {
     setHtmlContent(currentSlide?.html_content ?? '')
     setSelectedHtmlStyle(null)
     setPreviewHtml(null)
+    if (!currentSlide?.id) return
+    import('@/shared/lib/proposalApi').then(({ fetchPendingProposals }) => {
+      fetchPendingProposals('', currentSlide.id)
+        .then((fetched) => useProposalStore.getState().mergeProposalsForSlide(currentSlide.id, fetched))
+        .catch(() => {})
+    })
   }, [currentSlide?.id])
 
   // agent 업데이트 등 외부 html_content 변경 시 반영 (inspector edit은 제외)
