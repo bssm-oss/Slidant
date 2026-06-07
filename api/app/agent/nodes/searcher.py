@@ -8,7 +8,10 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.agent.context import NodeContext
 from app.agent.state import AgentState
-from app.agent.prompts import CONTENT_PLANNER_PROMPT, DESIGN_RESOLVER_PROMPT, SEARCH_MERGER_PROMPT
+from app.agent.prompts import (
+    CONTENT_PLANNER_PROMPT, DESIGN_RESOLVER_PROMPT,
+    SEARCH_CACHE_CHECK_PROMPT, SEARCH_MERGER_PROMPT,
+)
 
 logger = logging.getLogger("slidant.agent")
 
@@ -36,26 +39,68 @@ def _extract_json(text: str):
     return None
 
 
+async def _check_cache_sufficiency(ctx: NodeContext, cached_summary: str, queries: list[str], command: str) -> dict:
+    """캐시된 factsheet가 새 search_queries의 데이터를 이미 포함하는지 LLM 판정.
+
+    반환: {"sufficient": bool, "missing_queries": [...]}.
+    판정 실패 시 안전하게 "불충분"으로 처리 (전체 재검색).
+    """
+    messages = [
+        SystemMessage(content=SEARCH_CACHE_CHECK_PROMPT),
+        HumanMessage(content=(
+            f"Command: {command}\n\n"
+            "NEW search queries:\n" + "\n".join(f"- {q}" for q in queries) + "\n\n"
+            f"CACHED fact sheet:\n{cached_summary}"
+        )),
+    ]
+    raw = ""
+    try:
+        async for chunk in ctx.llm_plain.astream(messages):
+            raw_c = chunk.content if hasattr(chunk, "content") else ""
+            if isinstance(raw_c, list):
+                raw += "".join(b.get("text", "") for b in raw_c if isinstance(b, dict) and b.get("type") == "text")
+            else:
+                raw += str(raw_c) if raw_c else ""
+    except Exception as e:
+        logger.warning("search_cache_check failed: %s", e)
+        return {"sufficient": False, "missing_queries": queries}
+
+    parsed = _extract_json(raw)
+    if isinstance(parsed, dict) and "sufficient" in parsed:
+        missing = [q for q in parsed.get("missing_queries", []) if isinstance(q, str) and q.strip()]
+        return {"sufficient": bool(parsed["sufficient"]), "missing_queries": missing}
+    return {"sufficient": False, "missing_queries": queries}
+
+
 def make_web_searcher(ctx: NodeContext):
     async def web_searcher_node(state: AgentState) -> AgentState:
-        # 이미 캐시된 search_summary 있으면 Tavily 호출 스킵
-        if state.get("search_summary"):
+        queries = [q for q in state.get("search_queries", []) if isinstance(q, str) and q.strip()]
+        cached_summary = state.get("search_summary", "")
+
+        # 캐시 "존재 여부"가 아니라 "지금 필요한 데이터를 커버하는가"로 판단
+        if cached_summary and queries:
             if ctx.on_event:
-                ctx.on_event("node_start", "⚡ 캐시된 검색 결과 재사용...")
-                ctx.on_event("step_done", "search")
-                ctx.on_event("node_done", "✅ 캐시 적용 완료")
-            return state
+                ctx.on_event("node_start", "🔎 캐시 적합성 확인 중...")
+            check = await _check_cache_sufficiency(ctx, cached_summary, queries, state.get("command", ""))
+            if check["sufficient"]:
+                if ctx.on_event:
+                    ctx.on_event("step_done", "search")
+                    ctx.on_event("node_done", "✅ 캐시로 충분 — 재검색 생략")
+                return state
+            queries = check["missing_queries"] or queries
+            logger.info("  [web_searcher] cache insufficient — re-searching %d/%d queries",
+                        len(queries), len(state.get("search_queries", [])))
 
         from app.core.config import settings
         if ctx.on_event:
-            ctx.on_event("node_start", f"🔍 웹 검색 중 ({len(state.get('search_queries', []))}개)...")
+            ctx.on_event("node_start", f"🔍 웹 검색 중 ({len(queries)}개)...")
         results = []
         tavily_key = getattr(settings, "TAVILY_API_KEY", "")
         if tavily_key:
             try:
                 from tavily import TavilyClient
                 client = TavilyClient(api_key=tavily_key)
-                for q in state.get("search_queries", [])[:3]:
+                for q in queries[:3]:
                     resp = client.search(q, max_results=7, search_depth="advanced",
                                          include_answer=True, include_raw_content=False)
                     tavily_answer = resp.get("answer", "")
@@ -105,9 +150,13 @@ def make_search_merger(ctx: NodeContext):
             for r in sr.get("results", [])[:5]:
                 raw_dump += f"[{r['title']}] {r['snippet']}\n"
 
+        # 캐시가 일부만 부족했던 경우 — 기존 factsheet도 함께 줘서 통합 병합
+        cached_summary = state.get("search_summary", "")
+        cache_ctx = f"\n\nCACHED FACT SHEET (merge with new results below):\n{cached_summary}\n" if cached_summary else ""
+
         messages = [
             SystemMessage(content=SEARCH_MERGER_PROMPT),
-            HumanMessage(content=f"Command: {state.get('command', '')}\n\n{raw_dump}"),
+            HumanMessage(content=f"Command: {state.get('command', '')}\n\n{raw_dump}{cache_ctx}"),
         ]
         summary = ""
         try:

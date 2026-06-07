@@ -723,8 +723,19 @@ Example (전체 PPT 생성 — "김치찌개 PPT 만들어줘"):
 슬라이드 4: [QUOTE] "핵심 팁" — 감칠맛 비법 인용구, 큰 따옴표 장식
 슬라이드 5: [CLOSING] "맛있는 한 끼" 마무리, 연락처/해시태그"""
 
+SEARCH_CACHE_CHECK_PROMPT = (
+    "You judge whether a CACHED fact sheet already contains the data needed to answer NEW search queries. "
+    "Compare semantically — paraphrases/synonyms count as covered, a different topic/entity/time period does not. "
+    'Respond with ONLY a JSON object: {"sufficient": true|false, "missing_queries": ["..."]}. '
+    '"missing_queries" = subset of the NEW queries whose data is NOT present in the cached fact sheet '
+    '(empty array if sufficient=true). No prose, no markdown fences.'
+)
+
 SEARCH_MERGER_PROMPT = (
     "You are a research analyst. Extract ALL key facts from the search results below into a concise, "
     "structured fact sheet. Preserve exact numbers, names, dates, percentages. "
-    "Do NOT interpret or alter any figures. Output plain text, no JSON."
+    "Do NOT interpret or alter any figures. Output plain text, no JSON. "
+    "If a CACHED FACT SHEET is provided, merge it with the new results into one unified sheet — "
+    "keep cached facts that remain relevant, add new facts, drop cached facts that are clearly off-topic "
+    "for the current command."
 )
