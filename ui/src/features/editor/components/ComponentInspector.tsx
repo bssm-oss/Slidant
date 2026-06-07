@@ -247,13 +247,18 @@ function InlineHistory({ open }: { open: boolean }) {
             const command = colonIdx > 0 ? v.reason.slice(colonIdx + 1).trim() : v.reason
             const isRestoring = restoring === v.id
             return (
-              <div key={v.id} className="flex items-start gap-2.5 px-4 py-2.5 hover:bg-[var(--bg-muted)] group transition-colors">
+              <div key={v.id} className="flex items-center gap-2.5 px-4 py-3 hover:bg-[var(--bg-muted)] group transition-colors">
                 <div className="flex-1 min-w-0">
-                  {agent && (
-                    <span className="inline-block text-[10px] font-medium px-1.5 py-0.5 rounded mb-1 bg-[var(--accent-subtle)] text-[var(--accent-text)]">
-                      {agent}
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <span className="text-[10px] font-bold text-[var(--accent-text)] bg-[var(--accent-subtle)] px-1.5 py-0.5 rounded">
+                      v{v.version}
                     </span>
-                  )}
+                    {agent && (
+                      <span className="text-[10px] font-medium text-[var(--text-muted)]">
+                        {agent}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-[11px] text-[var(--text)] leading-snug line-clamp-2">{command}</p>
                   <p className="text-[10px] text-[var(--text-disabled)] mt-0.5">{formatDate(v.created_at)}</p>
                 </div>
@@ -263,7 +268,7 @@ function InlineHistory({ open }: { open: boolean }) {
                   onMouseEnter={() => v.html_content && showPreview(v.html_content)}
                   onMouseLeave={clearPreview}
                   className={cn(
-                    'shrink-0 flex items-center gap-1 px-2 py-1.5 rounded-[6px] text-[10px] font-semibold transition-all',
+                    'shrink-0 flex flex-col items-center justify-center gap-1 w-14 py-2.5 rounded-[8px] text-[10px] font-semibold transition-all',
                     'opacity-0 group-hover:opacity-100',
                     'bg-[var(--accent-subtle)] text-[var(--accent-text)]',
                     'hover:bg-[var(--accent)] hover:text-white hover:shadow-sm',
@@ -271,7 +276,11 @@ function InlineHistory({ open }: { open: boolean }) {
                   )}
                   title={v.html_content ? '복원 (hover: 미리보기)' : '복원'}
                 >
-                  {isRestoring ? <span className="animate-spin inline-block">↻</span> : <RotateCcw size={10} />}
+                  {isRestoring ? (
+                    <span className="animate-spin inline-block text-base">↻</span>
+                  ) : (
+                    <RotateCcw size={14} />
+                  )}
                   복원
                 </button>
               </div>
