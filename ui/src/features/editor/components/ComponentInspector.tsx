@@ -185,7 +185,7 @@ function ColorRow({ label, value, onChange }: ColorRowProps) {
 
 // ── Inline History ────────────────────────────────────────────────────────────
 
-function InlineHistory({ open }: { open: boolean }) {
+function InlineHistory({ open, componentId }: { open: boolean; componentId: string }) {
   const { presentation, currentSlideIndex, loadPresentation } = useEditorStore()
   const projectId = presentation?.id
   const currentSlide = presentation?.slides[currentSlideIndex]
@@ -193,14 +193,22 @@ function InlineHistory({ open }: { open: boolean }) {
   const [versions, setVersions] = useState<SlideHistoryEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [restoring, setRestoring] = useState<string | null>(null)
+  const [restoringComponent, setRestoringComponent] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    if (!projectId || !currentSlide) return
+    setLoading(true)
+    try {
+      const data = await fetchSlideHistory(projectId, currentSlide.id)
+      setVersions(data)
+    } finally {
+      setLoading(false)
+    }
+  }, [projectId, currentSlide?.id])
 
   useEffect(() => {
-    if (!open || !projectId || !currentSlide) return
-    setLoading(true)
-    fetchSlideHistory(projectId, currentSlide.id)
-      .then(setVersions)
-      .finally(() => setLoading(false))
-  }, [open, projectId, currentSlide?.id])
+    if (open) load()
+  }, [open, load])
 
   const handleRestore = async (versionId: string) => {
     if (!projectId || !currentSlide) return
@@ -209,8 +217,23 @@ function InlineHistory({ open }: { open: boolean }) {
     try {
       await restoreFromHistory(projectId, currentSlide.id, versionId)
       await loadPresentation(projectId)
+      await load()
     } finally {
       setRestoring(null)
+    }
+  }
+
+  const handleRestoreComponent = async (versionId: string) => {
+    if (!projectId || !currentSlide || !componentId) return
+    clearPreview()
+    setRestoringComponent(versionId)
+    try {
+      const { restoreComponentFromHistory } = await import('@/shared/lib/projectApi')
+      await restoreComponentFromHistory(projectId, currentSlide.id, versionId, componentId)
+      await loadPresentation(projectId)
+      await load()
+    } finally {
+      setRestoringComponent(null)
     }
   }
 
@@ -262,27 +285,48 @@ function InlineHistory({ open }: { open: boolean }) {
                   <p className="text-[11px] text-[var(--text)] leading-snug line-clamp-2">{command}</p>
                   <p className="text-[10px] text-[var(--text-disabled)] mt-0.5">{formatDate(v.created_at)}</p>
                 </div>
-                <button
-                  onClick={() => handleRestore(v.id)}
-                  disabled={!!restoring}
+                <div
+                  className="shrink-0 flex flex-col gap-1 opacity-0 group-hover:opacity-100"
                   onMouseEnter={() => v.html_content && showPreview(v.html_content)}
                   onMouseLeave={clearPreview}
-                  className={cn(
-                    'shrink-0 flex flex-col items-center justify-center gap-1 w-14 py-2.5 rounded-[8px] text-[10px] font-semibold transition-all',
-                    'opacity-0 group-hover:opacity-100',
-                    'bg-[var(--accent-subtle)] text-[var(--accent-text)]',
-                    'hover:bg-[var(--accent)] hover:text-white hover:shadow-sm',
-                    'disabled:opacity-40 disabled:cursor-not-allowed',
-                  )}
-                  title={v.html_content ? '복원 (hover: 미리보기)' : '복원'}
                 >
-                  {isRestoring ? (
-                    <span className="animate-spin inline-block text-base">↻</span>
-                  ) : (
-                    <RotateCcw size={14} />
-                  )}
-                  복원
-                </button>
+                  <button
+                    onClick={() => handleRestoreComponent(v.id)}
+                    disabled={!!restoring || !!restoringComponent}
+                    className={cn(
+                      'flex flex-col items-center justify-center gap-0.5 w-16 py-2 rounded-[7px] text-[10px] font-semibold transition-all',
+                      'bg-[var(--accent)] text-white',
+                      'hover:opacity-90 hover:shadow-sm',
+                      'disabled:opacity-40 disabled:cursor-not-allowed',
+                    )}
+                    title="이 컴포넌트만 복원"
+                  >
+                    {restoringComponent === v.id ? (
+                      <span className="animate-spin inline-block text-sm">↻</span>
+                    ) : (
+                      <RotateCcw size={12} />
+                    )}
+                    이것만
+                  </button>
+                  <button
+                    onClick={() => handleRestore(v.id)}
+                    disabled={!!restoring || !!restoringComponent}
+                    className={cn(
+                      'flex flex-col items-center justify-center gap-0.5 w-16 py-2 rounded-[7px] text-[10px] font-medium transition-all',
+                      'bg-[var(--bg-muted)] border border-[var(--border)] text-[var(--text-muted)]',
+                      'hover:bg-[var(--border)] hover:text-[var(--text)]',
+                      'disabled:opacity-40 disabled:cursor-not-allowed',
+                    )}
+                    title="슬라이드 전체 복원"
+                  >
+                    {isRestoring ? (
+                      <span className="animate-spin inline-block text-sm">↻</span>
+                    ) : (
+                      <RotateCcw size={12} />
+                    )}
+                    전체
+                  </button>
+                </div>
               </div>
             )
           })}
@@ -548,7 +592,7 @@ export default function ComponentInspector({ style }: Props) {
         </button>
       </div>
 
-      <InlineHistory open={showHistory} />
+      <InlineHistory open={showHistory} componentId={id} />
 
     </div>
   )
