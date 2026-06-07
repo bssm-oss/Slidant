@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useEditorStore } from '../store/editorStore'
 import { useSlideStore } from '../store/slideStore'
 import { useProposalStore } from '../store/proposalStore'
@@ -233,6 +233,30 @@ function rebuildFullHtml(innerHtml: string): string {
   return `<!DOCTYPE html><html><head>${head}</head><body>${body}</body></html>`
 }
 
+function getProposalDiff(currentHtml: string, proposalHtml: string): { changed: string[]; deleted: string[] } {
+  try {
+    const parseComponents = (html: string) => {
+      const doc = new DOMParser().parseFromString(html, 'text/html')
+      const map = new Map<string, string>()
+      doc.querySelectorAll('[data-component-id]').forEach((el) => {
+        map.set(el.getAttribute('data-component-id')!, el.outerHTML)
+      })
+      return map
+    }
+    const cur = parseComponents(currentHtml)
+    const prop = parseComponents(proposalHtml)
+    const changed: string[] = []
+    const deleted: string[] = []
+    cur.forEach((html, id) => {
+      if (!prop.has(id)) deleted.push(id)
+      else if (prop.get(id) !== html) changed.push(id)
+    })
+    return { changed, deleted }
+  } catch {
+    return { changed: [], deleted: [] }
+  }
+}
+
 // ── 속성 패널용 스타일 파싱 ───────────────────────────────────────────────────
 
 export interface HtmlComponentStyle {
@@ -412,6 +436,14 @@ export default function SlideCanvas() {
   const pendingProposal = proposals
     .filter((p) => p.status === 'pending' && p.slide_id === currentSlide?.id && !!p.html_content)
     .at(-1) ?? null
+  // 현재 슬라이드의 모든 pending proposals (인디케이터용)
+  const pendingProposalKey = useMemo(
+    () => proposals
+      .filter((p) => p.status === 'pending' && p.slide_id === currentSlide?.id && !!p.html_content)
+      .map((p) => `${p.id}:${p.html_content!.length}`)
+      .join(','),
+    [proposals, currentSlide?.id]
+  )
   const containerRef = useRef<HTMLDivElement>(null)
   const [scale, setScale] = useState(0.75)
   const drag = useRef<DragState | null>(null)
@@ -423,6 +455,9 @@ export default function SlideCanvas() {
   const [htmlContent, setHtmlContent] = useState<string>(currentSlide?.html_content ?? '')
   const [selectedHtmlStyle, setSelectedHtmlStyle] = useState<HtmlComponentStyle | null>(null)
   const [previewHtml, setPreviewHtml] = useState<string | null>(null)
+  const [iframeLoadKey, setIframeLoadKey] = useState(0)
+  const [proposalIndicators, setProposalIndicators] = useState<Array<{ id: string; type: 'change' | 'delete'; x: number; y: number; w: number; h: number }>>([])
+
   // inspector edit 중 html_content 변경으로 인한 iframe reload 차단 플래그
   const ignoreHtmlSyncRef = useRef(false)
   // onPreview closure에서 최신 htmlContent 참조용
@@ -468,7 +503,7 @@ export default function SlideCanvas() {
     selectComponent(id)
   }, [selectComponent])
 
-  const { handleIframeLoad, handleFileChange, fileInputRef } = useHtmlSlideEdit(
+  const { handleIframeLoad: _handleIframeLoad, handleFileChange, fileInputRef } = useHtmlSlideEdit(
     iframeRef,
     presentation?.id ?? '',
     currentSlide?.id ?? '',
@@ -477,6 +512,49 @@ export default function SlideCanvas() {
     handleComponentSelect,
     ignoreHtmlSyncRef,
   )
+
+  const handleIframeLoad = useCallback(() => {
+    _handleIframeLoad()
+    setIframeLoadKey((k) => k + 1)
+  }, [_handleIframeLoad])
+
+  // 제안 인디케이터: pending proposals의 변경/삭제 컴포넌트를 iframe DOM에서 읽어 overlay 좌표 계산
+  useEffect(() => {
+    if (!iframeRef.current?.contentDocument || previewHtml || !pendingProposalKey) {
+      setProposalIndicators([])
+      return
+    }
+    const slideId = currentSlide?.id
+    const allProposals = useProposalStore.getState().proposals
+      .filter((p) => p.status === 'pending' && p.slide_id === slideId && !!p.html_content)
+    if (!allProposals.length || !htmlContent) {
+      setProposalIndicators([])
+      return
+    }
+
+    const changedSet = new Set<string>()
+    const deletedSet = new Set<string>()
+    for (const p of allProposals) {
+      const { changed, deleted } = getProposalDiff(htmlContent, p.html_content!)
+      changed.forEach((id) => changedSet.add(id))
+      deleted.forEach((id) => deletedSet.add(id))
+    }
+
+    const doc = iframeRef.current.contentDocument
+    const indicators: typeof proposalIndicators = []
+    const addIndicator = (id: string, type: 'change' | 'delete') => {
+      const el = doc.querySelector(`[data-component-id="${id}"]`) as HTMLElement | null
+      if (!el) return
+      const x = parseFloat(el.style.left) || 0
+      const y = parseFloat(el.style.top) || 0
+      const w = parseFloat(el.style.width) || el.offsetWidth
+      const h = parseFloat(el.style.height) || el.offsetHeight
+      indicators.push({ id, type, x, y, w, h })
+    }
+    changedSet.forEach((id) => { if (!deletedSet.has(id)) addIndicator(id, 'change') })
+    deletedSet.forEach((id) => addIndicator(id, 'delete'))
+    setProposalIndicators(indicators)
+  }, [iframeLoadKey, pendingProposalKey, htmlContent, previewHtml, currentSlide?.id])
 
   // hover 미리보기: fullProposalHtml → 전체 교체, newHtml → 해당 컴포넌트만 교체
   useEffect(() => {
@@ -647,6 +725,34 @@ export default function SlideCanvas() {
             title="slide"
             onLoad={() => handleIframeLoad()}
           />
+          {/* 제안 인디케이터 오버레이 */}
+          {proposalIndicators.map(({ id, type, x, y, w, h }) => (
+            <div
+              key={`pi-${id}`}
+              className="absolute pointer-events-none"
+              style={{
+                left: x * scale,
+                top: y * scale,
+                width: w * scale,
+                height: h * scale,
+                outline: `2px solid ${type === 'change' ? '#f59e0b' : '#ef4444'}`,
+                outlineOffset: '1px',
+                zIndex: 10,
+              }}
+            >
+              <div
+                className="absolute top-0 right-0 flex items-center px-1 text-white font-bold"
+                style={{
+                  background: type === 'change' ? '#f59e0b' : '#ef4444',
+                  fontSize: Math.max(8, 9 * scale),
+                  lineHeight: `${Math.max(14, 16 * scale)}px`,
+                  borderRadius: '0 0 0 3px',
+                }}
+              >
+                {type === 'change' ? '수정' : '삭제'}
+              </div>
+            </div>
+          ))}
           {/* 선택된 요소 툴팁 힌트 */}
           {selectedHtmlStyle && (
             <div
