@@ -34,19 +34,27 @@ class ConnectionManager:
         await ws.accept()
         async with self._lock:
             self._connections[project_id].add(ws)
+            # 접속 즉시 presence 등록 — 나중에 합류한 유저가 기존 유저를 볼 수 있도록
+            prev_slide = self._presence[project_id].get(user_id, {}).get("currentSlide", 0)
+            self._presence[project_id][user_id] = {
+                "userId": user_id,
+                "name": user_name,
+                "currentSlide": prev_slide,
+            }
         logger.info("ws_connect  project=%s  user=%s  peers=%d",
                     project_id, user_id, len(self._connections[project_id]))
-        # 입장 알림
+        # 입장 알림 (자신 제외 기존 유저들에게)
         await self.broadcast_json(project_id, {
             "type": "user_joined",
             "userId": user_id,
             "name": user_name,
         }, exclude=ws)
-        # 현재 presence 상태 전송
-        if self._presence.get(project_id):
+        # 현재 presence 상태 전송 (자신 제외)
+        other_users = [v for uid, v in self._presence[project_id].items() if uid != user_id]
+        if other_users:
             await self._safe_send_json(ws, {
                 "type": "presence_state",
-                "users": list(self._presence[project_id].values()),
+                "users": other_users,
             })
 
     async def disconnect(self, ws: WebSocket, project_id: str, user_id: str) -> None:

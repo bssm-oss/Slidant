@@ -14,12 +14,12 @@ export default function SessionSelector() {
   const current = sessions.find((s) => s.id === currentSessionId)
 
   const isMySession = (s: { user_id?: string | null }) =>
-    !s.user_id || s.user_id === currentUserId
+    s.user_id === currentUserId
 
-  const getUserLabel = (session: { user_id?: string | null }) => {
+  const getUserLabel = (session: { user_id?: string | null; user_email?: string | null }) => {
     if (isMySession(session)) return null
     const presence = presenceUsers.find((u) => u.userId === session.user_id)
-    return presence?.name ?? '다른 유저'
+    return presence?.name ?? session.user_email ?? '다른 유저'
   }
 
   const handleCreate = async () => {
