@@ -425,6 +425,8 @@ export default function SlideCanvas() {
   const [previewHtml, setPreviewHtml] = useState<string | null>(null)
   // inspector edit 중 html_content 변경으로 인한 iframe reload 차단 플래그
   const ignoreHtmlSyncRef = useRef(false)
+  // onPreview closure에서 최신 htmlContent 참조용
+  const htmlContentRef = useRef(htmlContent)
 
   // 슬라이드 ID 변경(슬라이드 전환) 시 리셋 + pending proposals 로드
   useEffect(() => {
@@ -447,6 +449,8 @@ export default function SlideCanvas() {
     }
     setHtmlContent(currentSlide?.html_content ?? '')
   }, [currentSlide?.html_content])
+
+  useEffect(() => { htmlContentRef.current = htmlContent }, [htmlContent])
 
   const handleHtmlChange = useCallback((newHtml: string) => {
     setHtmlContent(newHtml)
@@ -474,12 +478,25 @@ export default function SlideCanvas() {
     ignoreHtmlSyncRef,
   )
 
-  // Proposal hover 미리보기: proposal 전체 HTML을 srcDoc으로 교체 → mouse leave 시 복원
+  // hover 미리보기: fullProposalHtml → 전체 교체, newHtml → 해당 컴포넌트만 교체
   useEffect(() => {
     const onPreview = (e: Event) => {
-      const { fullProposalHtml } = (e as CustomEvent<{ componentId: string; newHtml: string; fullProposalHtml?: string }>).detail
+      const { componentId, newHtml, fullProposalHtml } = (e as CustomEvent<{ componentId: string; newHtml: string; fullProposalHtml?: string }>).detail
       if (fullProposalHtml) {
         setPreviewHtml(fullProposalHtml)
+      } else if (componentId && newHtml) {
+        const base = htmlContentRef.current
+        if (!base) return
+        try {
+          const doc = new DOMParser().parseFromString(base, 'text/html')
+          const el = doc.querySelector(`[data-component-id="${componentId}"]`)
+          if (el) {
+            const tmp = new DOMParser().parseFromString(newHtml, 'text/html')
+            const newEl = tmp.body.firstElementChild
+            if (newEl) el.replaceWith(newEl)
+            setPreviewHtml(rebuildFullHtml(doc.documentElement.innerHTML))
+          }
+        } catch { /* noop */ }
       }
     }
 
@@ -493,7 +510,7 @@ export default function SlideCanvas() {
       window.removeEventListener('html-component-preview', onPreview)
       window.removeEventListener('html-component-preview-clear', onClear)
     }
-  }, []) // setPreviewHtml is stable
+  }, []) // htmlContentRef는 ref이므로 deps 불필요
 
   // 동적 스케일
   useEffect(() => {

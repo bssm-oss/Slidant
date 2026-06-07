@@ -32,8 +32,10 @@ interface ProposalState {
 
   setProposals: (proposals: AgentProposal[]) => void
   addProposal: (proposal: AgentProposal) => void
+  mergeProposalsForSlide: (slideId: string, slideProposals: AgentProposal[]) => void
   approveProposal: (id: string, acceptedIds?: string[] | null, partial?: boolean) => Promise<void>
   rejectProposal: (id: string) => Promise<void>
+  resolveProposal: (id: string) => void
 }
 
 export const useProposalStore = create<ProposalState>((set) => ({
@@ -41,6 +43,12 @@ export const useProposalStore = create<ProposalState>((set) => ({
   conflicts: [],
 
   setProposals: (proposals) => set({ proposals, conflicts: detectConflicts(proposals) }),
+
+  mergeProposalsForSlide: (slideId, slideProposals) => set((s) => {
+    const others = s.proposals.filter((p) => p.slide_id !== slideId)
+    const merged = [...others, ...slideProposals]
+    return { proposals: merged, conflicts: detectConflicts(merged) }
+  }),
 
   addProposal: (proposal) => set((s) => {
     const proposals = [...s.proposals, proposal]
@@ -64,6 +72,12 @@ export const useProposalStore = create<ProposalState>((set) => ({
       console.error('approveProposal failed', e)
     }
   },
+
+  // 다른 커넥션에서 이미 승인/거절된 proposal — API 재호출 없이 로컬 목록만 정리
+  resolveProposal: (id) => set((s) => {
+    const proposals = s.proposals.filter((p) => p.id !== id)
+    return { proposals, conflicts: detectConflicts(proposals) }
+  }),
 
   rejectProposal: async (id) => {
     try {

@@ -74,6 +74,9 @@ import { useSlideStore } from './slideStore'
 import { useProposalStore } from './proposalStore'
 import { useSessionStore } from './sessionStore'
 
+// 사용자 직접 편집 broadcast — 연속 편집(드래그 등) 묶어서 1회만 재조회
+let _slideChangedDebounce: ReturnType<typeof setTimeout> | null = null
+
 export interface AgentStep {
   id: string
   label: string
@@ -230,6 +233,30 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             currentSlide: u.currentSlide ?? 0,
           })),
         })
+        return
+      }
+
+      // 다른 커넥션의 직접 편집(컴포넌트 수정/생성/삭제, 슬라이드 추가/삭제/재정렬, 인라인 HTML 편집) 알림
+      if (type === 'slide_changed') {
+        const ppt = useSlideStore.getState().presentation
+        if (ppt) {
+          if (_slideChangedDebounce) clearTimeout(_slideChangedDebounce)
+          _slideChangedDebounce = setTimeout(() => {
+            _slideChangedDebounce = null
+            useSlideStore.getState().loadPresentation(ppt.id)
+          }, 400)
+        }
+        return
+      }
+
+      // 다른 커넥션에서 proposal 승인/거절 처리됨 — 로컬 pending 목록에서 제거
+      if (type === 'proposal_resolved') {
+        const proposalId = msg.proposal_id as string
+        useProposalStore.getState().resolveProposal(proposalId)
+        const ppt = useSlideStore.getState().presentation
+        if ((msg.status as string) === 'approved' && ppt) {
+          useSlideStore.getState().loadPresentation(ppt.id)
+        }
         return
       }
 

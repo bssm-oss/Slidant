@@ -4,11 +4,22 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
+from app.api.v1.endpoints.ws import manager as ws_manager
 from app.core.deps import CurrentUser, UoW
 from app.services import slide_history_service
 from app.services.slide_content import apply_patches
 
 router = APIRouter(prefix='/proposals', tags=['proposals'])
+
+
+async def _notify_proposal_resolved(project_id, slide_id, proposal_id, status: str) -> None:
+    """다른 커넥션에 proposal 처리 결과 알림 — pending 목록 정리 + (승인 시) 슬라이드 재조회 트리거."""
+    await ws_manager.broadcast_json(str(project_id), {
+        'type': 'proposal_resolved',
+        'proposal_id': str(proposal_id),
+        'slide_id': str(slide_id),
+        'status': status,
+    })
 
 
 class ProposalResponse(BaseModel):
@@ -100,12 +111,15 @@ async def approve_proposal(proposal_id: UUID, body: ApproveBody, current_user: C
     if not body.partial:
         proposal.status = 'approved'
     uow.session.add(proposal)
-    await uow.commit()
+    await uow.commit()  # broadcast 전에 먼저 커밋 — 다른 커넥션 재조회 시 최신 데이터 보장
+
+    if not body.partial:
+        await _notify_proposal_resolved(slide.project_id, proposal.slide_id, proposal.id, 'approved')
 
 
 @router.post('/{proposal_id}/reject', status_code=status.HTTP_204_NO_CONTENT)
 async def reject_proposal(proposal_id: UUID, current_user: CurrentUser, uow: UoW):
-    proposal, _ = await _get_proposal_and_verify_ownership(proposal_id, current_user, uow)
+    proposal, slide = await _get_proposal_and_verify_ownership(proposal_id, current_user, uow)
 
     if proposal.status != 'pending':
         raise HTTPException(status_code=400, detail='Proposal already processed')
@@ -113,3 +127,5 @@ async def reject_proposal(proposal_id: UUID, current_user: CurrentUser, uow: UoW
     proposal.status = 'rejected'
     uow.session.add(proposal)
     await uow.commit()
+
+    await _notify_proposal_resolved(slide.project_id, proposal.slide_id, proposal.id, 'rejected')

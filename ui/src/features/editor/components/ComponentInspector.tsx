@@ -212,7 +212,7 @@ function InlineHistory({ open, componentId }: { open: boolean; componentId: stri
 
   const handleRestore = async (versionId: string) => {
     if (!projectId || !currentSlide) return
-    clearPreview()
+    clearFullPreview()
     setRestoring(versionId)
     try {
       await restoreFromHistory(projectId, currentSlide.id, versionId)
@@ -225,7 +225,7 @@ function InlineHistory({ open, componentId }: { open: boolean; componentId: stri
 
   const handleRestoreComponent = async (versionId: string) => {
     if (!projectId || !currentSlide || !componentId) return
-    clearPreview()
+    clearPreview(componentId)
     setRestoringComponent(versionId)
     try {
       const { restoreComponentFromHistory } = await import('@/shared/lib/projectApi')
@@ -243,7 +243,7 @@ function InlineHistory({ open, componentId }: { open: boolean; componentId: stri
     }))
   }
 
-  function clearPreview() {
+  function clearFullPreview() {
     window.dispatchEvent(new CustomEvent('html-component-preview-clear', {
       detail: { componentId: '__history_preview__' },
     }))
@@ -287,11 +287,16 @@ function InlineHistory({ open, componentId }: { open: boolean; componentId: stri
                 </div>
                 <div
                   className="shrink-0 flex flex-col gap-1 opacity-0 group-hover:opacity-100"
-                  onMouseEnter={() => v.html_content && showPreview(v.html_content)}
-                  onMouseLeave={clearPreview}
                 >
                   <button
                     onClick={() => handleRestoreComponent(v.id)}
+                    onMouseEnter={() => {
+                      if (v.html_content) {
+                        const compHtml = extractComponentHtml(v.html_content, componentId)
+                        if (compHtml) previewComponent(componentId, compHtml)
+                      }
+                    }}
+                    onMouseLeave={() => clearPreview(componentId)}
                     disabled={!!restoring || !!restoringComponent}
                     className={cn(
                       'flex flex-col items-center justify-center gap-0.5 w-16 py-2 rounded-[7px] text-[10px] font-semibold transition-all',
@@ -310,6 +315,8 @@ function InlineHistory({ open, componentId }: { open: boolean; componentId: stri
                   </button>
                   <button
                     onClick={() => handleRestore(v.id)}
+                    onMouseEnter={() => v.html_content && showPreview(v.html_content)}
+                    onMouseLeave={clearFullPreview}
                     disabled={!!restoring || !!restoringComponent}
                     className={cn(
                       'flex flex-col items-center justify-center gap-0.5 w-16 py-2 rounded-[7px] text-[10px] font-medium transition-all',
