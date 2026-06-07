@@ -60,12 +60,27 @@ export interface SlideHistoryEntry {
   created_at: string
 }
 
-export async function fetchSlideHistory(projectId: string, slideId: string): Promise<SlideHistoryEntry[]> {
-  return api.get(`/projects/${projectId}/slides/${slideId}/history`)
+export async function fetchSlideHistory(
+  projectId: string, slideId: string, componentId?: string,
+): Promise<SlideHistoryEntry[]> {
+  const params = componentId ? `?component_id=${encodeURIComponent(componentId)}` : ''
+  return api.get(`/projects/${projectId}/slides/${slideId}/history${params}`)
 }
 
 export async function restoreFromHistory(projectId: string, slideId: string, historyId: string): Promise<void> {
   await api.post<void>(`/projects/${projectId}/slides/${slideId}/history/${historyId}/restore`, {})
+}
+
+export async function restoreComponentFromHistory(
+  projectId: string,
+  slideId: string,
+  historyId: string,
+  componentId: string,
+): Promise<void> {
+  await api.post<void>(
+    `/projects/${projectId}/slides/${slideId}/history/${historyId}/restore-component`,
+    { component_id: componentId },
+  )
 }
 
 export async function fetchProjectWithSlides(id: string): Promise<Presentation> {

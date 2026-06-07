@@ -67,6 +67,23 @@ def record_initial_slide(uow, slide, reason: str, agent_name: str | None = None)
         uow.component_history.add(record)
 
 
+def filter_history_by_component(entries: list, component_id: str) -> list:
+    """슬라이드 전체 history에서 특정 컴포넌트가 실제로 변경된 버전만 필터링."""
+    from app.core.domain.html_slide import HtmlSlide
+
+    result = []
+    prev_html: str | None = None
+    for entry in reversed(entries):  # 오래된 순으로 비교
+        curr_html: str | None = None
+        if entry.html_content:
+            comp = HtmlSlide(html=entry.html_content).components.get(component_id)
+            curr_html = comp["html"] if comp else None
+        if curr_html != prev_html:
+            result.append(entry)
+            prev_html = curr_html
+    return list(reversed(result))  # 최신 순 반환
+
+
 async def restore_from_history(uow, slide_id: UUID, history_id: UUID) -> None:
     """특정 이력 버전으로 슬라이드 복원."""
     from fastapi import HTTPException, status
@@ -80,4 +97,31 @@ async def restore_from_history(uow, slide_id: UUID, history_id: UUID) -> None:
         uow, slide_id, list(history.content or []),
         f"버전 복원 (v{history.version})",
         html_content=getattr(history, "html_content", None),
+    )
+
+
+async def restore_component_from_history(uow, slide_id: UUID, history_id: UUID, component_id: str) -> None:
+    """히스토리 스냅샷에서 특정 컴포넌트만 추출해 현재 슬라이드에 merge."""
+    from fastapi import HTTPException, status as http_status
+    from app.core.domain.html_slide import HtmlSlide
+
+    history = await uow.slide_history.get(history_id)
+    if not history or history.slide_id != slide_id:
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="History entry not found")
+    if not history.html_content:
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="No HTML snapshot in this history entry")
+
+    slide = await uow.slides.get(slide_id)
+    if not slide or not slide.html_content:
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Current slide has no HTML content")
+
+    old_component = HtmlSlide(html=history.html_content).components.get(component_id)
+    if not old_component:
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=f"Component '{component_id}' not found in snapshot")
+
+    new_html = HtmlSlide(html=slide.html_content).update_component(component_id, old_component["html"]).html
+    await archive_and_apply(
+        uow, slide_id, list(slide.content or []),
+        f"컴포넌트 복원 ({component_id}, v{history.version})",
+        html_content=new_html,
     )

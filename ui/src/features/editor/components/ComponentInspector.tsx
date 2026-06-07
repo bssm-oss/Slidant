@@ -199,12 +199,12 @@ function InlineHistory({ open, componentId }: { open: boolean; componentId: stri
     if (!projectId || !currentSlide) return
     setLoading(true)
     try {
-      const data = await fetchSlideHistory(projectId, currentSlide.id)
+      const data = await fetchSlideHistory(projectId, currentSlide.id, componentId)
       setVersions(data)
     } finally {
       setLoading(false)
     }
-  }, [projectId, currentSlide?.id])
+  }, [projectId, currentSlide?.id, componentId])
 
   useEffect(() => {
     if (open) load()

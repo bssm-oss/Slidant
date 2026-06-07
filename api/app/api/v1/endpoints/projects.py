@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select, func
 
+from app.api.v1.endpoints.ws import manager as ws_manager
 from app.core.deps import CurrentUser, UoW
 from app.models.component_history import ComponentHistory as ComponentHistoryModel
 from app.models.slide import Slide
@@ -44,6 +45,15 @@ async def _archive_snapshot(uow, slide_id: UUID, reason: str) -> None:
         reason=reason,
     ))
     slide.version += 1
+
+
+async def _notify_slide_changed(project_id: UUID, slide_id: UUID | None = None) -> None:
+    """직접 편집(슬라이드/컴포넌트 변경)을 다른 커넥션에 알림 — 재조회 트리거."""
+    await ws_manager.broadcast_json(str(project_id), {
+        "type": "slide_changed",
+        "project_id": str(project_id),
+        "slide_id": str(slide_id) if slide_id else None,
+    })
 
 
 @router.get("", response_model=list[ProjectResponse])
@@ -101,6 +111,8 @@ async def list_slides(project_id: UUID, current_user: CurrentUser, uow: UoW):
 @router.post("/{project_id}/slides", response_model=SlideResponse, status_code=status.HTTP_201_CREATED)
 async def create_slide(project_id: UUID, body: SlideCreate, current_user: CurrentUser, uow: UoW):
     slide = await project_service.create_slide(uow.projects, uow.slides, project_id, current_user.id, body.title)
+    await uow.commit()
+    await _notify_slide_changed(project_id, slide.id)
     return SlideResponse.from_slide(slide)
 
 
@@ -124,17 +136,22 @@ async def update_slide_html(project_id: UUID, slide_id: UUID, body: dict, curren
         )
     await uow.commit()
     await uow.refresh(slide)
+    await _notify_slide_changed(project_id, slide_id)
     return SlideResponse.from_slide(slide)
 
 
 @router.delete("/{project_id}/slides/{slide_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_slide(project_id: UUID, slide_id: UUID, current_user: CurrentUser, uow: UoW):
     await project_service.delete_slide(uow.projects, uow.slides, project_id, current_user.id, slide_id)
+    await uow.commit()
+    await _notify_slide_changed(project_id, slide_id)
 
 
 @router.patch("/{project_id}/slides/reorder", status_code=status.HTTP_204_NO_CONTENT)
 async def reorder_slides(project_id: UUID, body: SlideReorder, current_user: CurrentUser, uow: UoW):
     await project_service.reorder_slides(uow.projects, uow.slides, project_id, current_user.id, body.slide_ids)
+    await uow.commit()
+    await _notify_slide_changed(project_id)
 
 
 @router.get("/{project_id}/slides/{slide_id}/components", response_model=list[ComponentResponse])
@@ -145,27 +162,36 @@ async def list_components(project_id: UUID, slide_id: UUID, current_user: Curren
 @router.post("/{project_id}/slides/{slide_id}/components", response_model=ComponentResponse, status_code=status.HTTP_201_CREATED)
 async def create_component(project_id: UUID, slide_id: UUID, body: ComponentCreate, current_user: CurrentUser, uow: UoW):
     await _archive_snapshot(uow, slide_id, "사용자: 컴포넌트 추가")
-    return await project_service.create_component(
+    comp = await project_service.create_component(
         uow.projects, uow.slides, project_id, current_user.id, slide_id,
         body.type, body.properties, body.parent_id, body.order,
     )
+    await uow.commit()
+    await _notify_slide_changed(project_id, slide_id)
+    return comp
 
 
 @router.patch("/{project_id}/slides/{slide_id}/components/{component_id}", response_model=ComponentResponse)
 async def update_component(project_id: UUID, slide_id: UUID, component_id: str, body: ComponentUpdate, current_user: CurrentUser, uow: UoW):
     await _archive_snapshot(uow, slide_id, f"사용자: 컴포넌트 수정 ({component_id[:8]})")
-    return await project_service.update_component(
+    comp = await project_service.update_component(
         uow.projects, uow.slides, project_id, current_user.id, slide_id, component_id,
         body.properties, body.order,
     )
+    await uow.commit()
+    await _notify_slide_changed(project_id, slide_id)
+    return comp
 
 
 @router.post("/{project_id}/slides/{slide_id}/components/patch", response_model=list[ComponentResponse])
 async def apply_json_patch(project_id: UUID, slide_id: UUID, body: ComponentPatchRequest, current_user: CurrentUser, uow: UoW):
     await _archive_snapshot(uow, slide_id, f"사용자: 패치 적용 ({len(body.ops)}개 ops)")
-    return await project_service.apply_json_patch(
+    comps = await project_service.apply_json_patch(
         uow.projects, uow.slides, project_id, current_user.id, slide_id, body.ops
     )
+    await uow.commit()
+    await _notify_slide_changed(project_id, slide_id)
+    return comps
 
 
 @router.delete("/{project_id}/slides/{slide_id}/components/{component_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -174,12 +200,21 @@ async def delete_component(project_id: UUID, slide_id: UUID, component_id: str, 
     await project_service.delete_component(
         uow.projects, uow.slides, project_id, current_user.id, slide_id, component_id
     )
+    await uow.commit()
+    await _notify_slide_changed(project_id, slide_id)
 
 
 @router.get("/{project_id}/slides/{slide_id}/history", response_model=list[SlideHistoryResponse])
-async def list_history(project_id: UUID, slide_id: UUID, current_user: CurrentUser, uow: UoW):
+async def list_history(
+    project_id: UUID, slide_id: UUID, current_user: CurrentUser, uow: UoW,
+    component_id: str | None = None,
+):
     await project_service.get_slide(uow.projects, uow.slides, project_id, current_user.id, slide_id)
-    return await uow.slide_history.list_by_slide(slide_id)
+    entries = await uow.slide_history.list_by_slide(slide_id)
+    if not component_id:
+        return entries
+    from app.services.slide_history_service import filter_history_by_component
+    return filter_history_by_component(entries, component_id)
 
 
 @router.post("/{project_id}/slides/{slide_id}/history/{history_id}/restore", status_code=status.HTTP_204_NO_CONTENT)
@@ -187,6 +222,21 @@ async def restore_from_history_endpoint(project_id: UUID, slide_id: UUID, histor
     await project_service.get_slide(uow.projects, uow.slides, project_id, current_user.id, slide_id)
     from app.services.slide_history_service import restore_from_history
     await restore_from_history(uow, slide_id, history_id)
+
+
+class RestoreComponentBody(BaseModel):
+    component_id: str
+
+
+@router.post("/{project_id}/slides/{slide_id}/history/{history_id}/restore-component", status_code=status.HTTP_204_NO_CONTENT)
+async def restore_component_from_history_endpoint(
+    project_id: UUID, slide_id: UUID, history_id: UUID,
+    body: RestoreComponentBody,
+    current_user: CurrentUser, uow: UoW,
+):
+    await project_service.get_slide(uow.projects, uow.slides, project_id, current_user.id, slide_id)
+    from app.services.slide_history_service import restore_component_from_history
+    await restore_component_from_history(uow, slide_id, history_id, body.component_id)
 
 
 class ProjectThemeUpdate(BaseModel):
