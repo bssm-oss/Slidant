@@ -136,6 +136,7 @@ function useHtmlSlideEdit(
       // ── 클릭: 컴포넌트 선택 → RightPanel 속성 패널 표시 ──
       el.addEventListener('click', (e) => {
         e.stopPropagation()
+        if (isViewer) return
         const style = parseElementStyle(el)
         onComponentSelect(id, style)
       })
@@ -862,7 +863,7 @@ export default function SlideCanvas() {
   if (currentSlide?.html_content) {
     // previewHtml: proposal hover 중 전체 슬라이드 미리보기
     const rawHtml = previewHtml ?? (htmlContent || currentSlide.html_content)
-    const iframeSrc = buildSlideSrc(rawHtml)
+    const iframeSrc = buildSlideSrc(rawHtml, isViewer)
 
     return (
       <div ref={containerRef}
@@ -978,6 +979,7 @@ export default function SlideCanvas() {
                 onMouseDown={(e) => { if (!isConflicted) startDrag(e, comp, 'move') }}
                 onClick={(e) => {
                   e.stopPropagation()
+                  if (isViewer) return
                   if (isConflicted) {
                     setConflictTarget(comp.id)
                   } else {
