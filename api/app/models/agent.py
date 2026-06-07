@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Column
+from sqlalchemy import Column, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
@@ -29,6 +29,10 @@ class AgentRun(SQLModel, table=True):
     status: str = Field(default="idle", max_length=50)  # idle | running | done | error | conflict
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    task_description: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
+    result_summary: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
+    agent_name: str | None = Field(default=None, max_length=100)
+    affected_slide_id: UUID | None = Field(default=None, foreign_key="slides.id")
 
 
 class LlmLog(SQLModel, table=True):

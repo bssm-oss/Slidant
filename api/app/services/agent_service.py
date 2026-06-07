@@ -62,12 +62,18 @@ async def create_agent_run(
     agent_run_repo: AgentRunRepository,
     project_id: UUID,
     agent_definition_id: UUID,
+    task_description: str | None = None,
+    agent_name: str | None = None,
+    affected_slide_id: UUID | None = None,
 ) -> AgentRun:
     agent_run = AgentRun(
         project_id=project_id,
         agent_definition_id=agent_definition_id,
         status="running",
         started_at=datetime.utcnow(),
+        task_description=task_description,
+        agent_name=agent_name,
+        affected_slide_id=affected_slide_id,
     )
     agent_run_repo.add(agent_run)
     await agent_run_repo.session.flush()
@@ -93,9 +99,12 @@ async def finalize_agent_run(
     patches: list[dict],
     status: str = "done",
     error: str = "",
+    result_summary: str | None = None,
 ) -> None:
     agent_run.status = status
     agent_run.finished_at = datetime.utcnow()
+    if result_summary is not None:
+        agent_run.result_summary = result_summary
     llm_log = LlmLog(
         agent_run_id=agent_run.id,
         model="via-openrouter" if status == "done" else "n/a",

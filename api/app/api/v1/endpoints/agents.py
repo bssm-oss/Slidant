@@ -57,7 +57,14 @@ async def run_agent_endpoint(
     agent_def, system_prompt = await agent_service.resolve_agent_def(
         uow.agent_definitions, body.agent_definition_id, body.agent_role
     )
-    agent_run = await agent_service.create_agent_run(uow.agent_runs, body.project_id, agent_def.id)
+    agent_run = await agent_service.create_agent_run(
+        uow.agent_runs,
+        body.project_id,
+        agent_def.id,
+        task_description=body.command,
+        agent_name=agent_def.name,
+        affected_slide_id=body.slide_id,
+    )
 
     # 사용자 채팅 메시지 즉시 저장
     user_msg = ChatMessage(
@@ -477,10 +484,6 @@ async def _run_agent_background_inner(
                         logger.info("   슬라이드 추가: id=%s  title=%r  components=%d",
                                     new_slide.id, value.get("title"), len(op_components))
 
-            await agent_service.finalize_agent_run(
-                uow.agent_runs, uow.llm_logs, agent_run, body.command, patches
-            )
-
             affected_ids = list({
                 op.get("path", "").strip("/").split("/")[0]
                 for op in comp_ops if op.get("path", "").strip("/")
@@ -492,6 +495,11 @@ async def _run_agent_background_inner(
             if new_slides: stats.append(f"슬라이드 {len(new_slides)}장 추가")
             fallback_content = "、".join(stats) if stats else "변경 없음"
             agent_content = llm_summary if llm_summary else fallback_content
+
+            await agent_service.finalize_agent_run(
+                uow.agent_runs, uow.llm_logs, agent_run, body.command, patches,
+                result_summary=agent_content,
+            )
 
             # is_full_replace: 원본 슬라이드 삭제됐으므로 chat_message.slide_id를
             # 첫 새 슬라이드 ID로 교체 (nullable이지만 새 슬라이드 연결이 더 올바름)
@@ -636,6 +644,10 @@ async def get_agent_logs(project_id: UUID, current_user: CurrentUser, uow: UoW):
         {
             "id": str(r.id),
             "status": r.status,
+            "agent_name": r.agent_name,
+            "task_description": r.task_description,
+            "result_summary": r.result_summary,
+            "affected_slide_id": str(r.affected_slide_id) if r.affected_slide_id else None,
             "started_at": r.started_at.isoformat() if r.started_at else None,
             "finished_at": r.finished_at.isoformat() if r.finished_at else None,
         }
