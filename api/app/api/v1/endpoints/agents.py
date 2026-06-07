@@ -10,7 +10,7 @@ from app.core.domain.slide_sanitizer import sanitize_slide_html
 from app.models.chat import ChatMessage
 from app.schemas.agent import AgentRunRequest, AgentRunResponse
 from app.services import agent_service
-from app.services.agent_runner import build_slide_context_from_html, run_agent
+from app.services.agent_runner import build_slide_context_from_html, generate_presentation_title, run_agent
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 logger = logging.getLogger("slidant.agent")
@@ -406,7 +406,9 @@ async def _run_agent_background_inner(
                         logger.info("   HTML 슬라이드 생성 (fresh %d/%d): title=%r",
                                     i + 1, len(specs), spec.get("title"))
 
-                elif specs and slide:
+                elif specs and slide and _proposal_obj is None:
+                    # html_output으로 이미 Proposal 생성됐다면 동일 편집을 여기서 즉시 적용하면 안 됨
+                    # (승인 전인데 내용이 먼저 반영돼버려 Proposal이 무의미한 고아 상태로 남는 버그 방지)
                     # 단일 슬라이드 생성 또는 edit: specs[0]→현재 슬라이드 덮어쓰기
                     first = specs[0]
                     reason = f'{agent_def_name}: {body.command[:120]}'
@@ -481,16 +483,12 @@ async def _run_agent_background_inner(
             )
             uow.chat_messages.add(agent_msg)
 
-            # 프레젠테이션 제목 자동 설정 (기본값인 경우만)
+            # 프레젠테이션 제목 자동 설정 (기본값인 경우만, 사용자 요청 기반 1회 생성)
             if project and (not project.title or project.title in ("제목 없는 프레젠테이션", "Untitled")):
-                # llm_summary 첫 줄에서 제목 추출
-                if llm_summary:
-                    # "N장 PPT — WARM 팔레트" → "N장 PPT" 앞부분 또는 첫 슬라이드 제목 사용
-                    candidate = llm_summary.split("—")[0].split("·")[0].strip()
-                    candidate = candidate.split("\n")[0].strip()
-                    if 3 <= len(candidate) <= 50:
-                        project.title = candidate
-                        logger.info("   프레젠테이션 제목 자동 설정: %r", candidate)
+                candidate = await generate_presentation_title(body.command, encrypted_api_key, provider)
+                if candidate:
+                    project.title = candidate
+                    logger.info("   프레젠테이션 제목 자동 설정: %r", candidate)
 
             broadcast_payload: dict = {
                 "type": "agent_done",
@@ -642,7 +640,6 @@ async def _save_slide_ready(
         logger.warning("slide_ready interim save failed (non-fatal): %s", exc)
 
 
-@router.get("/events/{project_id}")
 async def _broadcast(project_id: str, message: dict) -> None:
     logger.debug("ws_broadcast  project=%s  peers=%d  type=%s",
                  project_id, ws_manager.peer_count(project_id), message.get("type"))
@@ -658,8 +655,11 @@ async def _broadcast(project_id: str, message: dict) -> None:
         if event_type not in ("agent_token",):
             await redis.rpush(key, _json.dumps(message, default=str))
             await redis.expire(key, 1800)  # 30분 TTL
-        # agent_done / agent_error → 이벤트 히스토리 정리 (완료 후 복구 불필요)
+        # agent_done / agent_error → 완료 직후 끊겼다 재연결하는 클라이언트도
+        # replay로 종료 신호를 받을 수 있도록 즉시 삭제 대신 짧은 유예 TTL만 부여.
+        # (바로 delete 하면, 브로드캐스트 시점에 일시적으로 연결이 끊긴 클라이언트는
+        #  agent_done을 영영 못 받아 "처리 중..."에서 멈춰버림 — DB 작업 자체는 끝났는데도)
         if event_type in ("agent_done", "agent_error"):
-            await redis.delete(key)
+            await redis.expire(key, 60)
     except Exception as _e:
         logger.debug("redis_cache_fail: %s", _e)

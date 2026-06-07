@@ -31,6 +31,7 @@ from app.agent.prompts import (  # noqa: F401
     SLIDE_COMPOSER_PROMPT, HTML_EDITOR_PROMPT,
     COMPONENT_EDITOR_PROMPT, LAYOUT_COMPOSER_PROMPT,
     UNIFIED_PLANNER_PROMPT, PLANNER_PROMPT,
+    TITLE_GENERATOR_PROMPT,
 )
 
 
@@ -85,6 +86,36 @@ def _extract_json(text: str) -> dict | list | None:
                 return json.loads(m.group(1))
             except json.JSONDecodeError:
                 continue
+    return None
+
+
+# ── 프레젠테이션 제목 자동 생성 ───────────────────────────────────────────────
+
+async def generate_presentation_title(command: str, encrypted_api_key: str, provider: str) -> str | None:
+    """사용자 요청만으로 짧은 프레젠테이션 제목 생성. 실패 시 None (기존 기본 제목 유지)."""
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    try:
+        api_key = decrypt_api_key(encrypted_api_key)
+        llm = _make_llm(api_key, provider, json_mode=False)
+        messages = [
+            SystemMessage(content=TITLE_GENERATOR_PROMPT),
+            HumanMessage(content=f"User request: {command}"),
+        ]
+        raw = ""
+        async for chunk in llm.astream(messages):
+            raw_c = chunk.content if hasattr(chunk, "content") else ""
+            if isinstance(raw_c, list):
+                raw += "".join(b.get("text", "") for b in raw_c if isinstance(b, dict) and b.get("type") == "text")
+            else:
+                raw += str(raw_c) if raw_c else ""
+    except Exception as e:
+        logger.warning("title_generation failed: %s", e)
+        return None
+
+    title = raw.strip().strip('"').strip("'").strip()
+    if 2 <= len(title) <= 30:
+        return title
     return None
 
 

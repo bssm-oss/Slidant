@@ -731,6 +731,12 @@ SEARCH_CACHE_CHECK_PROMPT = (
     '(empty array if sufficient=true). No prose, no markdown fences.'
 )
 
+TITLE_GENERATOR_PROMPT = (
+    "Generate a short, natural presentation title in Korean (4-20 characters) "
+    "based on the user's request below. Output ONLY the title text — "
+    "no quotes, no markdown, no explanation, no trailing punctuation."
+)
+
 SEARCH_MERGER_PROMPT = (
     "You are a research analyst. Extract ALL key facts from the search results below into a concise, "
     "structured fact sheet. Preserve exact numbers, names, dates, percentages. "
