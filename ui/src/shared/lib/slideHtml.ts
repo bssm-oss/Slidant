@@ -14,10 +14,22 @@ export function getComponentIds(html: string): Set<string> {
   } catch { return new Set() }
 }
 
+function canonicalizeEl(el: Element): string {
+  const attrs = [...el.attributes].map((a) => `${a.name}="${a.value}"`).sort().join(' ')
+  const tag = el.tagName.toLowerCase()
+  const children = [...el.childNodes].map((node) => {
+    if (node.nodeType === Node.ELEMENT_NODE) return canonicalizeEl(node as Element)
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? ''
+    return ''
+  }).join('')
+  return `<${tag} ${attrs}>${children}</${tag}>`
+}
+
 export function extractComponentHtml(html: string, id: string): string | null {
   try {
     const doc = new DOMParser().parseFromString(html, 'text/html')
-    return doc.querySelector(`[data-component-id="${id}"]`)?.outerHTML ?? null
+    const el = doc.querySelector(`[data-component-id="${id}"]`)
+    return el ? canonicalizeEl(el) : null
   } catch { return null }
 }
 

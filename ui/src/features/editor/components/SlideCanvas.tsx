@@ -8,7 +8,7 @@ import type { SlideComponent } from '@/shared/types'
 import ConflictResolver from './ConflictResolver'
 import SlideProposalBanner from './SlideProposalBanner'
 import CropModal from './CropModal'
-import { buildSlideSrc } from '@/shared/lib/slideHtml'
+import { buildSlideSrc, getComponentIds, extractComponentHtml } from '@/shared/lib/slideHtml'
 import { crdtStore } from '@/shared/lib/crdtStore'
 import SelectionOverlay from './SelectionOverlay'
 
@@ -355,8 +355,15 @@ function canonicalizeElement(el: Element): string {
   return `<${tag} ${attrs}>${children}</${tag}>`
 }
 
-function getProposalDiff(currentHtml: string, proposalHtml: string): { changed: string[]; deleted: string[] } {
+function getProposalDiff(
+  currentHtml: string,
+  proposal: { html_content?: string | null; affected_component_ids?: { changed: string[]; deleted: string[] } }
+): { changed: string[]; deleted: string[] } {
+  // 에이전트 도착 시점에 계산된 변경 목록 사용 — 이후 사용자 직접 편집이 섞이지 않음
+  if (proposal.affected_component_ids) return proposal.affected_component_ids
+  // fallback: affected_component_ids 없는 레거시 proposal은 현재 HTML 기준 재계산
   try {
+    const proposalHtml = proposal.html_content ?? ''
     const parseComponents = (html: string) => {
       const doc = new DOMParser().parseFromString(html, 'text/html')
       const map = new Map<string, string>()
@@ -702,12 +709,20 @@ export default function SlideCanvas() {
       return
     }
 
+    const currentIds = getComponentIds(htmlContent)
     const changedSet = new Set<string>()
     const deletedSet = new Set<string>()
     for (const p of allProposals) {
-      const { changed, deleted } = getProposalDiff(htmlContent, p.html_content!)
-      changed.forEach((id) => changedSet.add(id))
-      deleted.forEach((id) => deletedSet.add(id))
+      const { changed, deleted } = getProposalDiff(htmlContent, p)
+      changed.forEach((id) => {
+        // 부분 승인으로 이미 현재 슬라이드에 반영된 컴포넌트는 인디케이터 제외
+        if (extractComponentHtml(htmlContent, id) === extractComponentHtml(p.html_content!, id)) return
+        changedSet.add(id)
+      })
+      deleted.forEach((id) => {
+        if (!currentIds.has(id)) return // 이미 삭제 반영됨
+        deletedSet.add(id)
+      })
     }
 
     const doc = iframeRef.current.contentDocument

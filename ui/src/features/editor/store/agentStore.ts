@@ -724,6 +724,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         if (proposalPayload) {
           const ppt2 = useSlideStore.getState().presentation
           // 추가된 컴포넌트 즉시 적용 — 단, 삭제되는 컴포넌트도 있으면(replace 상황) auto-apply 하지 않음
+          let affectedComponentIds: { changed: string[]; deleted: string[] } | undefined
           if (ppt2) {
             const currentSlide = ppt2.slides.find((s) => s.id === proposalPayload.slide_id)
             const currentHtml = currentSlide?.html_content || ''
@@ -734,6 +735,16 @@ export const useAgentStore = create<AgentState>((set, get) => ({
               // 순수 추가만 있을 때만 auto-apply (기존 컴포넌트 수정/교체가 있으면 사용자 확인 필요)
               useProposalStore.getState().approveProposal(proposalPayload.id, addedIds, true).catch(() => {})
             }
+            // 에이전트가 의도한 컴포넌트 변경 목록 — 도착 시점 기준으로 저장 (사용자 직접 편집과 분리)
+            const changedIds: string[] = []
+            const currentIds = _getComponentIds(currentHtml)
+            const proposalIds = _getComponentIds(proposalPayload.html_content)
+            currentIds.forEach((id) => {
+              if (proposalIds.has(id) && _extractComponentHtml(currentHtml, id) !== _extractComponentHtml(proposalPayload.html_content, id)) {
+                changedIds.push(id)
+              }
+            })
+            affectedComponentIds = { changed: changedIds, deleted: deletedIds }
           }
           useProposalStore.getState().addProposal({
             id: proposalPayload.id,
@@ -744,6 +755,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             patches: [],
             html_content: proposalPayload.html_content,
             summary: proposalPayload.summary,
+            affected_component_ids: affectedComponentIds,
             status: 'pending',
             created_at: new Date().toISOString(),
           })

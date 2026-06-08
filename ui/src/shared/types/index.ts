@@ -112,6 +112,7 @@ export interface AgentProposal {
   patches: JsonPatchOp[]
   summary: string
   html_content?: string | null
+  affected_component_ids?: { changed: string[]; deleted: string[] }
   status: ProposalStatus
   created_at: string
 }
