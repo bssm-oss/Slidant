@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 import { useEditorStore } from '../store/editorStore'
 import { useAgentStore, type PresenceUser } from '../store/agentStore'
 import { cn } from '@/shared/lib/utils'
+import { buildSlideSrc } from '@/shared/lib/slideHtml'
 import { Plus, X, Copy, ArrowUp, ArrowDown, MoreHorizontal, RefreshCw } from 'lucide-react'
 import type { SlideComponent, Slide } from '@/shared/types'
 import {
@@ -128,7 +129,7 @@ function SortableSlideItem({
         {slide.html_content ? (
           <div style={{ width: 200, height: 112.5, overflow: 'hidden', position: 'absolute', top: 0, left: 0 }}>
             <iframe
-              srcDoc={slide.html_content}
+              srcDoc={buildSlideSrc(slide.html_content, true)}
               style={{
                 width: 960,
                 height: 540,
@@ -138,7 +139,7 @@ function SortableSlideItem({
                 display: 'block',
                 pointerEvents: 'none',
               }}
-              sandbox="allow-scripts"
+              sandbox="allow-scripts allow-same-origin"
               title={`슬라이드 ${index + 1} 미리보기`}
             />
           </div>
