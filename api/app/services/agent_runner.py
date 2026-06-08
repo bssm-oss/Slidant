@@ -256,11 +256,10 @@ CRITICAL — SCOPE LOCKED TO CURRENT SLIDE:
     if getattr(settings, "MOCK_AGENT", False):
         logger.info("mock_mode  returning mock patches")
         patches = _mock_patches(role, command, components)
-        return patches, slide_context, "[MOCK] 테스트 응답", "", [], False
+        return patches, slide_context, "[MOCK] 테스트 응답", "", [], False, None, "create"
 
     api_key = decrypt_api_key(encrypted_api_key)
-    llm       = _make_llm(api_key, provider, json_mode=False)
-    llm_plain = _make_llm(api_key, provider, json_mode=False)
+    llm = _make_llm(api_key, provider, json_mode=False)
 
     resolved_prompt = system_prompt
     if isinstance(system_prompt, str):
@@ -268,7 +267,7 @@ CRITICAL — SCOPE LOCKED TO CURRENT SLIDE:
 
     ctx = NodeContext(
         llm=llm,
-        llm_plain=llm_plain,
+        llm_plain=llm,
         gen_prompt=resolved_prompt or SYSTEM_PROMPTS.get(role, SYSTEM_PROMPTS["content"]),
         on_token=on_token,
         on_event=on_event,
@@ -314,6 +313,7 @@ CRITICAL — SCOPE LOCKED TO CURRENT SLIDE:
         html_output  = result.get("html_output", "")
         html_slides  = result.get("html_slides", [])
         delete_slide = result.get("delete_slide", False)
+        agent_mode   = result.get("mode", "create")
         # 새로 검색한 경우에만 cache_update 반환 (캐시 재사용 시 search_results 비어있음)
         new_search_results = result.get("search_results", [])
         new_search_summary = result.get("search_summary", "")
@@ -329,12 +329,12 @@ CRITICAL — SCOPE LOCKED TO CURRENT SLIDE:
             if msgs:
                 last = msgs[-1]
                 logger.warning("llm_empty_patches  content=%r", str(getattr(last, "content", last))[:400])
-        return patches, slide_context, summary, html_output, html_slides, delete_slide, cache_update
+        return patches, slide_context, summary, html_output, html_slides, delete_slide, cache_update, agent_mode
     except Exception as e:
         ms = (time.perf_counter() - t0) * 1000
         err_str = str(e)
         logger.warning("llm_error  %.0fms  %s", ms, err_str[:120])
         if "credit balance" in err_str or "insufficient" in err_str.lower():
             logger.info("fallback  credit exhausted → mock")
-            return _mock_patches(role, command, components), slide_context, "[Mock fallback] 크레딧 부족", "", [], False, None
+            return _mock_patches(role, command, components), slide_context, "[Mock fallback] 크레딧 부족", "", [], False, None, "create"
         raise
