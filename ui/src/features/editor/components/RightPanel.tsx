@@ -685,7 +685,7 @@ export default function RightPanel() {
             onFocus={() => activeAgent && selectChatAgent(activeAgent.definitionId ?? null)}
             placeholder={(!isCurrentSessionMine || isViewer) ? '읽기 전용' : activeAgent ? `${activeAgent.name}에게 요청... (Shift+Enter 줄바꿈)` : '요청...'}
             disabled={isRunning || !isCurrentSessionMine || isViewer}
-            className="relative w-full resize-none text-[13px] border-0 outline-none bg-transparent py-2.5 leading-relaxed disabled:opacity-50"
+            className="relative w-full resize-none text-[13px] border-0 outline-none bg-transparent py-2.5 px-0 leading-relaxed disabled:opacity-50"
             style={{ height: '72px', maxHeight: '150px', color: input ? 'transparent' : undefined, caretColor: 'var(--text)' }}
           />
           </div>
