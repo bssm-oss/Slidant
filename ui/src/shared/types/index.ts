@@ -1,3 +1,10 @@
+export interface AgentStep {
+  id: string
+  label: string
+  type?: 'plan' | 'search' | 'create' | 'edit' | 'component_edit' | 'component_delete' | 'delete'
+  status: 'pending' | 'active' | 'done' | 'failed' | 'cancelled'
+}
+
 // 슬라이드 컴포넌트 타입
 export type ComponentType = 'text' | 'image' | 'chart' | 'layout' | 'shape'
 
@@ -63,7 +70,8 @@ export interface ChatMessage {
   agentName?: string
   agentDefinitionId?: string
   timestamp: string
-  type: 'info' | 'success' | 'error'
+  type: 'info' | 'success' | 'error' | 'steps'
+  steps?: AgentStep[]
 }
 
 export interface AgentLog {

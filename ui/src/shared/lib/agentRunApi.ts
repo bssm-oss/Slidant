@@ -34,6 +34,8 @@ export interface ChatMessageEntry {
   affected_component_ids: string[]
   slide_id: string | null
   created_at: string
+  message_type: string | null
+  metadata: Record<string, unknown> | null
 }
 
 export const runAgent = (body: AgentRunRequest) =>
@@ -46,3 +48,8 @@ export const fetchChatHistory = (projectId: string, sessionId?: string) => {
   const params = sessionId ? `?session_id=${sessionId}` : ''
   return api.get<ChatMessageEntry[]>(`/agent/chat/${projectId}${params}`)
 }
+
+export const saveStepsMessage = (
+  projectId: string,
+  body: { agent_name: string; steps: unknown[]; agent_definition_id?: string; session_id?: string; created_at?: string },
+) => api.post<{ id: string }>(`/agent/chat/${projectId}/steps`, body)

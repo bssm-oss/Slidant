@@ -80,7 +80,7 @@ interface AgentState {
   activeRightTab: 'agent' | 'properties'
   agentSteps: AgentStep[]
   lastRunAgentName: string | null
-  stepHistory: Array<{ id: string; agentName: string; steps: AgentStep[]; timestamp: string }>
+  stepHistory: Array<{ id: string; agentName: string; steps: AgentStep[]; timestamp: string; cancelled?: boolean }>
   presenceUsers: PresenceUser[]
   currentAgentRunId: string | null
   currentRunSessionId: string | null
@@ -89,7 +89,7 @@ interface AgentState {
   estimatedSeconds: number | null
 
   loadAgents: (projectId?: string) => Promise<void>
-  loadChatHistory: (projectId: string) => Promise<void>
+  loadChatHistory: (projectId: string, opts?: { skipStepHistory?: boolean }) => Promise<void>
   loadAgentLogs: (projectId: string) => Promise<void>
   loadStepHistory: (projectId: string) => void
   connectWs: (projectId: string) => () => void
@@ -142,21 +142,43 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     } catch {}
   },
 
-  loadChatHistory: async (projectId) => {
+  loadChatHistory: async (projectId, opts) => {
     try {
       const { fetchChatHistory } = await import('@/shared/lib/agentRunApi')
       const currentSessionId = useSessionStore.getState().currentSessionId
       const msgs = await fetchChatHistory(projectId, currentSessionId ?? undefined)
-      const chatMessages: ChatMessage[] = msgs.map((m) => ({
-        id: m.id,
-        role: m.role,
-        content: m.content,
-        agentName: m.agent_name ?? (m.role === 'agent' ? 'Agent' : undefined),
-        agentDefinitionId: m.agent_definition_id ?? undefined,
-        timestamp: m.created_at,
-        type: m.content.startsWith('오류') ? 'error' : m.role === 'agent' ? 'success' : 'info',
-      }))
-      set({ chatMessages })
+
+      const chatMessages: ChatMessage[] = []
+      const stepHistoryFromBE: AgentState['stepHistory'] = []
+
+      for (const m of msgs) {
+        if (m.message_type === 'steps' && m.metadata?.steps) {
+          stepHistoryFromBE.push({
+            id: m.id,
+            agentName: m.agent_name ?? 'Agent',
+            steps: m.metadata.steps as AgentStep[],
+            timestamp: m.created_at,
+          })
+        } else {
+          chatMessages.push({
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            agentName: m.agent_name ?? (m.role === 'agent' ? 'Agent' : undefined),
+            agentDefinitionId: m.agent_definition_id ?? undefined,
+            timestamp: m.created_at,
+            type: m.content.startsWith('오류') ? 'error' : m.role === 'agent' ? 'success' : 'info',
+          })
+        }
+      }
+
+      if (opts?.skipStepHistory) {
+        // agent_done 직후 호출 시 — BE 저장 미완료 race 방지, stepHistory 건드리지 않음
+        set({ chatMessages })
+      } else {
+        // 초기 로드 / 세션 전환 시 — BE steps 복원
+        set({ chatMessages, stepHistory: stepHistoryFromBE })
+      }
     } catch {}
   },
 
@@ -176,13 +198,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     } catch {}
   },
 
-  loadStepHistory: (projectId) => {
-    try {
-      const raw = localStorage.getItem(`slidant:stepHistory:${projectId}`)
-      if (!raw) return
-      const entries = JSON.parse(raw) as AgentState['stepHistory']
-      set({ stepHistory: entries })
-    } catch {}
+  loadStepHistory: (_projectId) => {
+    // BE에서 loadChatHistory가 steps 메시지 복원 — 별도 호출 불필요
   },
 
   connectWs: (projectId) => {
@@ -707,23 +724,31 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           // replay된 agent_done은 채팅 버블/로그 재추가 안 함 (이미 chat history에 있음)
           if (isReplayed) return base
 
-          // 완료된 steps를 stepHistory에 보존 — loadChatHistory가 덮어쓰지 않는 별도 배열
+          // 완료된 steps를 stepHistory에 보존 — summary보다 1초 앞 timestamp로 항상 위에 표시
+          const stepTs = new Date(Date.now() - 1000).toISOString()
           const newStepEntry = completedSteps.length > 0 ? {
             id: `steps-${Date.now()}`,
             agentName: doneAgentName || 'Agent',
             steps: completedSteps,
-            timestamp: new Date().toISOString(),
+            timestamp: stepTs,
           } : null
 
           const nextStepHistory = newStepEntry ? [...s.stepHistory, newStepEntry] : s.stepHistory
-          // localStorage 저장 — 최대 100개 유지
+
+          // BE에 비동기 저장 (fire-and-forget)
           if (newStepEntry) {
             const projectId = useSlideStore.getState().presentation?.id
+            const sessionId = useSessionStore.getState().currentSessionId
             if (projectId) {
-              try {
-                const capped = nextStepHistory.slice(-100)
-                localStorage.setItem(`slidant:stepHistory:${projectId}`, JSON.stringify(capped))
-              } catch {}
+              import('@/shared/lib/agentRunApi').then(({ saveStepsMessage }) => {
+                saveStepsMessage(projectId, {
+                  agent_name: newStepEntry.agentName,
+                  steps: newStepEntry.steps,
+                  agent_definition_id: doneAgent?.definitionId,
+                  session_id: sessionId ?? undefined,
+                  created_at: newStepEntry.timestamp,
+                }).catch((e) => console.error('[steps] save failed', e))
+              })
             }
           }
 
@@ -810,7 +835,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
               .then((fetched) => useProposalStore.getState().mergeProposalsForSlide(proposalPayload.slide_id, fetched))
               .catch(() => {})
           })
-          if (ppt2) get().loadChatHistory(ppt2.id)
+          if (ppt2) get().loadChatHistory(ppt2.id, { skipStepHistory: true })
           return
         }
 
@@ -830,7 +855,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             }))
           }
           useSlideStore.getState().loadPresentation(ppt.id)
-          get().loadChatHistory(ppt.id)
+          get().loadChatHistory(ppt.id, { skipStepHistory: true })
         }
       }
 
@@ -883,7 +908,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         })
 
         const ppt = useSlideStore.getState().presentation
-        if (ppt) get().loadChatHistory(ppt.id)
+        if (ppt) get().loadChatHistory(ppt.id, { skipStepHistory: true })
       }
     })
     return unsubscribe
@@ -917,8 +942,40 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   },
 
   cancelAgent: async () => {
-    const { currentAgentRunId } = get()
+    const { currentAgentRunId, agentSteps, lastRunAgentName, agents } = get()
     if (!currentAgentRunId) return
+
+    // Mark non-finished steps as cancelled and move to history immediately
+    const cancelledSteps = agentSteps.map((s) =>
+      s.status === 'done' || s.status === 'failed' ? s : { ...s, status: 'cancelled' as const }
+    )
+    if (cancelledSteps.length > 0) {
+      const runningAgent = agents.find((a) => a.status === 'running')
+      const agentName = runningAgent?.name ?? lastRunAgentName ?? 'Agent'
+      const stepTs = new Date().toISOString()
+      const newStepEntry = {
+        id: `steps-cancelled-${Date.now()}`,
+        agentName,
+        steps: cancelledSteps,
+        timestamp: stepTs,
+        cancelled: true,
+      }
+      set((s) => ({ agentSteps: [], stepHistory: [...s.stepHistory, newStepEntry] }))
+
+      const projectId = useSlideStore.getState().presentation?.id
+      const sessionId = useSessionStore.getState().currentSessionId
+      if (projectId) {
+        import('@/shared/lib/agentRunApi').then(({ saveStepsMessage }) => {
+          saveStepsMessage(projectId, {
+            agent_name: agentName,
+            steps: cancelledSteps,
+            session_id: sessionId ?? undefined,
+            created_at: stepTs,
+          }).catch((e) => console.error('[steps] cancel save failed', e))
+        })
+      }
+    }
+
     try {
       await api.delete(`/agent/run/${currentAgentRunId}`)
     } catch {}

@@ -21,3 +21,5 @@ class ChatMessage(SQLModel, table=True):
     session_id: UUID | None = Field(default=None, foreign_key="chat_sessions.id", index=True)
     user_id: UUID | None = Field(default=None, foreign_key="users.id", index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    message_type: str | None = Field(default=None, max_length=50)  # 'steps' | None
+    extra_data: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
