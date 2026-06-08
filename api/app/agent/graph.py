@@ -15,6 +15,7 @@ from app.agent.nodes.searcher import make_web_searcher, make_search_merger
 from app.agent.nodes.validator import (
     make_html_aggregator, make_html_validator, make_should_retry_html,
     make_formatter, make_patch_serializer, make_validator,
+    make_visual_validator,
 )
 from app.agent.nodes.routing import (
     make_dispatch_slides, make_increment_retry, make_route_after_planner_v2,
@@ -47,6 +48,7 @@ def _build_html_graph(ctx: NodeContext):
     graph.add_node("slide_deleter",     make_slide_deleter(ctx))
     graph.add_node("html_aggregator",   make_html_aggregator(ctx))
     graph.add_node("html_validator",    make_html_validator(ctx))
+    graph.add_node("visual_validator",  make_visual_validator(ctx))
     graph.add_node("self_reviewer",     make_self_reviewer(ctx))
     graph.add_node("formatter",         make_formatter(ctx))
     graph.add_node("retry_inc",         make_increment_retry(ctx))
@@ -76,7 +78,8 @@ def _build_html_graph(ctx: NodeContext):
 
     graph.add_edge("html_editor",       "html_validator")
     graph.add_edge("component_deleter", "html_validator")
-    graph.add_conditional_edges("html_validator", should_retry_html, {
+    graph.add_edge("html_validator",    "visual_validator")
+    graph.add_conditional_edges("visual_validator", should_retry_html, {
         "retry": "retry_inc",
         "done":  "ops_dispatcher",
     })
