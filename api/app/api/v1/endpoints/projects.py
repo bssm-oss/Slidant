@@ -33,6 +33,14 @@ class SlideHistoryResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class SlideHistoryDiffResponse(BaseModel):
+    added: list[str]
+    removed: list[str]
+    modified: list[str]
+    before_html: str | None = None
+    after_html: str | None = None
+
+
 async def _archive_snapshot(uow, slide_id: UUID, reason: str) -> None:
     """현재 슬라이드 상태를 SlideHistory로 저장하고 version 증가."""
     slide = await uow.slides.get(slide_id)
@@ -231,6 +239,23 @@ async def list_history(
         return entries
     from app.services.slide_history_service import filter_history_by_component
     return filter_history_by_component(entries, component_id)
+
+
+@router.get("/{project_id}/slides/{slide_id}/history/{history_id}/diff", response_model=SlideHistoryDiffResponse)
+async def get_history_diff(
+    project_id: UUID, slide_id: UUID, history_id: UUID,
+    current_user: CurrentUser, uow: UoW,
+):
+    await project_service.get_slide(uow.projects, uow.slides, project_id, current_user.id, slide_id)
+    from app.services.slide_history_service import compute_history_diff
+    result = await compute_history_diff(uow, slide_id, history_id)
+    return SlideHistoryDiffResponse(
+        added=result.added,
+        removed=result.removed,
+        modified=result.modified,
+        before_html=result.before_html,
+        after_html=result.after_html,
+    )
 
 
 @router.post("/{project_id}/slides/{slide_id}/history/{history_id}/restore", status_code=status.HTTP_204_NO_CONTENT)
