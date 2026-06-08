@@ -107,6 +107,7 @@ export default function EditPage() {
 
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
+  const [rightPanelWidth, setRightPanelWidth] = useState(320)
   const [presenting, setPresenting] = useState(false)
   const [showShareModal, setShowShareModal] = useState(false)
   // historyOffset: 0 = 현재, 1 = 1단계 전, ... (undo 할수록 증가)
@@ -224,15 +225,18 @@ ${exportSlides.map(s => s.html_content ? `<div class="slide-page">${s.html_conte
           <button
             onClick={() => setRightOpen((v) => !v)}
             className="absolute right-0 bottom-4 z-20 flex items-center justify-center w-5 h-10 bg-white border border-[var(--border)] border-r-0 rounded-l-[6px] text-[var(--text-disabled)] hover:text-[var(--text-muted)] hover:bg-[var(--bg-muted)] transition-all shadow-sm"
-            style={{ right: rightOpen ? '320px' : '0px' }}
+            style={{ right: rightOpen ? `${rightPanelWidth}px` : '0px' }}
             title={rightOpen ? '채팅 패널 닫기' : '채팅 패널 열기'}
           >
             {rightOpen ? <PanelRightClose size={12} /> : <PanelRightOpen size={12} />}
           </button>
 
           {/* 우측 채팅 패널 */}
-          <div className={`transition-all duration-200 shrink-0 ${rightOpen ? 'w-80' : 'w-0'} overflow-hidden`}>
-            <RightPanel />
+          <div
+            className="transition-[width] duration-200 shrink-0 overflow-hidden"
+            style={{ width: rightOpen ? rightPanelWidth : 0 }}
+          >
+            <RightPanel onWidthChange={setRightPanelWidth} />
           </div>
         </div>
       </div>

@@ -327,10 +327,10 @@ function highlightMentions(text: string): React.ReactNode {
 }
 
 // ── Root ──────────────────────────────────────────────────────────────────────
-export default function RightPanel() {
+export default function RightPanel({ onWidthChange }: { onWidthChange?: (w: number) => void }) {
   const { agents, chatMessages, runningAgentIds, sendMessage, selectChatAgent,
           selectedAgentDefinitionId, loadChatHistory } = useEditorStore()
-  const { agentSteps, agentStartTime, estimatedSeconds, cancelAgent } = useAgentStore()
+  const { agentSteps, agentStartTime, estimatedSeconds, cancelAgent, agents: allAgents, lastRunAgentName } = useAgentStore()
   const { currentSessionId, currentUserId, sessions } = useSessionStore()
   const [elapsed, setElapsed] = useState(0)
   const { presentation } = useSlideStore()
@@ -343,6 +343,7 @@ export default function RightPanel() {
   const [showSlidePicker, setShowSlidePicker] = useState(false)
   const [mentionQuery, setMentionQuery] = useState<string | null>(null)
   const [panelWidth, setPanelWidth] = useState(320)
+  useEffect(() => { onWidthChange?.(panelWidth) }, [panelWidth, onWidthChange])
   const [htmlStyle, setHtmlStyle] = useState<HtmlComponentStyle | null>(null)
   const [activeTab, setActiveTab] = useState<'agent' | 'design' | 'history'>('agent')
   const prevHtmlStyleRef = useRef<HtmlComponentStyle | null>(null)
@@ -574,13 +575,7 @@ export default function RightPanel() {
 
       {/* Chat messages */}
       <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2.5 min-h-0">
-        {/* 파이프라인 진행 시각화 — 실행 중일 때 채팅 최상단 고정 */}
-        {agentSteps.length > 0 && (
-          <div className="sticky top-0 z-10 -mx-4 px-1 pt-1 pb-2 bg-[var(--bg-muted)] border-b border-[var(--border)] mb-1">
-            <StepsChecklist steps={agentSteps} />
-          </div>
-        )}
-        {msgs.length === 0 ? (
+        {msgs.length === 0 && agentSteps.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-center">
             <div className="w-10 h-10 rounded-full bg-[var(--accent-subtle)] flex items-center justify-center">
               <span className="text-[var(--accent)] text-[16px]">✦</span>
@@ -590,7 +585,20 @@ export default function RightPanel() {
             </p>
           </div>
         ) : (
-          msgs.map((msg: ChatMessage) => <ChatBubble key={msg.id} msg={msg} />)
+          <>
+            {msgs.map((msg: ChatMessage) => <ChatBubble key={msg.id} msg={msg} />)}
+            {/* 파이프라인 진행 시각화 — 채팅 버블 형태로 메시지 아래 표시 */}
+            {agentSteps.length > 0 && (
+              <div className="flex flex-col items-start">
+                <span className="text-[10px] text-[var(--text-disabled)] px-1 mb-0.5">
+                  {allAgents.find((a) => a.status === 'running')?.name ?? lastRunAgentName ?? 'Agent'}
+                </span>
+                <div className="max-w-[92%] px-3 py-2.5 rounded-[12px] rounded-bl-[4px] bg-[var(--bg-muted)] text-[var(--text)] text-[13px]">
+                  <StepsChecklist steps={agentSteps} />
+                </div>
+              </div>
+            )}
+          </>
         )}
         {isRunning && (
           <>

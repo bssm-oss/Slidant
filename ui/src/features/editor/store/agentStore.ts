@@ -83,6 +83,7 @@ interface AgentState {
   overallStatus: AgentStatus
   activeRightTab: 'agent' | 'properties'
   agentSteps: AgentStep[]
+  lastRunAgentName: string | null
   presenceUsers: PresenceUser[]
   currentAgentRunId: string | null
   currentRunSessionId: string | null
@@ -114,6 +115,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   overallStatus: 'idle',
   activeRightTab: 'agent',
   agentSteps: [],
+  lastRunAgentName: null,
   currentAgentRunId: null,
   currentRunSessionId: null,
   pendingSlideCount: 0,
@@ -341,6 +343,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             currentAgentRunId: (msg.agent_run_id as string) ?? s.currentAgentRunId,
             currentRunSessionId: runSessionId,
             agentStartTime: Date.now(),
+            lastRunAgentName: agentName,
             agents: s.agents.map((a) =>
               a.name === agentName
                 ? {
@@ -415,7 +418,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           if (isReplayed) {
             const { currentRunSessionId } = get()
             const { currentSessionId } = useSessionStore.getState()
-            if (!currentRunSessionId || currentRunSessionId !== currentSessionId) return
+            // session_id 둘 다 알고 있을 때만 필터링 — 어느 쪽이 null이면 표시 허용
+            if (currentRunSessionId && currentSessionId && currentRunSessionId !== currentSessionId) return
           }
           try {
             const raw = JSON.parse(message) as {id: string, label: string}[]
@@ -666,16 +670,12 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             useSlideStore.setState({ presentation: { ...slideState.presentation, slides: cleanedSlides } })
           }
 
-          // step_done 이벤트가 agent_done보다 늦게 도착할 수 있으므로 즉시 done으로 마킹 후 지연 clear
+          // step_done이 agent_done보다 늦게 도착할 수 있으므로 즉시 done으로 마킹
           // (failed는 실제 생성 실패를 나타내므로 done으로 덮어쓰지 않음)
+          // 완료된 steps는 채팅 히스토리에 남겨두고, 다음 steps_init에서 교체
           const completedSteps = s.agentSteps.map((st) =>
             st.status === 'done' || st.status === 'failed' ? st : { ...st, status: 'done' as const }
           )
-          setTimeout(() => {
-            set((cur) => ({
-              agentSteps: cur.agentSteps.every((st) => st.status === 'done' || st.status === 'failed') ? [] : cur.agentSteps,
-            }))
-          }, 800)
 
           // 실행 상태 정리 — replay 여부와 무관하게 항상 수행 (재연결로 놓친 agent_done이
           // 채팅 버블 중복을 피해 일찍 return 하면서 isRunning이 영구히 멈추는 버그 방지)
