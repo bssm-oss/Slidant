@@ -13,7 +13,7 @@ export default function DrivePage() {
   const { filteredPresentations, loadProjects, loading, createPresentation } = useDriveStore()
   const navigate = useNavigate()
   const all = filteredPresentations()
-  const recent = all.slice(0, 4)
+  const recent = all.slice(0, 20)
 
   const [prompt, setPrompt] = useState('')
   const [creating, setCreating] = useState(false)
@@ -45,9 +45,9 @@ export default function DrivePage() {
               <Spinner size="lg" />
             </div>
           ) : (
-            <div className="flex flex-col gap-8 px-4 py-5 sm:px-6 lg:px-8">
+            <div className="flex flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
               {/* 히어로 프롬프트 섹션 */}
-              <div className="px-0 pt-2 pb-2">
+              <div className="px-0 pt-2 pb-0">
                 <div className="max-w-2xl">
                   <h2 className="text-[22px] font-bold text-[var(--text)] mb-1">무엇을 만들까요?</h2>
                   <p className="text-[13px] text-[var(--text-muted)] mb-4">주제를 입력하면 AI가 프레젠테이션을 생성합니다</p>
@@ -93,9 +93,11 @@ export default function DrivePage() {
                       <p className="mt-1 text-[12px] text-[var(--text-disabled)]">마지막으로 편집한 프레젠테이션</p>
                     </div>
                   </div>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     {recent.map((ppt, i) => (
-                      <PresentationCard key={ppt.id} presentation={ppt} index={i} />
+                      <div key={ppt.id} className="w-[260px] shrink-0">
+                        <PresentationCard presentation={ppt} index={i} />
+                      </div>
                     ))}
                   </div>
                 </section>

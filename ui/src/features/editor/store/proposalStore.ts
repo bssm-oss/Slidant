@@ -59,6 +59,12 @@ export const useProposalStore = create<ProposalState>((set) => ({
     const ppt = useSlideStore.getState().presentation
     if (!ppt) return
     try {
+      // 승인 전 상태 캡처 (컴포넌트 겹침 비교용)
+      const thisProposal = useProposalStore.getState().proposals.find((p) => p.id === id)
+      const preApprovalHtml = thisProposal
+        ? ppt.slides.find((s) => s.id === thisProposal.slide_id)?.html_content ?? ''
+        : ''
+
       const { approveProposal: apiApprove } = await import('@/shared/lib/proposalApi')
       await apiApprove(id, acceptedIds ?? null, partial)
       if (!partial) {
@@ -67,6 +73,31 @@ export const useProposalStore = create<ProposalState>((set) => ({
           return { proposals, conflicts: detectConflicts(proposals) }
         })
       }
+
+      // 승인된 proposal과 컴포넌트 겹치는 다른 pending proposals 자동 reject
+      if (thisProposal?.html_content && preApprovalHtml) {
+        const { computeChangedComponentIds } = await import('@/shared/lib/slideHtml')
+        const { rejectProposal: apiReject } = await import('@/shared/lib/proposalApi')
+        const approvedChanged = computeChangedComponentIds(preApprovalHtml, thisProposal.html_content)
+
+        if (approvedChanged.size > 0) {
+          const conflicting = useProposalStore.getState().proposals.filter((p) => {
+            if (p.id === id || p.slide_id !== thisProposal.slide_id || p.status !== 'pending' || !p.html_content) return false
+            const pChanged = computeChangedComponentIds(preApprovalHtml, p.html_content)
+            return [...pChanged].some((cid) => approvedChanged.has(cid))
+          })
+
+          if (conflicting.length > 0) {
+            await Promise.all(conflicting.map((p) => apiReject(p.id).catch(() => {})))
+            set((s) => {
+              const conflictIds = new Set(conflicting.map((p) => p.id))
+              const proposals = s.proposals.filter((p) => !conflictIds.has(p.id))
+              return { proposals, conflicts: detectConflicts(proposals) }
+            })
+          }
+        }
+      }
+
       await useSlideStore.getState().loadPresentation(ppt.id)
     } catch (e) {
       console.error('approveProposal failed', e)

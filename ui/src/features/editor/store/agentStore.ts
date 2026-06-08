@@ -30,30 +30,12 @@ function extractCompleteOps(text: string): any[] {
   return ops
 }
 
-function _getComponentIds(html: string): Set<string> {
-  if (!html || typeof document === 'undefined') return new Set()
-  try {
-    const doc = new DOMParser().parseFromString(html, 'text/html')
-    const ids = new Set<string>()
-    doc.querySelectorAll('[data-component-id]').forEach((el) => {
-      const id = el.getAttribute('data-component-id')
-      if (id) ids.add(id)
-    })
-    return ids
-  } catch { return new Set() }
-}
+import { getComponentIds as _getComponentIds, extractComponentHtml as _extractComponentHtml } from '@/shared/lib/slideHtml'
 
 function _computeAddedComponentIds(currentHtml: string, proposalHtml: string): string[] {
   const current = _getComponentIds(currentHtml)
   const proposed = _getComponentIds(proposalHtml)
   return [...proposed].filter((id) => !current.has(id))
-}
-
-function _extractComponentHtml(html: string, id: string): string | null {
-  try {
-    const doc = new DOMParser().parseFromString(html, 'text/html')
-    return doc.querySelector(`[data-component-id="${id}"]`)?.outerHTML ?? null
-  } catch { return null }
 }
 
 function _anyExistingComponentModified(currentHtml: string, proposalHtml: string): boolean {

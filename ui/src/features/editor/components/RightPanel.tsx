@@ -125,7 +125,7 @@ function StepsChecklist({ steps }: { steps: AgentStep[] }) {
                       {isActive && <div className="w-[5px] h-[5px] rounded-full bg-white animate-pulse" />}
                     </div>
                     <span className={cn(
-                      'text-[11px] truncate max-w-[160px] transition-colors duration-300',
+                      'text-[11px] truncate min-w-0 flex-1 transition-colors duration-300',
                       isDone && 'text-[var(--text-muted)]',
                       isActive && 'text-[var(--text)] font-semibold',
                       !isDone && !isActive && 'text-[var(--text-disabled)]',

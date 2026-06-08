@@ -1,6 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { cn } from '@/shared/lib/utils'
-import { FolderOpen, Bot, Settings, LogOut, Plus, PanelLeft } from 'lucide-react'
+import { FolderOpen, Bot, Settings, LogOut, Plus } from 'lucide-react'
 import { logout } from '@/shared/lib/auth'
 import { useDriveStore } from '@/features/drive/store/driveStore'
 import BrandMark from './BrandMark'
@@ -39,9 +39,9 @@ export default function AppLNB() {
       <div className="px-3 pt-4 pb-3">
         <button
           onClick={handleCreate}
-          className="w-full flex items-center justify-center gap-2 h-9 rounded-[var(--radius)] bg-[linear-gradient(135deg,#2563EB_0%,#0EA5E9_100%)] text-white text-sm font-medium shadow-[0_8px_18px_rgba(37,99,235,0.20)] hover:shadow-[0_10px_22px_rgba(37,99,235,0.28)] transition-all duration-150 cursor-pointer"
+          className="w-full flex items-center justify-start gap-3 px-4 h-9 rounded-[var(--radius)] bg-[linear-gradient(135deg,#2563EB_0%,#0EA5E9_100%)] text-white text-sm font-medium shadow-[0_8px_18px_rgba(37,99,235,0.20)] hover:shadow-[0_10px_22px_rgba(37,99,235,0.28)] transition-all duration-150 cursor-pointer"
         >
-          <Plus size={15} />
+          <Plus size={18} />
           새 프레젠테이션
         </button>
       </div>
@@ -66,11 +66,7 @@ export default function AppLNB() {
       </nav>
 
       {/* 하단 */}
-      <div className="px-3 py-4 border-t border-[var(--border)] flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2 px-2 text-[12px] text-[var(--text-disabled)]">
-          <PanelLeft size={14} />
-          <span className="truncate">Workspace</span>
-        </div>
+      <div className="px-3 py-3 border-t border-[var(--border)] flex items-center justify-end">
         <button
           onClick={handleLogout}
           title="로그아웃"
