@@ -52,6 +52,7 @@ def _check_slide_html(html: str, label: str) -> list[str]:
     """
     from app.core.domain.html_slide import HtmlSlide, _CANVAS_H, _CANVAS_W, _parse_inline_style, _px
 
+    logger.debug("  [html_validator] checking html_len=%d", len(html))
     issues: list[str] = []
     slide = HtmlSlide(html=html)
     components = slide.components
@@ -112,6 +113,7 @@ def _check_slide_html(html: str, label: str) -> list[str]:
 
 def make_html_validator(_ctx: NodeContext):
     def html_validator_node(state: AgentState) -> AgentState:
+        logger.info("━━ [html_validator] START html_len=%d html_slides=%d", len(state.get("html_output") or ""), len(state.get("html_slides") or []))
         slides = state.get("html_slides", [])
         html_out = state.get("html_output", "")
 
@@ -329,7 +331,7 @@ def make_visual_validator(_ctx: NodeContext):
                     else:
                         logger.debug("  [visual_validator] /check returned %s", resp.status_code)
         except Exception as e:
-            logger.warning("  [visual_validator] playwright 서비스 오류 (스킵): %s", e)
+            logger.warning("  [visual_validator] playwright 서비스 오류 (스킵): %s", e, exc_info=True)
             return {}
 
         if new_issues:

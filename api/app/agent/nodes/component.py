@@ -11,6 +11,7 @@ logger = logging.getLogger("slidant.agent")
 
 def make_component_deleter(ctx: NodeContext):
     async def component_deleter_node(state: AgentState) -> AgentState:
+        logger.info("━━ [component_deleter] START component_id=%s", state.get("component_id","?"))
         op = state.get("current_op", {})
         component_id = op.get("component_id", "")
         if ctx.on_event:
@@ -33,6 +34,7 @@ def make_component_deleter(ctx: NodeContext):
 
 def make_slide_deleter(ctx: NodeContext):
     async def slide_deleter_node(state: AgentState) -> AgentState:
+        logger.info("━━ [slide_deleter] START slide_idx=%s", state.get("slide_index","?"))
         step_id = state.get("current_op", {}).get("step_id", "delete-0-0")
         if ctx.on_event:
             ctx.on_event("node_start", "슬라이드 삭제 중...")

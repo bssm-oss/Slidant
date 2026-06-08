@@ -37,6 +37,7 @@ def make_web_searcher(ctx: NodeContext):
     async def web_searcher_node(state: AgentState) -> AgentState:
         queries = [q for q in state.get("search_queries", []) if isinstance(q, str) and q.strip()]
         cached_summary = state.get("search_summary", "")
+        logger.info("━━ [web_searcher] START queries=%d cached=%s", len(queries), bool(cached_summary))
 
         # 캐시가 현재 쿼리를 커버하는지 키워드 휴리스틱으로 판단 (LLM 호출 없음)
         if cached_summary and queries:
@@ -81,13 +82,15 @@ def make_web_searcher(ctx: NodeContext):
                         ],
                     }
 
+                _t0 = __import__('time').monotonic()
                 raw_results = await asyncio.gather(
                     *[_search_one(q) for q in queries[:3]],
                     return_exceptions=True,
                 )
+                logger.info("  [web_searcher] parallel fetch done %.1fs", __import__('time').monotonic()-_t0)
                 results = [r for r in raw_results if isinstance(r, dict)]
             except Exception as e:
-                logger.warning("web_searcher failed: %s", e)
+                logger.warning("web_searcher failed: %s", e, exc_info=True)
         if ctx.on_event:
             ctx.on_event("step_done", "search")
             ctx.on_event("node_done", f"✅ {len(results)}개 검색 완료")
@@ -98,6 +101,7 @@ def make_web_searcher(ctx: NodeContext):
 def make_search_merger(ctx: NodeContext):
     """검색 결과 → 단일 팩트시트. 모든 slide_composer가 동일 데이터를 참조."""
     async def search_merger_node(state: AgentState) -> AgentState:
+        logger.info("━━ [search_merger] START results=%d", len(state.get("search_results", [])))
         results = state.get("search_results", [])
         if not results:
             # 캐시된 summary 있으면 그대로 통과
@@ -131,7 +135,7 @@ def make_search_merger(ctx: NodeContext):
                 else:
                     summary += str(raw_c) if raw_c else ""
         except Exception as e:
-            logger.warning("search_merger failed: %s", e)
+            logger.warning("search_merger failed: %s", e, exc_info=True)
             summary = raw_dump  # fallback: raw dump as-is
 
         if ctx.on_event:
@@ -142,6 +146,7 @@ def make_search_merger(ctx: NodeContext):
 
 def make_content_planner(ctx: NodeContext):
     async def content_planner_node(state: AgentState) -> AgentState:
+        logger.info("━━ [content_planner] START")
         if ctx.on_event:
             ctx.on_event("node_start", "📋 콘텐츠 기획 중...")
         search_ctx = ""
@@ -177,6 +182,7 @@ def make_content_planner(ctx: NodeContext):
 
 def make_design_resolver_html(ctx: NodeContext):
     async def design_resolver_node_html(state: AgentState) -> AgentState:
+        logger.info("━━ [design_resolver] START")
         if ctx.on_event:
             ctx.on_event("node_start", "디자인 확정 중...")
         messages = [
