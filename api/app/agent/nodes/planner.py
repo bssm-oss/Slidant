@@ -15,11 +15,28 @@ from app.agent.utils import extract_json as _extract_json
 
 logger = logging.getLogger("slidant.agent")
 
+_COMP_KO = {
+    "title": "제목", "subtitle": "부제목", "sub": "부제목",
+    "bg": "배경", "background": "배경",
+    "body": "본문", "content": "본문",
+    "accent": "강조선", "divider": "구분선",
+    "chart": "차트", "table": "표",
+    "image": "이미지", "img": "이미지",
+    "closing": "마무리", "footer": "하단",
+}
+
+def _comp_label(comp_id: str) -> str:
+    if not comp_id:
+        return ""
+    base = re.split(r"[-_\d]", comp_id)[0].lower()
+    return _COMP_KO.get(base, comp_id)
+
 
 def make_unified_planner(ctx: NodeContext):
     async def unified_planner_node(state: AgentState) -> AgentState:
         if ctx.on_event:
             ctx.on_event("node_start", "계획 수립 중...")
+        logger.info("━━ [unified_planner] START command=%r mode_hint=%s", state.get("command","")[:80], state.get("mode","?"))
         history = state.get("conversation_history", "")
         history_section = f"\n\nPrevious conversation:\n{history}" if history else ""
 
@@ -37,7 +54,7 @@ def make_unified_planner(ctx: NodeContext):
                     token = str(raw_c) if raw_c else ""
                 raw += token
         except Exception as e:
-            logger.warning("  [unified_planner] failed: %s", e)
+            logger.warning("  [unified_planner] failed: %s", e, exc_info=True)
 
         # <thinking> 안의 JSON만 파싱, <status> 내용은 사용자에게 스트리밍
         thinking_match = re.search(r"<thinking>([\s\S]*?)</thinking>", raw)
@@ -163,6 +180,34 @@ def make_unified_planner(ctx: NodeContext):
             slide_specs = parsed.get("slides", [])
             mode = parsed.get("mode", "create")
 
+            # 방어: "N장 만들어줘" 요청인데 slide_specs가 N의 절반에 못 미치면 → N개 spec으로 채움
+            _cmd = state.get("command", "")
+            _count_m = re.search(r'(\d+)\s*장', _cmd)
+            _creation_intent = any(k in _cmd for k in ("만들어", "생성", "제작", "PPT", "ppt", "프레젠테이션"))
+            if (
+                not ctx.slide_scope_locked
+                and scope_forced_idx is None
+                and _count_m
+                and _creation_intent
+                and mode == "create"
+            ):
+                n = min(int(_count_m.group(1)), settings.AGENT_MAX_SLIDES)
+                _orig_count = len(slide_specs)
+                if _orig_count < max(n // 2, 1):
+                    _layouts = (["COVER", "TOC"] + ["CONTENT"] * (n - 3) + ["CLOSING"]) if n >= 3 else ["COVER"] * n
+                    slide_specs = list(slide_specs) + [
+                        {
+                            "title": f"슬라이드 {i + 1}",
+                            "layout": _layouts[i] if i < len(_layouts) else "CONTENT",
+                            "key_points": [],
+                        }
+                        for i in range(_orig_count, n)
+                    ]
+                    logger.warning(
+                        "  [unified_planner] N장 생성 요청(%d), slide_specs 부족(%d) → %d개로 보정",
+                        n, _orig_count, n,
+                    )
+
             # @슬라이드N + slides/mode 직접 출력(operations 미사용) 위반 방어:
             # LLM이 operations 배열 대신 곧장 slides+mode="create"를 내놓으면
             # create 파이프라인(slide_composer)으로 빠져 proposal 없이 기존 슬라이드가 즉시 교체됨
@@ -181,14 +226,14 @@ def make_unified_planner(ctx: NodeContext):
                 mode = "edit"
 
         if ctx.on_event:
-            steps = [{"id": "plan", "label": "계획 수립"}]
+            steps = [{"id": "plan", "label": "계획 수립", "type": "plan"}]
             # 검색: 단일 step id "search" (web_searcher_node의 step_done("search")와 매칭)
             if search_queries:
                 # 대표 쿼리 1개만 레이블에 표시
-                label = f"🔍 {search_queries[0][:28]}"
+                label = search_queries[0][:28]
                 if len(search_queries) > 1:
                     label += f" 외 {len(search_queries)-1}개"
-                steps.append({"id": "search", "label": label})
+                steps.append({"id": "search", "label": label, "type": "search"})
 
             if ops_queue:
                 slide_counter = 0  # create op용 slide-N 카운터
@@ -200,30 +245,33 @@ def make_unified_planner(ctx: NodeContext):
 
                     if t == "create":
                         title = (spec.get("title") or f"슬라이드 {slide_counter+1}")[:18]
-                        label = f"📄 {title}"
-                        steps.append({"id": f"slide-{slide_counter}", "label": label})
+                        steps.append({"id": f"slide-{slide_counter}", "label": title, "type": "create"})
                         slide_counter += 1
                         continue
                     elif t == "edit":
-                        label = f"✏️ 슬라이드 {idx+1} 수정"
+                        instr = (op.get("instruction") or "")[:22]
+                        label = f"슬라이드 {idx+1} — {instr}" if instr else f"슬라이드 {idx+1} 수정"
                     elif t == "component_edit":
-                        label = f"🔧 컴포넌트 수정"
+                        instr = (op.get("instruction") or "")[:22]
+                        comp = _comp_label(op.get("component_id", ""))
+                        label = f"슬라이드 {idx+1} — {instr}" if instr else (f"슬라이드 {idx+1} {comp} 수정" if comp else f"슬라이드 {idx+1} 수정")
                     elif t == "component_delete":
-                        label = f"🗑️ 컴포넌트 삭제"
+                        comp = _comp_label(op.get("component_id", ""))
+                        label = f"슬라이드 {idx+1} {comp} 삭제" if comp else f"슬라이드 {idx+1} 삭제"
                     elif t == "delete":
-                        label = f"🗑️ 슬라이드 {idx+1} 삭제"
+                        label = f"슬라이드 {idx+1} 삭제"
                     else:
-                        label = f"작업 {i+1}"
+                        label = f"슬라이드 {idx+1} 작업"
                     # step_id = ops_dispatcher의 step_id 계산 로직과 동일
                     step_id = f"{t}-{idx}-{non_create_counter}"
-                    steps.append({"id": step_id, "label": label})
+                    steps.append({"id": step_id, "label": label, "type": t})
                     non_create_counter += 1
             else:
-                for i, s in enumerate(slide_specs[:6]):
+                for i, s in enumerate(slide_specs[:settings.AGENT_MAX_SLIDES]):
                     title = (s.get("title") or f"슬라이드 {i+1}")[:18]
-                    steps.append({"id": f"slide-{i}", "label": f"📄 {title}"})
+                    steps.append({"id": f"slide-{i}", "label": title, "type": "create"})
                 if not any(step["id"].startswith("slide") for step in steps):
-                    steps.append({"id": "slide-0", "label": "📄 슬라이드 생성"})
+                    steps.append({"id": "slide-0", "label": "슬라이드 생성", "type": "create"})
             ctx.on_event("steps_init", json.dumps(steps, ensure_ascii=False))
             ctx.on_event("step_done", "plan")
             ctx.on_event("node_done", "✅ 계획 완료")
@@ -309,6 +357,7 @@ def route_from_dispatcher(state: AgentState) -> str:
 
 def make_self_reviewer(ctx: NodeContext):
     async def self_reviewer_node(state: AgentState) -> AgentState:
+        logger.info("  [self_reviewer] START ops=%d", len(state.get("ops", [])))
         if ctx.on_event:
             ctx.on_event("node_start", "결과 검토 중...")
 
@@ -363,7 +412,7 @@ def make_self_reviewer(ctx: NodeContext):
                     token = str(raw_c) if raw_c else ""
                 raw += token
         except Exception as e:
-            logger.warning("self_reviewer failed: %s", e)
+            logger.warning("self_reviewer failed: %s", e, exc_info=True)
             if ctx.on_event:
                 ctx.on_event("node_done", "✅ 검토 완료")
             return {"review_ok": True}
