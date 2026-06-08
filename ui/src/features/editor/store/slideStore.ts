@@ -5,6 +5,7 @@ import { fetchProjectWithSlides, deleteSlide as apiDeleteSlide, reorderSlides as
 
 interface SlideState {
   presentation: Presentation | null
+  presentationError: string | null
   currentSlideIndex: number
   selectedComponentId: string | null
   isTitleEditing: boolean
@@ -24,16 +25,19 @@ interface SlideState {
 
 export const useSlideStore = create<SlideState>((set, get) => ({
   presentation: null,
+  presentationError: null,
   currentSlideIndex: 0,
   selectedComponentId: null,
   isTitleEditing: false,
 
   loadPresentation: async (id) => {
+    set({ presentationError: null })
     try {
       const ppt = await fetchProjectWithSlides(id)
       set({ presentation: ppt })
-    } catch (e) {
+    } catch (e: any) {
       console.error('loadPresentation failed', e)
+      set({ presentationError: e?.message ?? '프로젝트를 불러올 수 없습니다.' })
     }
   },
 

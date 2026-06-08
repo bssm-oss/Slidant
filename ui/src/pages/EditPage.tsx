@@ -19,7 +19,7 @@ import { fetchSlideHistory, restoreFromHistory } from '@/shared/lib/projectApi'
 export default function EditPage() {
   const { id } = useParams<{ id: string }>()
   const { loadPresentation, loadAgentLogs, loadAgents, loadChatHistory, connectWs } = useEditorStore()
-  const { presentation, currentSlideIndex } = useSlideStore()
+  const { presentation, presentationError, currentSlideIndex } = useSlideStore()
 
   useEffect(() => {
     if (!id) return
@@ -168,6 +168,17 @@ ${exportSlides.map(s => s.html_content ? `<div class="slide-page">${s.html_conte
   }
 
   const slides = presentation?.slides ?? []
+
+  if (presentationError) {
+    return (
+      <AppShell>
+        <div className="flex flex-col items-center justify-center h-screen gap-4 text-center px-6">
+          <p className="text-[var(--text-muted)] text-sm">{presentationError}</p>
+          <a href="/drive" className="text-[var(--accent)] text-sm hover:underline">드라이브로 돌아가기</a>
+        </div>
+      </AppShell>
+    )
+  }
 
   return (
     <AppShell>

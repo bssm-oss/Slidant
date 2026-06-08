@@ -95,16 +95,19 @@ export default function EditorTopbar({ onPresent, onExport, onShare, onUndo, onR
         {presenceUsers.length > 0 && (
           <div className="flex items-center gap-0.5 mr-2">
             {presenceUsers.slice(0, 5).map((u) => (
-              <div
-                key={u.userId}
-                title={u.isAgentRunning ? `${u.name} (에이전트 실행 중)` : u.name}
-                style={{
-                  background: u.color,
-                  boxShadow: u.isAgentRunning ? `0 0 0 2px white, 0 0 0 4px ${u.color}` : undefined,
-                }}
-                className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-sm ring-2 ring-white transition-all${u.isAgentRunning ? ' animate-pulse' : ''}`}
-              >
-                {u.name[0]?.toUpperCase()}
+              <div key={u.userId} className="relative group">
+                <div
+                  style={{
+                    background: u.color,
+                    boxShadow: u.isAgentRunning ? `0 0 0 2px white, 0 0 0 4px ${u.color}` : undefined,
+                  }}
+                  className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-sm ring-2 ring-white transition-all cursor-default${u.isAgentRunning ? ' animate-pulse' : ''}`}
+                >
+                  {u.name[0]?.toUpperCase()}
+                </div>
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 px-2 py-1 rounded bg-[#333] text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+                  {u.isAgentRunning ? `${u.name} (실행 중)` : u.name}
+                </div>
               </div>
             ))}
           </div>

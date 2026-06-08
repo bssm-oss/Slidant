@@ -310,7 +310,7 @@ function InlineHistory({ open, componentId }: { open: boolean; componentId: stri
             const command = colonIdx > 0 ? v.reason.slice(colonIdx + 1).trim() : v.reason
             const isRestoring = restoring === v.id
             return (
-              <div key={v.id} className="flex items-center gap-2.5 px-4 py-3 hover:bg-[var(--bg-muted)] group transition-colors">
+              <div key={v.id} className="flex items-center gap-2.5 px-4 py-2 hover:bg-[var(--bg-muted)] group transition-colors">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 mb-0.5">
                     <span className="text-[10px] font-bold text-[var(--accent-text)] bg-[var(--accent-subtle)] px-1.5 py-0.5 rounded">
@@ -339,7 +339,7 @@ function InlineHistory({ open, componentId }: { open: boolean; componentId: stri
                     onMouseLeave={() => clearPreview(componentId)}
                     disabled={!!restoring || !!restoringComponent}
                     className={cn(
-                      'flex flex-col items-center justify-center gap-0.5 w-16 py-2 rounded-[7px] text-[10px] font-semibold transition-all',
+                      'flex flex-col items-center justify-center gap-0.5 w-16 py-1.5 rounded-[7px] text-[10px] font-semibold transition-all',
                       'bg-[var(--accent)] text-white',
                       'hover:opacity-90 hover:shadow-sm',
                       'disabled:opacity-40 disabled:cursor-not-allowed',
@@ -351,7 +351,7 @@ function InlineHistory({ open, componentId }: { open: boolean; componentId: stri
                     ) : (
                       <RotateCcw size={12} />
                     )}
-                    이것만
+                    컴포넌트
                   </button>
                   <button
                     onClick={() => handleRestore(v.id)}
@@ -359,7 +359,7 @@ function InlineHistory({ open, componentId }: { open: boolean; componentId: stri
                     onMouseLeave={clearFullPreview}
                     disabled={!!restoring || !!restoringComponent}
                     className={cn(
-                      'flex flex-col items-center justify-center gap-0.5 w-16 py-2 rounded-[7px] text-[10px] font-medium transition-all',
+                      'flex flex-col items-center justify-center gap-0.5 w-16 py-1.5 rounded-[7px] text-[10px] font-medium transition-all',
                       'bg-[var(--bg-muted)] border border-[var(--border)] text-[var(--text-muted)]',
                       'hover:bg-[var(--border)] hover:text-[var(--text)]',
                       'disabled:opacity-40 disabled:cursor-not-allowed',
@@ -371,7 +371,7 @@ function InlineHistory({ open, componentId }: { open: boolean; componentId: stri
                     ) : (
                       <RotateCcw size={12} />
                     )}
-                    전체
+                    슬라이드
                   </button>
                 </div>
               </div>

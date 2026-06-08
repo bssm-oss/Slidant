@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { AppShell } from '@/shared/components/layout'
 import { Button, Input } from '@/shared/components/ui'
 import AuthCard from '@/features/auth/components/AuthCard'
@@ -10,17 +10,20 @@ import { useToastStore } from '@/shared/components/ui/Toast'
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const toast = useToastStore((s) => s.push)
   const [email, setEmail] = useState('dev@slidant.com')
   const [password, setPassword] = useState('pass1234')
   const [loading, setLoading] = useState(false)
+
+  const redirectTo = searchParams.get('redirect') || '/drive'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     try {
       await login({ email, password })
-      navigate('/drive')
+      navigate(redirectTo)
     } catch (err: any) {
       toast(err.message ?? '로그인 실패', 'error')
     } finally {
@@ -65,7 +68,7 @@ export default function LoginPage() {
               setLoading(true)
               try {
                 await login({ email: 'dev@slidant.com', password: 'pass1234' })
-                navigate('/drive')
+                navigate(redirectTo)
               } catch (err: any) {
                 toast(err.message ?? '로그인 실패', 'error')
               } finally {
