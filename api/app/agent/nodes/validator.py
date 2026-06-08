@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import logging
 
+from bs4 import BeautifulSoup, Tag
+
 from app.agent.context import NodeContext
 from app.agent.state import AgentState, _RESET_SENTINEL
 
@@ -41,14 +43,70 @@ def make_html_aggregator(_ctx: NodeContext):
     return html_aggregator_node
 
 
+def _check_slide_html(html: str, label: str) -> list[str]:
+    """BS4 정적 검사 — Playwright 없이 컴포넌트 style만으로 검증.
+
+    렌더 실측(overflow, 가독성)은 Playwright가 정확하지만 api/에는 미설치(브라우저 바이너리
+    필요). HtmlSlide가 이미 BeautifulSoup으로 컴포넌트를 파싱하므로 그 결과를 재사용해
+    경계 초과 / 폰트 과소 / 빈 컴포넌트만 정적으로 잡아낸다.
+    """
+    from app.core.domain.html_slide import HtmlSlide, _CANVAS_H, _CANVAS_W, _parse_inline_style, _px
+
+    issues: list[str] = []
+    slide = HtmlSlide(html=html)
+    components = slide.components
+    if not components:
+        return [f"{label}: data-component-id 요소 없음"]
+
+    for cid, comp in components.items():
+        soup = BeautifulSoup(comp["html"], "html.parser")
+        el = next((c for c in soup.children if isinstance(c, Tag)), None)
+        if el is None:
+            continue
+        props = _parse_inline_style(el.get("style", "") or "")
+        if "absolute" not in props.get("position", ""):
+            continue
+
+        left, top = _px(props.get("left")), _px(props.get("top"))
+        width, height = _px(props.get("width")), _px(props.get("height"))
+        if left is not None and width is not None and (left + width) > _CANVAS_W + 1:
+            issues.append(f"{label}/{cid}: 우측 경계 초과 (left {left:.0f} + width {width:.0f} = {left+width:.0f} > {_CANVAS_W})")
+        if top is not None and height is not None and (top + height) > _CANVAS_H + 1:
+            issues.append(f"{label}/{cid}: 하단 경계 초과 (top {top:.0f} + height {height:.0f} = {top+height:.0f} > {_CANVAS_H})")
+
+        fs = _px(props.get("font-size"))
+        if fs is not None and fs < 14:
+            issues.append(f"{label}/{cid}: font-size {fs:.0f}px — 가독성 위해 14px 이상 권장")
+
+        if el.name in ("p", "h1", "h2", "h3", "h4", "h5", "h6", "li") and not el.get_text(strip=True):
+            issues.append(f"{label}/{cid}: 빈 텍스트 태그 (<{el.name}> 내용 없음)")
+
+    return issues
+
+
 def make_html_validator(_ctx: NodeContext):
     def html_validator_node(state: AgentState) -> AgentState:
         slides = state.get("html_slides", [])
         html_out = state.get("html_output", "")
-        valid = bool(slides) or (bool(html_out) and "<div" in html_out)
-        if not valid:
+
+        targets: list[tuple[str, str]] = []
+        if html_out and "<div" in html_out:
+            targets.append(("슬라이드", html_out))
+        for s in slides:
+            if isinstance(s, dict) and s.get("html"):
+                targets.append((f"슬라이드 {s.get('index', 0) + 1}", s["html"]))
+
+        if not targets:
             logger.warning("  [html_validator] 결과 없음")
-        return state
+            return {**state, "validation_errors": []}
+
+        issues: list[str] = []
+        for label, html in targets:
+            issues.extend(_check_slide_html(html, label))
+
+        if issues:
+            logger.warning("  [html_validator] %d개 정적 검사 이슈: %s", len(issues), issues[:5])
+        return {**state, "validation_errors": issues}
     return html_validator_node
 
 

@@ -52,3 +52,4 @@ class AgentState(TypedDict):
     all_slides_context: list
     review_ok: bool
     review_count: int  # self_reviewer 호출 횟수 (무한 루프 방지)
+    validation_errors: list  # html_validator 정적 검사 결과 (재시도 시 피드백용)

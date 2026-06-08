@@ -10,7 +10,7 @@ from app.agent.nodes.planner import (
     make_legacy_planner, route_from_dispatcher, route_from_reviewer,
 )
 from app.agent.nodes.composer import make_slide_composer, make_html_editor
-from app.agent.nodes.component import make_component_editor, make_component_deleter, make_slide_deleter
+from app.agent.nodes.component import make_component_deleter, make_slide_deleter
 from app.agent.nodes.searcher import make_web_searcher, make_search_merger
 from app.agent.nodes.validator import (
     make_html_aggregator, make_html_validator, make_should_retry_html,
@@ -43,7 +43,6 @@ def _build_html_graph(ctx: NodeContext):
     graph.add_node("slide_dispatch",    lambda s: s)          # Send API 트리거용 passthrough
     graph.add_node("slide_composer",    make_slide_composer(ctx))
     graph.add_node("html_editor",       make_html_editor(ctx))
-    graph.add_node("component_editor",  make_component_editor(ctx))
     graph.add_node("component_deleter", make_component_deleter(ctx))
     graph.add_node("slide_deleter",     make_slide_deleter(ctx))
     graph.add_node("html_aggregator",   make_html_aggregator(ctx))
@@ -76,7 +75,6 @@ def _build_html_graph(ctx: NodeContext):
     })
 
     graph.add_edge("html_editor",       "html_validator")
-    graph.add_edge("component_editor",  "html_validator")
     graph.add_edge("component_deleter", "html_validator")
     graph.add_conditional_edges("html_validator", should_retry_html, {
         "retry": "retry_inc",

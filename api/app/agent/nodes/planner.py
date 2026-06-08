@@ -72,15 +72,17 @@ def make_unified_planner(ctx: NodeContext):
             if ctx.on_event:
                 ctx.on_event("node_done", "✅ 계획 완료")
             return {"plan": raw, "mode": "create", "design_tokens": {},
-                    "slide_specs": [], "search_queries": [], "result_summary": "", "messages": []}
+                    "slide_specs": [], "search_queries": [], "result_summary": "",
+                    "ops_queue": [], "messages": []}
 
         design_tokens = parsed.get("design_tokens", {})
         if not design_tokens or "bg" not in design_tokens:
             design_tokens = {
                 "palette": "DARK", "bg": "#0A0F1E", "accent": "#3B82F6",
-                "text": "#F9FAFB", "text2": "#9CA3AF",
+                "text": "#F9FAFB", "text2": "#9CA3AF", "font": "Pretendard",
                 "cover_title_size": 68, "slide_title_size": 44, "subtitle_size": 28, "body_size": 21,
             }
+        design_tokens.setdefault("font", "Pretendard")
         search_queries = [q for q in parsed.get("search_queries", []) if isinstance(q, str) and q.strip()]
         summary = parsed.get("summary", "")
 
@@ -226,7 +228,7 @@ def make_ops_dispatcher(ctx: NodeContext):
             }
 
         # edit/delete/component: html_slides 보존 (이전 create 배치 결과 유지)
-        queue_pos = len(state.get("ops_results", []))  # 몇 번째 op인지
+        queue_pos = sum(1 for r in state.get("ops_results", []) if r.get("type") != "create")
         step_id = f"{op_type}-{slide_idx}-{queue_pos}"
         op_with_step = {**op, "step_id": step_id}
 

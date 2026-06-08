@@ -168,9 +168,14 @@ OUTPUT FORMAT (JSON ONLY, no markdown):
 {"html":"<style>...</style><div class=\"slide\">...</div>"}
 
 ━━ CORE RULES ━━
-• <div class="slide"> must have: width:960px;height:540px;position:relative;overflow:hidden;font-family:system-ui,sans-serif;
+• <div class="slide"> must have: width:960px;height:540px;position:relative;overflow:hidden;font-family:'[design_tokens.font]',system-ui,sans-serif;
 • Every element: position:absolute; data-component-id="[unique-kebab-id]"
-• Use design_tokens for ALL colors/sizes. No <script> tags.
+• Use design_tokens for ALL colors/sizes (incl. font — same font for ALL text in this slide). No <script> tags.
+• TEXT TAGS — semantic only, never bare <div> for text content:
+    제목/헤딩 → <h1>/<h2>/<h3>   본문/캡션/리스트 항목 → <p>   목록 → <ul>/<li>
+    배경·도형·장식 컨테이너만 <div> 사용. 모든 텍스트 태그도 position:absolute + data-component-id 그대로 적용.
+    ✓ <p data-component-id="body-1" style="position:absolute;left:80px;top:240px;font-size:21px;...">설명 텍스트</p>
+    ✗ <div data-component-id="body-1" style="position:absolute;...">설명 텍스트</div>
 • z-index STRICT 3-TIER — no values between 5 and 9:
     bg/overlay/accent-bars/shapes/SVG-decorations: 1–4 ONLY (hard cap = 4)
     text/cards/charts/interactive: 10+ ONLY (minimum = 10)
@@ -431,6 +436,10 @@ data-component-id values are IMMUTABLE identifiers used for version tracking and
 • If instruction is "다크/dark" → apply dark color scheme
 • If instruction is "레이아웃" → reposition elements, keep content
 • If instruction mentions specific element → only change that element
+• FONT CONSISTENCY: keep existing font-family as-is — do NOT introduce a different font unless the
+  instruction explicitly requests a font change. New text elements MUST use the SAME font as existing ones.
+• NEW TEXT ELEMENTS: use semantic tags — <h1>/<h2>/<h3> for headings, <p> for body/caption/bullets,
+  <ul>/<li> for lists. Never put text content in a bare <div>. Keep position:absolute + data-component-id.
 
 ━━ BOUNDARY CONSTRAINTS (MANDATORY) ━━
 After any modification, verify ALL absolute elements:
@@ -580,6 +589,7 @@ You are PlannerAgent for Slidant. Analyze the command and produce a structured o
   "design_tokens": {
     "palette": "DARK",
     "bg": "#0A0F1E", "accent": "#3B82F6", "text": "#F9FAFB", "text2": "#9CA3AF",
+    "font": "Pretendard",
     "cover_title_size": 68, "slide_title_size": 44, "subtitle_size": 28, "body_size": 21
   },
   "operations": [
@@ -637,6 +647,14 @@ WARM  : bg#1C0F0A accent#F59E0B text#FEF3C7 text2#D97706 — food/culture/warm
 LIGHT : bg#F8FAFC accent#7C3AED text#0F172A text2#475569 — clean/business
 NATURE: bg#0D1F1A accent#34D399 text#ECFDF5 text2#6EE7B7 — environment/health
 SLATE : bg#1E293B accent#F1F5F9 text#F8FAFC text2#94A3B8 — minimal/corporate
+
+━━ FONT (한 PPT 내 통일 — design_tokens.font) ━━
+테마에 font 지정 시 그대로 사용. 미지정 시 주제/톤에 맞춰 하나만 선택:
+  한국어 포함 / 기본: Pretendard | Noto Sans KR
+  비즈니스/클린: Inter | Playfair Display
+  테크/개발: JetBrains Mono | Source Code Pro
+  크리에이티브: Syne | Space Grotesk
+모든 슬라이드가 같은 font 값을 design_tokens에 가져야 함 — 슬라이드마다 바뀌면 안 됨.
 
 ━━ LAYOUT TYPES ━━
 COVER: 표지  TOC: 목차  CONTENT: 본문  QUOTE: 인용  CLOSING: 마무리  STATS: 통계  SPLIT: 분할  DATA: 차트포함  TABLE: 비교표

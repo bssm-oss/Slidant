@@ -71,6 +71,14 @@ def make_slide_composer(ctx: NodeContext):
         # 살아있는 제약 명세: 이 슬라이드의 실제 픽셀 예산 동적 계산
         layout_budget = compute_layout_budget(spec, all_specs)
 
+        retry_ctx = ""
+        validation_errors = state.get("validation_errors") or []
+        if state.get("retry_count", 0) > 0 and validation_errors:
+            retry_ctx = (
+                "\n\n## 이전 시도 검증 실패 — 아래 문제 반드시 수정:\n"
+                + "\n".join(f"- {e}" for e in validation_errors[:8])
+            )
+
         human_text = (
             f"Slide spec: {json.dumps(spec, ensure_ascii=False)}\n\n"
             f"Design tokens: {json.dumps(design_tokens, ensure_ascii=False)}\n\n"
@@ -78,6 +86,7 @@ def make_slide_composer(ctx: NodeContext):
             f"Current slide HTML (for reference/edit):\n{state.get('slide_context', '(empty)')}"
             f"{toc_ctx}{search_ctx}"
             f"{layout_budget}"
+            f"{retry_ctx}"
         )
 
         composer_system = SLIDE_COMPOSER_PROMPT
@@ -140,6 +149,15 @@ def make_html_editor(ctx: NodeContext):
             )
 
         layout_budget = compute_layout_budget(spec)
+
+        retry_ctx = ""
+        validation_errors = state.get("validation_errors") or []
+        if state.get("retry_count", 0) > 0 and validation_errors:
+            retry_ctx = (
+                "\n## 이전 시도 검증 실패 — 아래 문제 반드시 수정:\n"
+                + "\n".join(f"- {e}" for e in validation_errors[:8]) + "\n"
+            )
+
         human_text = (
             f"EXISTING SLIDE HTML:\n{existing_html}\n\n"
             f"MODIFICATION INSTRUCTION: {instruction}\n"
@@ -147,6 +165,7 @@ def make_html_editor(ctx: NodeContext):
             f"Design tokens (참고용): {json.dumps(design_tokens, ensure_ascii=False)}\n"
             f"{search_ctx}"
             f"{layout_budget}"
+            f"{retry_ctx}"
             "위 지시에 따라 기존 HTML을 수정하라. 내용은 보존, 요청된 것만 변경."
         )
 
