@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { History, RotateCcw, ChevronDown, Clock, Check, X, ImageUp, Trash2, AlignLeft, AlignCenter, AlignRight, ChevronUp } from 'lucide-react'
+import { History, RotateCcw, ChevronDown, Clock, Check, X, ImageUp, Trash2, AlignLeft, AlignCenter, AlignRight, ChevronUp, Plus } from 'lucide-react'
 import type { HtmlComponentStyle } from './SlideCanvas'
 import { useEditorStore } from '../store/editorStore'
 import { useProposalStore } from '../store/proposalStore'
@@ -7,6 +7,53 @@ import { useSlideStore } from '../store/slideStore'
 import { cn } from '@/shared/lib/utils'
 import { fetchSlideHistory, restoreFromHistory, type SlideHistoryEntry } from '@/shared/lib/projectApi'
 import type { AgentProposal } from '@/shared/types'
+
+// ── Chart utils ───────────────────────────────────────────────────────────────
+
+interface ChartDataRow { label: string; values: number[] }
+interface ParsedChart { datasetLabels: string[]; rows: ChartDataRow[] }
+
+function parseChartData(outerHtml: string): ParsedChart | null {
+  try {
+    const scriptMatch = outerHtml.match(/<script[^>]*>([\s\S]*?)<\/script>/i)
+    if (!scriptMatch) return null
+    const script = scriptMatch[1]
+    const labelsMatch = script.match(/labels\s*:\s*\[([^\]]+)\]/)
+    if (!labelsMatch) return null
+    const xLabels = [...labelsMatch[1].matchAll(/['"`]([^'"`]+)['"`]/g)].map(m => m[1])
+    if (!xLabels.length) return null
+    const datasetLabels = [...script.matchAll(/\blabel\s*:\s*['"`]([^'"`]+)['"`]/g)].map(m => m[1])
+    const dsDataMatches = [...script.matchAll(/\bdata\s*:\s*\[([\d\s,.+\-e]+)\]/g)]
+    if (!dsDataMatches.length) return null
+    const rows: ChartDataRow[] = xLabels.map((label, i) => ({
+      label,
+      values: dsDataMatches.map(m => {
+        const nums = m[1].match(/-?[\d.]+(?:e[+-]?\d+)?/gi) ?? []
+        return parseFloat(nums[i] ?? '0') || 0
+      }),
+    }))
+    return { datasetLabels, rows }
+  } catch { return null }
+}
+
+function rebuildChartHtml(originalHtml: string, rows: ChartDataRow[]): string {
+  let result = originalHtml
+  result = result.replace(
+    /(labels\s*:\s*)\[([^\]]+)\]/,
+    `$1[${rows.map(r => `'${r.label.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`).join(', ')}]`,
+  )
+  const datasetCount = rows[0]?.values.length ?? 0
+  let dsIdx = 0
+  result = result.replace(/(\bdata\s*:\s*)\[([\d\s,.+\-e]+)\]/g, (match, prefix) => {
+    if (dsIdx < datasetCount) {
+      const vals = rows.map(r => r.values[dsIdx] ?? 0)
+      dsIdx++
+      return `${prefix}[${vals.join(', ')}]`
+    }
+    return match
+  })
+  return result
+}
 
 // ── Util ──────────────────────────────────────────────────────────────────────
 
@@ -406,10 +453,13 @@ export default function ComponentInspector({ style }: Props) {
   const [objectPosition, setObjectPosition] = useState(style.objectPosition || 'center center')
   const [backgroundSize, setBackgroundSize] = useState(style.backgroundSize || 'cover')
   const [backgroundPosition, setBackgroundPosition] = useState(style.backgroundPosition || 'center center')
-  const [showHistory, setShowHistory] = useState(false)
+  const [showHistory, setShowHistory] = useState(true)
   const [dismissedProposalIds, setDismissedProposalIds] = useState<Set<string>>(new Set())
   const [approvingId, setApprovingId] = useState<string | null>(null)
   const [expandedSummary, setExpandedSummary] = useState(false)
+  const [chartData, setChartData] = useState<ParsedChart | null>(
+    style.isChart && style.chartOuterHtml ? parseChartData(style.chartOuterHtml) : null
+  )
 
   const { proposals, approveProposal } = useProposalStore()
   const { presentation, currentSlideIndex } = useSlideStore()
@@ -433,7 +483,8 @@ export default function ComponentInspector({ style }: Props) {
     setObjectPosition(style.objectPosition || 'center center')
     setBackgroundSize(style.backgroundSize || 'cover')
     setBackgroundPosition(style.backgroundPosition || 'center center')
-    setShowHistory(false)
+    setShowHistory(true)
+    setChartData(style.isChart && style.chartOuterHtml ? parseChartData(style.chartOuterHtml) : null)
   }, [style.componentId])
 
   // 같은 컴포넌트에서 외부(오버레이/onStyleUpdate) 변경 반영
@@ -474,6 +525,12 @@ export default function ComponentInspector({ style }: Props) {
     dispatch(id, prop, value)
   }, [id])
 
+  const dispatchChartUpdate = useCallback((data: ParsedChart) => {
+    if (!style.chartOuterHtml) return
+    const newOuterHtml = rebuildChartHtml(style.chartOuterHtml, data.rows)
+    window.dispatchEvent(new CustomEvent('html-chart-data-update', { detail: { componentId: id, newOuterHtml } }))
+  }, [id, style.chartOuterHtml])
+
   const handleApproveComponent = async () => {
     if (!activeProposal) return
     setApprovingId(activeProposal.id)
@@ -497,7 +554,7 @@ export default function ComponentInspector({ style }: Props) {
       {/* 헤더: 컴포넌트 타입 + 삭제 버튼 */}
       <div className="px-4 py-2 flex items-center justify-between border-b border-[var(--border)]">
         <span className="text-[11px] font-medium text-[var(--text-muted)]">
-          {style.isImage ? '이미지' : style.isText ? '텍스트' : '요소'}
+          {style.isChart ? '차트' : style.isImage ? '이미지' : style.isText ? '텍스트' : '요소'}
         </span>
         <button
           onClick={() => window.dispatchEvent(new CustomEvent('html-component-delete-request', { detail: { componentId: id } }))}
@@ -819,6 +876,89 @@ export default function ComponentInspector({ style }: Props) {
             </div>
           </div>
           <div className="pb-1" />
+          <Divider />
+        </>
+      )}
+
+      {/* 차트 데이터 편집 */}
+      {style.isChart && (
+        <>
+          <SectionLabel>차트 데이터</SectionLabel>
+          <div className="px-4 pb-3">
+            {chartData ? (
+              <div>
+                {/* 헤더: 데이터셋 이름 */}
+                {chartData.datasetLabels.length > 0 && (
+                  <div className="flex gap-1 mb-1.5 items-center">
+                    <div className="flex-1 min-w-0 text-[10px] text-[var(--text-disabled)]">레이블</div>
+                    {chartData.datasetLabels.map((ds, i) => (
+                      <div key={i} className="w-16 text-center text-[10px] text-[var(--text-disabled)] truncate">{ds}</div>
+                    ))}
+                    <div className="w-5 shrink-0" />
+                  </div>
+                )}
+                {/* 데이터 행 */}
+                {chartData.rows.map((row, rowIdx) => (
+                  <div key={rowIdx} className="flex gap-1 mb-1 items-center">
+                    <input
+                      className="flex-1 min-w-0 h-6 px-1.5 rounded-[5px] text-[11px] border border-[var(--border)] bg-transparent focus:outline-none focus:border-[var(--accent)]"
+                      value={row.label}
+                      onChange={(e) => {
+                        const newRows = chartData.rows.map((r, i) => i === rowIdx ? { ...r, label: e.target.value } : r)
+                        setChartData({ ...chartData, rows: newRows })
+                      }}
+                      onBlur={() => dispatchChartUpdate(chartData)}
+                    />
+                    {chartData.datasetLabels.map((_, dsIdx) => (
+                      <input
+                        key={dsIdx}
+                        type="number"
+                        className="w-16 h-6 px-1 rounded-[5px] text-[11px] border border-[var(--border)] bg-transparent text-right focus:outline-none focus:border-[var(--accent)]"
+                        value={row.values[dsIdx] ?? 0}
+                        onChange={(e) => {
+                          const newRows = chartData.rows.map((r, i) => {
+                            if (i !== rowIdx) return r
+                            const vals = [...r.values]
+                            vals[dsIdx] = parseFloat(e.target.value) || 0
+                            return { ...r, values: vals }
+                          })
+                          setChartData({ ...chartData, rows: newRows })
+                        }}
+                        onBlur={() => dispatchChartUpdate(chartData)}
+                      />
+                    ))}
+                    <button
+                      onClick={() => {
+                        const newData = { ...chartData, rows: chartData.rows.filter((_, i) => i !== rowIdx) }
+                        setChartData(newData)
+                        dispatchChartUpdate(newData)
+                      }}
+                      className="w-5 h-5 shrink-0 flex items-center justify-center rounded text-[var(--text-disabled)] hover:text-red-400 hover:bg-red-50 transition-colors"
+                    >
+                      <X size={10} />
+                    </button>
+                  </div>
+                ))}
+                {/* 항목 추가 */}
+                <button
+                  onClick={() => {
+                    const newData = {
+                      ...chartData,
+                      rows: [...chartData.rows, { label: '새 항목', values: chartData.datasetLabels.map(() => 0) }],
+                    }
+                    setChartData(newData)
+                    dispatchChartUpdate(newData)
+                  }}
+                  className="mt-1 w-full h-6 flex items-center justify-center gap-1 rounded-[5px] border border-dashed border-[var(--border)] text-[10px] text-[var(--text-disabled)] hover:text-[var(--text-muted)] hover:border-[var(--accent)] transition-colors"
+                >
+                  <Plus size={10} />
+                  항목 추가
+                </button>
+              </div>
+            ) : (
+              <p className="text-[11px] text-[var(--text-disabled)]">차트 데이터를 파싱할 수 없습니다.</p>
+            )}
+          </div>
           <Divider />
         </>
       )}

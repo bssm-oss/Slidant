@@ -314,6 +314,11 @@ function isImagePlaceholder(el: HTMLElement): boolean {
   )
 }
 
+function isChartElement(el: HTMLElement): boolean {
+  return el.querySelector('canvas') !== null &&
+    (el.querySelector('script') !== null || el.hasAttribute('data-chart-type'))
+}
+
 function readFileAsDataURL(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -408,6 +413,8 @@ export interface HtmlComponentStyle {
   textContent: string
   isText: boolean
   isImage: boolean
+  isChart: boolean
+  chartOuterHtml?: string
   objectFit: string
   objectPosition: string
   backgroundSize: string
@@ -440,8 +447,10 @@ function parseElementStyle(el: HTMLElement): HtmlComponentStyle {
     zIndex: parseInt(el.style.zIndex || (cs as CSSStyleDeclaration).zIndex || '0') || 0,
     tagName: el.tagName.toLowerCase(),
     textContent: el.textContent?.trim().slice(0, 80) ?? '',
-    isText: isTextElement(el),
-    isImage: isImagePlaceholder(el),
+    isChart: isChartElement(el),
+    isText: !isChartElement(el) && isTextElement(el),
+    isImage: !isChartElement(el) && isImagePlaceholder(el),
+    chartOuterHtml: isChartElement(el) ? el.outerHTML : undefined,
     objectFit: el.style.objectFit || (cs as CSSStyleDeclaration).objectFit || '',
     objectPosition: el.style.objectPosition || (cs as CSSStyleDeclaration).objectPosition || 'center center',
     backgroundSize: el.style.backgroundSize || (cs as CSSStyleDeclaration).backgroundSize || '',
@@ -783,6 +792,53 @@ export default function SlideCanvas() {
       window.removeEventListener('html-component-preview-clear', onClear)
     }
   }, []) // htmlContentRef는 ref이므로 deps 불필요
+
+  // 차트 데이터 업데이트: Inspector → iframe DOM 교체 → API 저장
+  useEffect(() => {
+    const handler = async (e: Event) => {
+      const { componentId, newOuterHtml } = (e as CustomEvent<{ componentId: string; newOuterHtml: string }>).detail
+      const doc = iframeRef.current?.contentDocument
+      if (!doc) return
+      const el = doc.querySelector<HTMLElement>(`[data-component-id="${componentId}"]`)
+      if (!el) return
+
+      const tmp = doc.createElement('div')
+      tmp.innerHTML = newOuterHtml
+      const newEl = tmp.firstElementChild as HTMLElement
+      if (!newEl) return
+      el.replaceWith(newEl)
+
+      // 스크립트 재실행 (innerHTML 교체로는 자동 실행 안 됨)
+      newEl.querySelectorAll('script').forEach((oldScript) => {
+        const s = doc.createElement('script')
+        s.textContent = oldScript.textContent
+        oldScript.replaceWith(s)
+      })
+
+      handleStyleUpdate(parseElementStyle(newEl))
+
+      const newHtml = rebuildFullHtml(doc.documentElement.innerHTML)
+      const projectId = presentation?.id ?? ''
+      const slideId = currentSlide?.id ?? ''
+      if (!projectId || !slideId) return
+      try {
+        await api.patch(`/projects/${projectId}/slides/${slideId}`, { html_content: newHtml, reason: '사용자: 차트 데이터 편집' })
+        const ppt = useSlideStore.getState().presentation
+        if (ppt) {
+          ignoreHtmlSyncRef.current = true
+          useSlideStore.setState({
+            presentation: {
+              ...ppt,
+              slides: ppt.slides.map((s) => s.id === slideId ? { ...s, html_content: newHtml } : s),
+            },
+          })
+          crdtStore.setSlideHtml(slideId, newHtml)
+        }
+      } catch { /* silent */ }
+    }
+    window.addEventListener('html-chart-data-update', handler)
+    return () => window.removeEventListener('html-chart-data-update', handler)
+  }, [presentation?.id, currentSlide?.id, handleStyleUpdate, ignoreHtmlSyncRef])
 
   // 동적 스케일
   useEffect(() => {
