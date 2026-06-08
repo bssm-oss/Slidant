@@ -1,7 +1,10 @@
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from pydantic import BaseModel
 from playwright.async_api import async_playwright, Browser
+
+logger = logging.getLogger(__name__)
 
 _pw_instance = None
 _browser: Browser | None = None
@@ -67,7 +70,7 @@ _CHECK_SCRIPT = """
     function isTransparent(colorStr) {
         return colorStr === 'transparent' ||
                colorStr === 'rgba(0, 0, 0, 0)' ||
-               /rgba\\(.*,\\s*0\\)/.test(colorStr);
+               /rgba\\(\\d+,\\s*\\d+,\\s*\\d+,\\s*0\\)/.test(colorStr);
     }
 
     function effectiveBg(el) {
@@ -181,13 +184,14 @@ async def check_slide(req: CheckRequest):
     if _browser is None:
         return CheckResponse(issues=[])
     context = await _browser.new_context(viewport={"width": 960, "height": 540})
-    page = await context.new_page()
     try:
+        page = await context.new_page()
         await page.set_content(req.html, wait_until="domcontentloaded", timeout=10_000)
         raw = await page.evaluate(_CHECK_SCRIPT)
         issues = [Issue(**item) for item in (raw or [])]
         return CheckResponse(issues=issues)
-    except Exception:
+    except Exception as e:
+        logger.warning("check_slide error: %s", e)
         return CheckResponse(issues=[])
     finally:
         await context.close()
