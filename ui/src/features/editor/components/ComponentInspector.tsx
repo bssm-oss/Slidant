@@ -499,6 +499,7 @@ export default function ComponentInspector({ style }: Props) {
   useEffect(() => { setBorderRadius(style.borderRadius ?? 0) }, [style.borderRadius])
 
   const id = style.componentId
+  const isBackground = style.left === 0 && style.top === 0 && style.width === 960 && style.height === 540
 
   // 이 컴포넌트에 영향을 주는 pending 제안 찾기 (수정 또는 삭제)
   const activeProposal: (AgentProposal & { proposedHtml: string; isDeleted: boolean }) | null = (() => {
@@ -557,9 +558,10 @@ export default function ComponentInspector({ style }: Props) {
           {style.isChart ? '차트' : style.isImage ? '이미지' : style.isText ? '텍스트' : '요소'}
         </span>
         <button
-          onClick={() => window.dispatchEvent(new CustomEvent('html-component-delete-request', { detail: { componentId: id } }))}
-          className="w-6 h-6 rounded-[5px] flex items-center justify-center text-[var(--text-muted)] hover:bg-red-50 hover:text-red-500 transition-colors"
-          title="컴포넌트 삭제 (Delete)"
+          disabled={isBackground}
+          onClick={() => !isBackground && window.dispatchEvent(new CustomEvent('html-component-delete-request', { detail: { componentId: id } }))}
+          className={cn('w-6 h-6 rounded-[5px] flex items-center justify-center transition-colors', isBackground ? 'opacity-30 cursor-not-allowed' : 'text-[var(--text-muted)] hover:bg-red-50 hover:text-red-500')}
+          title={isBackground ? '배경 컴포넌트는 삭제할 수 없습니다' : '컴포넌트 삭제 (Delete)'}
         >
           <Trash2 size={12} />
         </button>
@@ -567,7 +569,7 @@ export default function ComponentInspector({ style }: Props) {
 
       {/* 위치 */}
       <SectionLabel>위치</SectionLabel>
-      <div className="px-4 pb-2 flex gap-2">
+      <div className={cn('px-4 pb-2 flex gap-2', isBackground && 'pointer-events-none opacity-40')}>
         <NumInput
           label="X"
           value={pos.x}
@@ -586,7 +588,7 @@ export default function ComponentInspector({ style }: Props) {
 
       {/* 크기 + 비율 고정 */}
       <SectionLabel>크기</SectionLabel>
-      <div className="px-4 pb-2 flex gap-2 items-center">
+      <div className={cn('px-4 pb-2 flex gap-2 items-center', isBackground && 'pointer-events-none opacity-40')}>
         <NumInput
           label="W"
           value={size.w}

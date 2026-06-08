@@ -32,6 +32,9 @@ function dispatchStyleUpdate(componentId: string, prop: string, value: string | 
 }
 
 export default function SelectionOverlay({ style, scale, iframeRef, onDelete }: Props) {
+  const isBackground = style.left === 0 && style.top === 0 && style.width === SLIDE_W && style.height === SLIDE_H
+  const isBackgroundRef = useRef(isBackground)
+  useEffect(() => { isBackgroundRef.current = isBackground }, [isBackground])
   const overlayRef = useRef<HTMLDivElement>(null)
   const styleRef = useRef(style)
   const liveRef = useRef({ left: style.left, top: style.top, w: style.width, h: style.height })
@@ -63,6 +66,7 @@ export default function SelectionOverlay({ style, scale, iframeRef, onDelete }: 
     ), [iframeRef])
 
   const startDrag = useCallback((e: React.MouseEvent, handle: HandleId | 'move') => {
+    if (isBackgroundRef.current) { e.preventDefault(); e.stopPropagation(); return }
     e.preventDefault()
     e.stopPropagation()
     const { left, top, w, h } = liveRef.current
@@ -130,6 +134,7 @@ export default function SelectionOverlay({ style, scale, iframeRef, onDelete }: 
       if ((e.target as HTMLElement).isContentEditable) return
       const id = styleRef.current.componentId
       if (!id) return
+      if (isBackgroundRef.current) return
       const step = e.shiftKey ? 10 : 1
       switch (e.key) {
         case 'Delete':
@@ -190,7 +195,7 @@ export default function SelectionOverlay({ style, scale, iframeRef, onDelete }: 
         outline: '2px solid var(--accent)',
         outlineOffset: '1px',
         zIndex: 20,
-        cursor: 'move',
+        cursor: isBackground ? 'default' : 'move',
         pointerEvents: 'auto',
         boxSizing: 'border-box',
       }}
@@ -198,7 +203,7 @@ export default function SelectionOverlay({ style, scale, iframeRef, onDelete }: 
       onDoubleClick={handleDoubleClick}
       onClick={(e) => e.stopPropagation()}
     >
-      {HANDLES.map((h) => (
+      {!isBackground && HANDLES.map((h) => (
         <div
           key={h.id}
           style={{
