@@ -13,7 +13,9 @@ export default function DrivePage() {
   const { filteredPresentations, loadProjects, loading, createPresentation } = useDriveStore()
   const navigate = useNavigate()
   const all = filteredPresentations()
-  const recent = all.slice(0, 20)
+  const recent = [...all]
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    .slice(0, 20)
 
   const [prompt, setPrompt] = useState('')
   const [creating, setCreating] = useState(false)
