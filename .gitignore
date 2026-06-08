@@ -28,4 +28,7 @@ build/
 # Logs
 *.log
 
+# LangGraph 런타임 체크포인트 캐시
+.langgraph_api/
+
 pptagent/**
