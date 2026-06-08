@@ -18,9 +18,9 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:5173"
 
     ANTHROPIC_MODEL: str = "claude-sonnet-4-6"
-    OPENROUTER_MODEL: str = "deepseek/deepseek-v4-pro"
+    OPENROUTER_MODEL: str = "deepseek/deepseek-v4-flash"
     AGENT_MAX_RETRIES: int = 2
-    AGENT_MAX_TOKENS: int = 2048
+    AGENT_MAX_TOKENS: int = 4096
     AGENT_MAX_SLIDES: int = 50
 
     TAVILY_API_KEY: str = ""

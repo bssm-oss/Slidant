@@ -47,8 +47,6 @@ def _make_llm(api_key_plaintext: str, provider: str = "anthropic", json_mode: bo
         model_kwargs: dict = {"max_completion_tokens": settings.AGENT_MAX_TOKENS, **extra}
         if any(m in model_name for m in ("o1", "o3", "/r1", "reasoning")):
             model_kwargs["reasoning"] = {"max_tokens": 1024}
-        elif "qwen3" in model_name:
-            model_kwargs["reasoning"] = {"effort": "none"}  # thinking 모드 비활성화
         return ChatOpenAI(
             base_url=OPENROUTER_BASE_URL,
             api_key=api_key_plaintext,
