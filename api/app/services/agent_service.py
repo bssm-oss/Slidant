@@ -100,6 +100,7 @@ async def finalize_agent_run(
     status: str = "done",
     error: str = "",
     result_summary: str | None = None,
+    provider: str = "unknown",
 ) -> None:
     agent_run.status = status
     agent_run.finished_at = datetime.utcnow()
@@ -107,7 +108,7 @@ async def finalize_agent_run(
         agent_run.result_summary = result_summary
     llm_log = LlmLog(
         agent_run_id=agent_run.id,
-        model="via-openrouter" if status == "done" else "n/a",
+        model=provider if status == "done" else "n/a",
         prompt=command,
         response=str(patches) if status == "done" else error,
         tokens_input=0,

@@ -44,16 +44,16 @@ def _make_llm(api_key_plaintext: str, provider: str = "anthropic", json_mode: bo
         extra: dict = {}
         if json_mode:
             extra["response_format"] = {"type": "json_object"}
+        model_name = settings.OPENROUTER_MODEL.lower()
+        model_kwargs: dict = {"max_completion_tokens": 8192, **extra}
+        if any(m in model_name for m in ("o1", "o3", "/r1", "reasoning")):
+            model_kwargs["reasoning"] = {"max_tokens": 1024}
         return ChatOpenAI(
             base_url=OPENROUTER_BASE_URL,
             api_key=api_key_plaintext,
             model=settings.OPENROUTER_MODEL,
             max_tokens=8192,
-            model_kwargs={
-                "max_completion_tokens": 8192,
-                "reasoning": {"max_tokens": 1024},
-                **extra,
-            },
+            model_kwargs=model_kwargs,
         )
     return ChatAnthropic(
         model=settings.ANTHROPIC_MODEL,
@@ -236,6 +236,7 @@ async def run_agent(
     conversation_history: str = "",
     html_mode: bool = False,
     cached_search_summary: str = "",
+    slide_html_content: str = "",
 ) -> tuple[list[dict], str, str, str, list, bool, dict | None]:
     """
     Returns: (patch_ops, slide_context, summary, html_output, html_slides, delete_slide)
@@ -244,7 +245,10 @@ async def run_agent(
     from app.agent.context import NodeContext
     from app.agent.graph import build_graph
 
-    slide_context = build_slide_context(components)
+    if html_mode and slide_html_content:
+        slide_context = build_slide_context_from_html(slide_html_content)
+    else:
+        slide_context = build_slide_context(components)
     if all_slides:
         slide_context += "\n\n" + build_all_slides_context(all_slides)
 

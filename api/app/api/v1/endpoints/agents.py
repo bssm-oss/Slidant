@@ -253,6 +253,7 @@ async def _run_agent_background_inner(
 
             # slide_ready 즉시 DB 저장용 인덱스 → slide_id 매핑 (생성 순서 기준)
             _slide_ready_slots: dict[int, str] = {}  # index → placeholder slide_id
+            _interim_tasks: list = []  # is_full_replace DELETE 전 drain용
 
             def on_event(event_type: str, message: str) -> None:
                 _fire({
@@ -273,7 +274,7 @@ async def _run_agent_background_inner(
                         html = data.get("html", "")
                         title = data.get("title", "")
                         if html:
-                            _asyncio.get_running_loop().create_task(
+                            _t = _asyncio.get_running_loop().create_task(
                                 _save_slide_ready(
                                     project_id=body.project_id,
                                     index=idx,
@@ -282,6 +283,7 @@ async def _run_agent_background_inner(
                                     slot_map=_slide_ready_slots,
                                 )
                             )
+                            _interim_tasks.append(_t)
                     except Exception as _e:
                         logger.debug("slide_ready interim save parse error: %s", _e)
 
@@ -308,6 +310,7 @@ async def _run_agent_background_inner(
                 conversation_history=conversation_history,
                 html_mode=True,
                 cached_search_summary=(project.search_summary or "") if project else "",
+                slide_html_content=(slide.html_content or "") if slide else "",
             )
             patches, _, llm_summary, html_output, html_slides, delete_slide, search_cache = await run_agent(**run_kwargs)
 
@@ -401,6 +404,12 @@ async def _run_agent_background_inner(
                 specs = html_slides
 
                 if is_full_replace:
+                    # 기존 슬라이드 전량 삭제 전 interim save 태스크 완료 대기
+                    # (race: _save_slide_ready가 DELETE 이후에 INSERT하면 고아 슬라이드 생성됨)
+                    if _interim_tasks:
+                        import asyncio as _asyncio
+                        await _asyncio.gather(*_interim_tasks, return_exceptions=True)
+
                     # 기존 슬라이드 전량 삭제 후 fresh 생성 (order 0부터 재배치)
                     # body.slide_id는 이미 삭제됐을 수 있음(delete_slide=True), 아니면 지금 삭제
                     existing_slides = await uow.slides.list_by_project(body.project_id)
@@ -499,6 +508,7 @@ async def _run_agent_background_inner(
             await agent_service.finalize_agent_run(
                 uow.agent_runs, uow.llm_logs, agent_run, body.command, patches,
                 result_summary=agent_content,
+                provider=provider,
             )
 
             # is_full_replace: 원본 슬라이드 삭제됐으므로 chat_message.slide_id를
@@ -544,7 +554,7 @@ async def _run_agent_background_inner(
                     "agent_name": agent_def_name,
                 }
             elif html_output:
-                broadcast_payload["html_content"] = html_output
+                broadcast_payload["html_content"] = sanitize_slide_html(html_output)
             if new_slides:
                 broadcast_payload["new_slides"] = [
                     {"id": str(s.id), "order": s.order, "title": s.title,
