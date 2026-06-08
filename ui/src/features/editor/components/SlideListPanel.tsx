@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react'
 import { useEditorStore } from '../store/editorStore'
 import { useAgentStore, type PresenceUser } from '../store/agentStore'
 import { cn } from '@/shared/lib/utils'
-import { buildSlideSrc } from '@/shared/lib/slideHtml'
+import { buildSlideSrc, extractSlideTitle } from '@/shared/lib/slideHtml'
 import { Plus, X, Copy, ArrowUp, ArrowDown, MoreHorizontal, RefreshCw } from 'lucide-react'
 import type { SlideComponent, Slide } from '@/shared/types'
 import {
@@ -107,14 +107,17 @@ function SortableSlideItem({
 
   const sortedComponents = [...slide.components].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
 
+  const slideTitle = extractSlideTitle(slide.html_content, slide.title, index)
+
   return (
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
-      className="relative shrink-0"
+      className="shrink-0"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => { if (!menuOpen) setIsHovered(false) }}
     >
+      <div className="relative">
       <button
         onClick={() => onSelect(index)}
         {...attributes}
@@ -233,6 +236,10 @@ function SortableSlideItem({
           </DropdownMenu>
         </div>
       )}
+      </div>
+      <p className="mt-0.5 px-1 text-[10px] leading-tight text-[var(--text-muted)] truncate" title={slideTitle}>
+        {slideTitle}
+      </p>
     </div>
   )
 }

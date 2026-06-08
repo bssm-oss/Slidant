@@ -49,6 +49,31 @@ export function computeChangedComponentIds(baseHtml: string, proposalHtml: strin
   return changed
 }
 
+export function extractSlideTitle(
+  htmlContent: string | null | undefined,
+  fallbackTitle: string | undefined,
+  index: number,
+): string {
+  if (htmlContent && typeof document !== 'undefined') {
+    try {
+      const doc = new DOMParser().parseFromString(htmlContent, 'text/html')
+      const titleEl = doc.querySelector('[data-component-id*="title" i]')
+      if (titleEl) {
+        const text = titleEl.textContent?.trim()
+        if (text) return text
+      }
+      for (const tag of ['h1', 'h2', 'h3']) {
+        const el = doc.querySelector(tag)
+        if (el) {
+          const text = el.textContent?.trim()
+          if (text) return text
+        }
+      }
+    } catch { /* fall through */ }
+  }
+  return fallbackTitle || `슬라이드 ${index + 1}`
+}
+
 export function buildSlideSrc(html: string, isViewer = false): string {
   const safeStyle = isViewer ? SLIDE_VIEWER_CSS : SLIDE_SAFE_CSS
   const trimmed = html.trimStart()
