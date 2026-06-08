@@ -181,6 +181,19 @@ class HtmlSlide:
         return cls(html="")
 
 
+def changed_component_ids(old_html: str, new_html: str) -> set[str]:
+    """두 HTML 간 추가·수정·삭제된 component_id 집합 (순서 변화는 무시, html 내용만 비교)."""
+    old = HtmlSlide(html=old_html)
+    new = HtmlSlide(html=new_html)
+    old_ids, new_ids = set(old.components), set(new.components)
+    changed = old_ids ^ new_ids  # 추가 또는 삭제
+    changed |= {
+        cid for cid in (old_ids & new_ids)
+        if old.components[cid]["html"] != new.components[cid]["html"]
+    }
+    return changed
+
+
 def merge_component_changes(
     old_html: str,
     new_html: str,

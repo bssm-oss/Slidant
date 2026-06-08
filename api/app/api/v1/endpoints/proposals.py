@@ -85,18 +85,27 @@ async def approve_proposal(proposal_id: UUID, body: ApproveBody, current_user: C
     reason = f'{proposal.agent_name}: {proposal.command[:120]}'
 
     if proposal.html_content:
-        # HTML 모드: 제안된 HTML을 (부분) 적용
+        # HTML 모드: 제안된 변경분을 "현재" 슬라이드에 병합
+        # (proposal.html_content는 생성 시점 스냅샷 그대로 — 그 사이 다른 승인/직접편집으로
+        #  슬라이드가 더 진행됐을 수 있어 그대로 덮어쓰면 그 변경분이 유실됨.
+        #  항상 최신 슬라이드 위에, 이 제안이 "실제로 의도한" 컴포넌트만 얹는다)
+        from app.core.domain.html_slide import merge_component_changes, changed_component_ids
         if body.accepted_ids is None:
-            # 전체 승인 → 제안 HTML 그대로 적용
-            final_html = proposal.html_content
+            # 전체 승인 → 제안 생성 시점 기준선(base_html_content) 대비 이 제안이
+            # 실제로 바꾼 컴포넌트만 추려 최신 상태에 병합 — 기준선 없는 레거시 제안은
+            # 현재 상태 대비 diff로 대체 (완벽하진 않지만 wholesale 교체보단 안전)
+            base = proposal.base_html_content
+            if base is None:
+                base = slide.html_content or ""
+            accepted_ids = list(changed_component_ids(base, proposal.html_content))
         else:
-            # 선택 승인 → 현재 슬라이드에 선택된 컴포넌트만 병합
-            from app.core.domain.html_slide import merge_component_changes
-            final_html = merge_component_changes(
-                slide.html_content or "",
-                proposal.html_content,
-                body.accepted_ids,
-            )
+            # 선택 승인 → 지정된 컴포넌트만 병합
+            accepted_ids = body.accepted_ids
+        final_html = merge_component_changes(
+            slide.html_content or "",
+            proposal.html_content,
+            accepted_ids,
+        )
         await slide_history_service.archive_and_apply(
             uow, proposal.slide_id, list(slide.content or []),
             reason, agent_name=proposal.agent_name, html_content=final_html,
