@@ -36,28 +36,31 @@ from app.agent.prompts import (  # noqa: F401
 
 # ── LLM 팩토리 ────────────────────────────────────────────────────────────────
 
-def _make_llm(api_key_plaintext: str, provider: str = "anthropic", json_mode: bool = False):
+def _make_llm(api_key_plaintext: str, provider: str = "anthropic", json_mode: bool = False, model: str | None = None, max_tokens: int | None = None, reasoning_cap: int | None = None):
     from app.core.config import settings
 
     if provider == "openrouter":
         extra: dict = {}
         if json_mode:
             extra["response_format"] = {"type": "json_object"}
-        model_name = settings.OPENROUTER_MODEL.lower()
-        model_kwargs: dict = {"max_completion_tokens": settings.AGENT_MAX_TOKENS, **extra}
-        if any(m in model_name for m in ("o1", "o3", "/r1", "reasoning")):
-            model_kwargs["reasoning"] = {"max_tokens": 1024}
+        resolved_model = model or settings.OPENROUTER_MODEL
+        _tokens = max_tokens or settings.AGENT_MAX_TOKENS
+        model_kwargs: dict = {"max_completion_tokens": _tokens, **extra}
+        _is_thinking = any(m in resolved_model.lower() for m in ("o1", "o3", "/r1", "reasoning", "v4-flash", "v4-pro", "deepseek-v4"))
+        if _is_thinking:
+            model_kwargs["reasoning"] = {"max_tokens": reasoning_cap if reasoning_cap is not None else 1024}
         return ChatOpenAI(
             base_url=OPENROUTER_BASE_URL,
             api_key=api_key_plaintext,
-            model=settings.OPENROUTER_MODEL,
-            max_tokens=settings.AGENT_MAX_TOKENS,
+            model=resolved_model,
+            max_tokens=_tokens,
             model_kwargs=model_kwargs,
         )
+    _tokens = max_tokens or settings.AGENT_MAX_TOKENS
     return ChatAnthropic(
-        model=settings.ANTHROPIC_MODEL,
+        model=model or settings.ANTHROPIC_MODEL,
         api_key=api_key_plaintext,
-        max_tokens=settings.AGENT_MAX_TOKENS,
+        max_tokens=_tokens,
         model_kwargs={
             "extra_headers": {"anthropic-beta": "prompt-caching-2024-07-31"},
         },
@@ -72,7 +75,8 @@ async def generate_presentation_title(command: str, encrypted_api_key: str, prov
 
     try:
         api_key = decrypt_api_key(encrypted_api_key)
-        llm = _make_llm(api_key, provider, json_mode=False)
+        plan_model = settings.OPENROUTER_PLAN_MODEL if provider == "openrouter" else None
+        llm = _make_llm(api_key, provider, json_mode=False, model=plan_model)
         messages = [
             SystemMessage(content=TITLE_GENERATOR_PROMPT),
             HumanMessage(content=f"User request: {command}"),
@@ -260,6 +264,8 @@ CRITICAL — SCOPE LOCKED TO CURRENT SLIDE:
 
     api_key = decrypt_api_key(encrypted_api_key)
     llm = _make_llm(api_key, provider, json_mode=False)
+    llm_plain = _make_llm(api_key, provider, json_mode=False, model=settings.OPENROUTER_PLAN_MODEL if provider == "openrouter" else None, reasoning_cap=256)
+    llm_batch = _make_llm(api_key, provider, json_mode=False, max_tokens=settings.AGENT_BATCH_MAX_TOKENS)
 
     resolved_prompt = system_prompt
     if isinstance(system_prompt, str):
@@ -267,7 +273,8 @@ CRITICAL — SCOPE LOCKED TO CURRENT SLIDE:
 
     ctx = NodeContext(
         llm=llm,
-        llm_plain=llm,
+        llm_plain=llm_plain,
+        llm_batch=llm_batch,
         gen_prompt=resolved_prompt or SYSTEM_PROMPTS.get(role, SYSTEM_PROMPTS["content"]),
         on_token=on_token,
         on_event=on_event,
