@@ -802,11 +802,27 @@ export default function SlideCanvas() {
       const el = doc.querySelector<HTMLElement>(`[data-component-id="${componentId}"]`)
       if (!el) return
 
+      // Chart.js "Canvas is already in use" 방지 — 교체 전 기존 인스턴스 파괴
+      const win = doc.defaultView as unknown as { Chart?: { getChart?(el: HTMLCanvasElement): { destroy(): void } | undefined } }
+      el.querySelectorAll<HTMLCanvasElement>('canvas[id]').forEach((canvas) => {
+        win.Chart?.getChart?.(canvas)?.destroy()
+      })
+
       const tmp = doc.createElement('div')
       tmp.innerHTML = newOuterHtml
       const newEl = tmp.firstElementChild as HTMLElement
       if (!newEl) return
       el.replaceWith(newEl)
+
+      // Chart.js가 canvas width/height 속성을 DPR 배수로 수정함
+      // outerHTML에 이미 배수된 값이 담겨 있어 재생성 시 또 배수 → 크기 폭발
+      // CSS 선언 크기로 리셋 후 Chart.js가 한 번만 DPR 적용하도록 함
+      newEl.querySelectorAll<HTMLCanvasElement>('canvas').forEach((canvas) => {
+        const cssW = parseFloat(canvas.style.width)
+        const cssH = parseFloat(canvas.style.height)
+        if (cssW > 0) canvas.setAttribute('width', String(cssW))
+        if (cssH > 0) canvas.setAttribute('height', String(cssH))
+      })
 
       // 스크립트 재실행 (innerHTML 교체로는 자동 실행 안 됨)
       newEl.querySelectorAll('script').forEach((oldScript) => {
@@ -988,33 +1004,40 @@ export default function SlideCanvas() {
             onLoad={() => handleIframeLoad()}
           />
           {/* 제안 인디케이터 오버레이 */}
-          {proposalIndicators.map(({ id, type, x, y, w, h }) => (
-            <div
-              key={`pi-${id}`}
-              className="absolute pointer-events-none"
-              style={{
-                left: x * scale,
-                top: y * scale,
-                width: w * scale,
-                height: h * scale,
-                outline: `2px solid ${type === 'change' ? '#f59e0b' : '#ef4444'}`,
-                outlineOffset: '1px',
-                zIndex: 10,
-              }}
-            >
+          {proposalIndicators.map(({ id, type, x, y, w, h }) => {
+            const isDragging = selectedHtmlStyle?.componentId === id
+            const liveX = isDragging ? selectedHtmlStyle!.left : x
+            const liveY = isDragging ? selectedHtmlStyle!.top : y
+            const liveW = isDragging ? selectedHtmlStyle!.width : w
+            const liveH = isDragging ? selectedHtmlStyle!.height : h
+            return (
               <div
-                className="absolute top-0 right-0 flex items-center px-1 text-white font-bold"
+                key={`pi-${id}`}
+                className="absolute pointer-events-none"
                 style={{
-                  background: type === 'change' ? '#f59e0b' : '#ef4444',
-                  fontSize: Math.max(8, 9 * scale),
-                  lineHeight: `${Math.max(14, 16 * scale)}px`,
-                  borderRadius: '0 0 0 3px',
+                  left: liveX * scale,
+                  top: liveY * scale,
+                  width: liveW * scale,
+                  height: liveH * scale,
+                  outline: `2px solid ${type === 'change' ? '#f59e0b' : '#ef4444'}`,
+                  outlineOffset: '1px',
+                  zIndex: 10,
                 }}
               >
-                {type === 'change' ? '수정' : '삭제'}
+                <div
+                  className="absolute top-0 right-0 flex items-center px-1 text-white font-bold"
+                  style={{
+                    background: type === 'change' ? '#f59e0b' : '#ef4444',
+                    fontSize: Math.max(8, 9 * scale),
+                    lineHeight: `${Math.max(14, 16 * scale)}px`,
+                    borderRadius: '0 0 0 3px',
+                  }}
+                >
+                  {type === 'change' ? '수정' : '삭제'}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
           {/* 선택 컴포넌트 오버레이 (드래그/리사이즈/키보드) */}
           {selectedHtmlStyle && !isTextEditing && !previewHtml && (
             <SelectionOverlay
