@@ -31,7 +31,8 @@ function StepNode({ step, showLine, lineGreen }: { step: AgentStep; showLine: bo
   const isDone = step.status === 'done'
   const isActive = step.status === 'active'
   const isFailed = step.status === 'failed'
-  const isPending = !isDone && !isFailed && !isActive
+  const isCancelled = step.status === 'cancelled'
+  const isPending = !isDone && !isFailed && !isActive && !isCancelled
   const TypeIcon = step.type ? STEP_TYPE_ICON[step.type] : null
   return (
     <div className="flex gap-3">
@@ -41,6 +42,7 @@ function StepNode({ step, showLine, lineGreen }: { step: AgentStep; showLine: bo
           isDone && 'bg-emerald-500',
           isFailed && 'bg-red-500',
           isActive && 'bg-[var(--accent)] ring-4 ring-[var(--accent)] ring-opacity-20',
+          isCancelled && 'border-2 border-[var(--border)] bg-[var(--bg-muted)]',
           isPending && 'border-2 border-[var(--border)] bg-[var(--bg-muted)]',
         )}>
           {isDone && (
@@ -51,6 +53,11 @@ function StepNode({ step, showLine, lineGreen }: { step: AgentStep; showLine: bo
           {isFailed && (
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
               <path d="M2.5 2.5l5 5M7.5 2.5l-5 5" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          )}
+          {isCancelled && (
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <path d="M2 8L8 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="text-[var(--text-disabled)]"/>
             </svg>
           )}
           {isActive && <div className="w-[6px] h-[6px] rounded-full bg-white animate-pulse" />}
@@ -64,6 +71,7 @@ function StepNode({ step, showLine, lineGreen }: { step: AgentStep; showLine: bo
         isDone && 'text-[var(--text-muted)]',
         isFailed && 'text-red-500 font-medium',
         isActive && 'text-[var(--text)] font-semibold',
+        isCancelled && 'text-[var(--text-disabled)] line-through',
         isPending && 'text-[var(--text-disabled)]',
         !showLine && 'pb-0',
       )}>
@@ -75,6 +83,7 @@ function StepNode({ step, showLine, lineGreen }: { step: AgentStep; showLine: bo
               isDone && 'text-[var(--text-muted)]',
               isFailed && 'text-red-400',
               isActive && 'text-[var(--accent)]',
+              isCancelled && 'text-[var(--text-disabled)]',
               isPending && 'text-[var(--text-disabled)]',
             )}
           />
@@ -87,7 +96,7 @@ function StepNode({ step, showLine, lineGreen }: { step: AgentStep; showLine: bo
 }
 
 // ── 단계별 체크리스트 ─────────────────────────────────────────────────────────
-function StepsChecklist({ steps }: { steps: AgentStep[] }) {
+function StepsChecklist({ steps, cancelled }: { steps: AgentStep[]; cancelled?: boolean }) {
   // slide-* 단계를 병렬 그룹으로 분리
   const slideSteps = steps.filter((s) => s.id.startsWith('slide-'))
   const seqSteps = steps.filter((s) => !s.id.startsWith('slide-'))
@@ -101,6 +110,11 @@ function StepsChecklist({ steps }: { steps: AgentStep[] }) {
 
   return (
     <div className="mx-1 my-2 px-1 py-2">
+      {cancelled && (
+        <div className="flex items-center gap-1 mb-2">
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-muted)] text-[var(--text-disabled)] border border-[var(--border)]">취소됨</span>
+        </div>
+      )}
       {seqSteps.map((step, i) => {
         const isLast = i === seqSteps.length - 1 && !hasSlides
         return (
@@ -633,7 +647,7 @@ export default function RightPanel({ onWidthChange, onResizingChange }: { onWidt
           <>
             {/* chatMessages와 stepHistory를 timestamp 순으로 병합 렌더링 */}
             {(() => {
-              type StepEntry = { id: string; agentName: string; steps: import('@/shared/types').AgentStep[]; timestamp: string }
+              type StepEntry = { id: string; agentName: string; steps: import('@/shared/types').AgentStep[]; timestamp: string; cancelled?: boolean }
               const combined: Array<{ ts: string; kind: 'msg'; msg: ChatMessage } | { ts: string; kind: 'steps'; entry: StepEntry }> = [
                 ...msgs.map((m) => ({ ts: m.timestamp, kind: 'msg' as const, msg: m })),
                 ...stepHistory.map((e) => ({ ts: e.timestamp, kind: 'steps' as const, entry: e })),
@@ -646,7 +660,7 @@ export default function RightPanel({ onWidthChange, onResizingChange }: { onWidt
                     <div key={item.entry.id} className="flex flex-col items-start">
                       <span className="text-[10px] text-[var(--text-disabled)] px-1 mb-0.5">{item.entry.agentName}</span>
                       <div className="max-w-[92%] px-3 py-2.5 rounded-[12px] rounded-bl-[4px] bg-[var(--bg-muted)] text-[var(--text)] text-[13px]">
-                        <StepsChecklist steps={item.entry.steps} />
+                        <StepsChecklist steps={item.entry.steps} cancelled={item.entry.cancelled} />
                       </div>
                     </div>
                   )
@@ -761,12 +775,12 @@ export default function RightPanel({ onWidthChange, onResizingChange }: { onWidt
             className="relative w-full resize-none text-[13px] border-0 outline-none bg-transparent py-2.5 px-0 leading-relaxed disabled:opacity-50"
             style={{ height: '72px', maxHeight: '150px', color: input ? 'transparent' : undefined, caretColor: 'var(--text)' }}
           />
-          </div>
           {/\d+\s*장|\d+\s*개|PPT|프레젠테이션|슬라이드.*만들/i.test(input) && (
-            <div className="px-1 pb-1 text-[10px] text-[var(--text-disabled)]">
+            <div className="absolute bottom-1.5 right-0 text-[10px] text-[var(--text-disabled)] pointer-events-none select-none">
               슬라이드 최대 20장
             </div>
           )}
+          </div>
           <div className="flex items-center gap-1 pb-2 shrink-0">
             {/* @ button */}
             {slides.length > 0 && (

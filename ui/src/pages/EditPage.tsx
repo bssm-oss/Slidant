@@ -19,6 +19,7 @@ import { fetchSlideHistory, restoreFromHistory } from '@/shared/lib/projectApi'
 export default function EditPage() {
   const { id } = useParams<{ id: string }>()
   const { loadPresentation, loadAgentLogs, loadAgents, loadChatHistory, connectWs } = useEditorStore()
+  const { loadStepHistory } = useAgentStore()
   const { presentation, presentationError, currentSlideIndex } = useSlideStore()
 
   useEffect(() => {
@@ -44,6 +45,7 @@ export default function EditPage() {
         })(),
       ])
       await loadChatHistory(id)
+      loadStepHistory(id)
 
       // 모든 초기 데이터 로드 완료 후 초기 프롬프트 전송
       if (initialPrompt) {
@@ -108,6 +110,7 @@ export default function EditPage() {
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
   const [rightPanelWidth, setRightPanelWidth] = useState(320)
+  const [isRightResizing, setIsRightResizing] = useState(false)
   const [presenting, setPresenting] = useState(false)
   const [showShareModal, setShowShareModal] = useState(false)
   // historyOffset: 0 = 현재, 1 = 1단계 전, ... (undo 할수록 증가)
@@ -233,10 +236,10 @@ ${exportSlides.map(s => s.html_content ? `<div class="slide-page">${s.html_conte
 
           {/* 우측 채팅 패널 */}
           <div
-            className="transition-[width] duration-200 shrink-0 overflow-hidden"
+            className={`${isRightResizing ? '' : 'transition-[width] duration-200'} shrink-0 overflow-hidden`}
             style={{ width: rightOpen ? rightPanelWidth : 0 }}
           >
-            <RightPanel onWidthChange={setRightPanelWidth} />
+            <RightPanel onWidthChange={setRightPanelWidth} onResizingChange={setIsRightResizing} />
           </div>
         </div>
       </div>
