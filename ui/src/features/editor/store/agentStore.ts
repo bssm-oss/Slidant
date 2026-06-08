@@ -48,7 +48,7 @@ function _anyExistingComponentModified(currentHtml: string, proposalHtml: string
 }
 
 import { create } from 'zustand'
-import type { Agent, AgentLog, AgentStatus, ChatMessage } from '@/shared/types'
+import type { Agent, AgentLog, AgentStatus, AgentStep, ChatMessage } from '@/shared/types'
 import { runAgent as apiRunAgent } from '@/shared/lib/agentRunApi'
 import { api } from '@/shared/lib/apiClient'
 import { wsClient } from '@/shared/lib/wsClient'
@@ -59,11 +59,7 @@ import { useSessionStore } from './sessionStore'
 // 사용자 직접 편집 broadcast — 연속 편집(드래그 등) 묶어서 1회만 재조회
 let _slideChangedDebounce: ReturnType<typeof setTimeout> | null = null
 
-export interface AgentStep {
-  id: string
-  label: string
-  status: 'pending' | 'active' | 'done' | 'failed'
-}
+export type { AgentStep }
 
 export interface PresenceUser {
   userId: string
@@ -84,6 +80,7 @@ interface AgentState {
   activeRightTab: 'agent' | 'properties'
   agentSteps: AgentStep[]
   lastRunAgentName: string | null
+  stepHistory: Array<{ id: string; agentName: string; steps: AgentStep[]; timestamp: string }>
   presenceUsers: PresenceUser[]
   currentAgentRunId: string | null
   currentRunSessionId: string | null
@@ -94,6 +91,7 @@ interface AgentState {
   loadAgents: (projectId?: string) => Promise<void>
   loadChatHistory: (projectId: string) => Promise<void>
   loadAgentLogs: (projectId: string) => Promise<void>
+  loadStepHistory: (projectId: string) => void
   connectWs: (projectId: string) => () => void
   selectChatAgent: (definitionId: string | null) => void
   setActiveRightTab: (tab: 'agent' | 'properties') => void
@@ -116,6 +114,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   activeRightTab: 'agent',
   agentSteps: [],
   lastRunAgentName: null,
+  stepHistory: [],
   currentAgentRunId: null,
   currentRunSessionId: null,
   pendingSlideCount: 0,
@@ -174,6 +173,15 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         type: l.status === 'done' ? 'success' : l.status === 'error' ? 'error' : 'info',
       }))
       set({ agentLogs })
+    } catch {}
+  },
+
+  loadStepHistory: (projectId) => {
+    try {
+      const raw = localStorage.getItem(`slidant:stepHistory:${projectId}`)
+      if (!raw) return
+      const entries = JSON.parse(raw) as AgentState['stepHistory']
+      set({ stepHistory: entries })
     } catch {}
   },
 
@@ -422,9 +430,10 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             if (currentRunSessionId && currentSessionId && currentRunSessionId !== currentSessionId) return
           }
           try {
-            const raw = JSON.parse(message) as {id: string, label: string}[]
+            const raw = JSON.parse(message) as {id: string, label: string, type?: string}[]
             const steps: AgentStep[] = raw.map((s, i) => ({
               ...s,
+              type: s.type as AgentStep['type'],
               status: (isReplayed ? 'pending' : (i === 0 ? 'active' : 'pending')) as AgentStep['status'],
             }))
             const slideCount = raw.filter((s) => s.id.startsWith('slide-')).length
@@ -672,7 +681,6 @@ export const useAgentStore = create<AgentState>((set, get) => ({
 
           // step_done이 agent_done보다 늦게 도착할 수 있으므로 즉시 done으로 마킹
           // (failed는 실제 생성 실패를 나타내므로 done으로 덮어쓰지 않음)
-          // 완료된 steps는 채팅 히스토리에 남겨두고, 다음 steps_init에서 교체
           const completedSteps = s.agentSteps.map((st) =>
             st.status === 'done' || st.status === 'failed' ? st : { ...st, status: 'done' as const }
           )
@@ -683,7 +691,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             runningAgentIds: newRunningIds,
             overallStatus: (newRunningIds.size > 0 ? 'running' : 'idle') as AgentStatus,
             conflictComponentIds: newConflicts,
-            agentSteps: completedSteps,
+            agentSteps: [],
             currentAgentRunId: null,
             currentRunSessionId: null,
             pendingSlideCount: 0,
@@ -699,8 +707,29 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           // replay된 agent_done은 채팅 버블/로그 재추가 안 함 (이미 chat history에 있음)
           if (isReplayed) return base
 
+          // 완료된 steps를 stepHistory에 보존 — loadChatHistory가 덮어쓰지 않는 별도 배열
+          const newStepEntry = completedSteps.length > 0 ? {
+            id: `steps-${Date.now()}`,
+            agentName: doneAgentName || 'Agent',
+            steps: completedSteps,
+            timestamp: new Date().toISOString(),
+          } : null
+
+          const nextStepHistory = newStepEntry ? [...s.stepHistory, newStepEntry] : s.stepHistory
+          // localStorage 저장 — 최대 100개 유지
+          if (newStepEntry) {
+            const projectId = useSlideStore.getState().presentation?.id
+            if (projectId) {
+              try {
+                const capped = nextStepHistory.slice(-100)
+                localStorage.setItem(`slidant:stepHistory:${projectId}`, JSON.stringify(capped))
+              } catch {}
+            }
+          }
+
           return {
             ...base,
+            stepHistory: nextStepHistory,
             chatMessages: [
               ...s.chatMessages.filter((m) =>
                 m.id !== `streaming-${doneAgent?.definitionId}` &&
@@ -774,6 +803,12 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             affected_component_ids: affectedComponentIds,
             status: 'pending',
             created_at: new Date().toISOString(),
+          })
+          // DB 동기화: addProposal만으로 렌더링이 안 되는 타이밍 이슈 보완
+          import('@/shared/lib/proposalApi').then(({ fetchPendingProposals }) => {
+            fetchPendingProposals('', proposalPayload.slide_id)
+              .then((fetched) => useProposalStore.getState().mergeProposalsForSlide(proposalPayload.slide_id, fetched))
+              .catch(() => {})
           })
           if (ppt2) get().loadChatHistory(ppt2.id)
           return
