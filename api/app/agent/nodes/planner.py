@@ -332,6 +332,13 @@ def make_self_reviewer(ctx: NodeContext):
                 ctx.on_event("node_done", "✅ 검토 완료")
             return {"review_ok": True, "review_count": review_count + 1}
 
+        # 단일 op 편집은 자기 검토 불필요 (LLM 1회 절감)
+        if len(ops_results) <= 1:
+            logger.info("[self_reviewer] single-op — skipping LLM review")
+            if ctx.on_event:
+                ctx.on_event("node_done", "✅ 검토 완료")
+            return {"review_ok": True, "review_count": review_count + 1}
+
         human_text = (
             f"원래 명령: {state.get('command', '')}\n\n실행된 작업:\n"
             + "\n".join(f"- {r.get('type','?')}: {r.get('summary', r.get('component_id', ''))}"
