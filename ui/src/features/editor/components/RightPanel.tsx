@@ -17,18 +17,25 @@ import type { HtmlComponentStyle } from './SlideCanvas'
 function StepNode({ step, showLine, lineGreen }: { step: AgentStep; showLine: boolean; lineGreen: boolean }) {
   const isDone = step.status === 'done'
   const isActive = step.status === 'active'
+  const isFailed = step.status === 'failed'
   return (
     <div className="flex gap-3">
       <div className="flex flex-col items-center shrink-0">
         <div className={cn(
           'w-[18px] h-[18px] rounded-full flex items-center justify-center shrink-0 transition-all duration-300',
           isDone && 'bg-emerald-500',
+          isFailed && 'bg-red-500',
           isActive && 'bg-[var(--accent)] ring-4 ring-[var(--accent)] ring-opacity-20',
-          !isDone && !isActive && 'border-2 border-[var(--border)] bg-[var(--bg-muted)]',
+          !isDone && !isFailed && !isActive && 'border-2 border-[var(--border)] bg-[var(--bg-muted)]',
         )}>
           {isDone && (
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
               <path d="M2 5l2.5 2.5L8 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          )}
+          {isFailed && (
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <path d="M2.5 2.5l5 5M7.5 2.5l-5 5" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
           )}
           {isActive && <div className="w-[6px] h-[6px] rounded-full bg-white animate-pulse" />}
@@ -39,12 +46,14 @@ function StepNode({ step, showLine, lineGreen }: { step: AgentStep; showLine: bo
       </div>
       <div className={cn(
         'pb-3 pt-0.5 text-[12px] leading-[18px] transition-all duration-300 break-words min-w-0',
-        !showLine && 'pb-0',
         isDone && 'text-[var(--text-muted)]',
+        isFailed && 'text-red-500 font-medium',
         isActive && 'text-[var(--text)] font-semibold',
-        !isDone && !isActive && 'text-[var(--text-disabled)]',
+        !isDone && !isFailed && !isActive && 'text-[var(--text-disabled)]',
+        !showLine && 'pb-0',
       )}>
         {step.label}
+        {isFailed && <span className="ml-1 text-[10px] text-red-400">(생성 실패)</span>}
       </div>
     </div>
   )
@@ -56,8 +65,9 @@ function StepsChecklist({ steps }: { steps: AgentStep[] }) {
   const slideSteps = steps.filter((s) => s.id.startsWith('slide-'))
   const seqSteps = steps.filter((s) => !s.id.startsWith('slide-'))
   const hasSlides = slideSteps.length > 0
-  const allSlidesDone = slideSteps.length > 0 && slideSteps.every((s) => s.status === 'done')
-  const anySlideActive = slideSteps.some((s) => s.status === 'active' || s.status === 'done')
+  const allSlidesDone = slideSteps.length > 0 && slideSteps.every((s) => s.status === 'done' || s.status === 'failed')
+  const anySlideFailed = slideSteps.some((s) => s.status === 'failed')
+  const anySlideActive = slideSteps.some((s) => s.status === 'active' || s.status === 'done' || s.status === 'failed')
   // 순차 단계가 모두 완료돼야 슬라이드 병렬 그룹 활성화
   const seqAllDone = seqSteps.every((s) => s.status === 'done')
   const slideGroupReady = seqAllDone || anySlideActive
@@ -91,7 +101,7 @@ function StepsChecklist({ steps }: { steps: AgentStep[] }) {
             'ml-0 border rounded-[8px] p-2 mb-1 transition-all duration-300',
             !slideGroupReady && 'opacity-40',
             allSlidesDone
-              ? 'border-emerald-200 bg-emerald-50'
+              ? (anySlideFailed ? 'border-red-200 bg-red-50' : 'border-emerald-200 bg-emerald-50')
               : anySlideActive
                 ? 'border-[var(--accent)] border-opacity-30 bg-[var(--accent-subtle)]'
                 : 'border-[var(--border)] bg-[var(--bg-muted)]',
@@ -109,17 +119,24 @@ function StepsChecklist({ steps }: { steps: AgentStep[] }) {
               {slideSteps.map((step) => {
                 const isDone = step.status === 'done'
                 const isActive = step.status === 'active'
+                const isFailed = step.status === 'failed'
                 return (
                   <div key={step.id} className="flex items-center gap-2 px-1">
                     <div className={cn(
                       'w-[14px] h-[14px] rounded-full flex items-center justify-center shrink-0 transition-all duration-300',
                       isDone && 'bg-emerald-500',
+                      isFailed && 'bg-red-500',
                       isActive && 'bg-[var(--accent)]',
-                      !isDone && !isActive && 'border-2 border-[var(--border)] bg-white',
+                      !isDone && !isFailed && !isActive && 'border-2 border-[var(--border)] bg-white',
                     )}>
                       {isDone && (
                         <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
                           <path d="M2 5l2.5 2.5L8 3" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      )}
+                      {isFailed && (
+                        <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
+                          <path d="M2.5 2.5l5 5M7.5 2.5l-5 5" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
                         </svg>
                       )}
                       {isActive && <div className="w-[5px] h-[5px] rounded-full bg-white animate-pulse" />}
@@ -127,10 +144,12 @@ function StepsChecklist({ steps }: { steps: AgentStep[] }) {
                     <span className={cn(
                       'text-[11px] truncate min-w-0 flex-1 transition-colors duration-300',
                       isDone && 'text-[var(--text-muted)]',
+                      isFailed && 'text-red-500 font-medium',
                       isActive && 'text-[var(--text)] font-semibold',
-                      !isDone && !isActive && 'text-[var(--text-disabled)]',
+                      !isDone && !isFailed && !isActive && 'text-[var(--text-disabled)]',
                     )}>
                       {step.label}
+                      {isFailed && <span className="ml-1 text-[10px] text-red-400">(실패)</span>}
                     </span>
                   </div>
                 )
@@ -178,7 +197,7 @@ function renderCollapsible(lines: string[]) {
 }
 
 function formatContent(content: string, isUser: boolean): React.ReactNode {
-  if (isUser) return <span>{content}</span>
+  if (isUser) return <span>{highlightMentions(content)}</span>
 
   const trimmed = content.trim()
 
@@ -287,7 +306,6 @@ function AgentSelector({ agents, selectedId, onSelect }: {
               )} />
               <div className="flex-1 min-w-0">
                 <span className="block truncate">{a.name}</span>
-                <span className="text-[10px] text-[var(--text-disabled)] font-normal">{a.role}</span>
               </div>
             </button>
           ))}

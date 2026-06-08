@@ -108,9 +108,10 @@ def make_slide_composer(ctx: NodeContext):
             if html:
                 ctx.on_event("slide_ready", json.dumps({"index": idx, "title": title, "html": html}, ensure_ascii=False))
                 ctx.on_event("node_done", f"✅ {title[:15]} 완성")
+                ctx.on_event("step_done", f"slide-{idx}")
             else:
                 ctx.on_event("node_done", f"⚠️ {title[:15]} 생성 실패")
-            ctx.on_event("step_done", f"slide-{idx}")
+                ctx.on_event("step_failed", f"slide-{idx}")
 
         logger.info("  [slide_composer] idx=%d html=%d chars", idx, len(html))
         return {"html_slides": [{"index": idx, "title": title, "html": html}]}

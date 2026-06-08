@@ -62,7 +62,7 @@ let _slideChangedDebounce: ReturnType<typeof setTimeout> | null = null
 export interface AgentStep {
   id: string
   label: string
-  status: 'pending' | 'active' | 'done'
+  status: 'pending' | 'active' | 'done' | 'failed'
 }
 
 export interface PresenceUser {
@@ -120,12 +120,12 @@ export const useAgentStore = create<AgentState>((set, get) => ({
 
   loadAgents: async (projectId) => {
     try {
-      const { fetchAgents } = await import('@/shared/lib/agentApi')
+      const { fetchAgents, getAgentDisplayName } = await import('@/shared/lib/agentApi')
       const data = await fetchAgents(projectId)
       const toAgent = (prefix: string) => (a: any): Agent => ({
         id: `${prefix}-${a.id}`,
         definitionId: a.id,
-        name: a.name,
+        name: getAgentDisplayName(a),
         role: a.role,
         status: 'idle' as AgentStatus,
         description: (a.config?.description as string) ?? '',
@@ -431,17 +431,24 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         }
 
         // step_done: 해당 단계 완료, 다음 단계 active
-        if (eventType === 'step_done') {
+        // step_failed: 해당 단계 생성 실패 (slide_ready 안 옴 → pendingSlideCount도 함께 감소)
+        if (eventType === 'step_done' || eventType === 'step_failed') {
+          const nextStatus = eventType === 'step_done' ? 'done' : 'failed'
           set((s) => {
             const idx = s.agentSteps.findIndex((st) => st.id === message)
             if (idx === -1) return s
             return {
               agentSteps: s.agentSteps.map((st, i) => {
-                if (i === idx) return { ...st, status: 'done' }
-                // replay 시: 다음 단계를 active 대신 pending 유지 (실제 진행 순서 모름)
-                if (!isReplayed && i === idx + 1) return { ...st, status: 'active' }
+                if (i === idx) return { ...st, status: nextStatus }
+                // 다음 단계 active 승격 — 병렬 슬라이드 단계는 완료 순서가 배열 순서와
+                // 다를 수 있으므로, 아직 'pending'인 단계만 승격 (이미 done/failed/active인
+                // 단계를 뒤늦게 도착한 step_done이 'active'로 되돌리는 버그 방지)
+                if (!isReplayed && i === idx + 1 && st.status === 'pending') return { ...st, status: 'active' }
                 return st
               }),
+              pendingSlideCount: nextStatus === 'failed'
+                ? Math.max(0, s.pendingSlideCount - 1)
+                : s.pendingSlideCount,
             }
           })
           return
@@ -659,11 +666,14 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           }
 
           // step_done 이벤트가 agent_done보다 늦게 도착할 수 있으므로 즉시 done으로 마킹 후 지연 clear
+          // (failed는 실제 생성 실패를 나타내므로 done으로 덮어쓰지 않음)
           const completedSteps = s.agentSteps.map((st) =>
-            st.status !== 'done' ? { ...st, status: 'done' as const } : st
+            st.status === 'done' || st.status === 'failed' ? st : { ...st, status: 'done' as const }
           )
           setTimeout(() => {
-            set((cur) => ({ agentSteps: cur.agentSteps.every((st) => st.status === 'done') ? [] : cur.agentSteps }))
+            set((cur) => ({
+              agentSteps: cur.agentSteps.every((st) => st.status === 'done' || st.status === 'failed') ? [] : cur.agentSteps,
+            }))
           }, 800)
 
           // 실행 상태 정리 — replay 여부와 무관하게 항상 수행 (재연결로 놓친 agent_done이
