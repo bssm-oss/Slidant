@@ -1,6 +1,7 @@
 """web_searcher, content_planner, design_resolver_html 노드."""
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 
@@ -10,44 +11,26 @@ from app.agent.context import NodeContext
 from app.agent.state import AgentState
 from app.agent.prompts import (
     CONTENT_PLANNER_PROMPT, DESIGN_RESOLVER_PROMPT,
-    SEARCH_CACHE_CHECK_PROMPT, SEARCH_MERGER_PROMPT,
+    SEARCH_MERGER_PROMPT,
 )
 from app.agent.utils import extract_json as _extract_json
 
 logger = logging.getLogger("slidant.agent")
 
 
-async def _check_cache_sufficiency(ctx: NodeContext, cached_summary: str, queries: list[str], command: str) -> dict:
-    """캐시된 factsheet가 새 search_queries의 데이터를 이미 포함하는지 LLM 판정.
-
-    반환: {"sufficient": bool, "missing_queries": [...]}.
-    판정 실패 시 안전하게 "불충분"으로 처리 (전체 재검색).
-    """
-    messages = [
-        SystemMessage(content=SEARCH_CACHE_CHECK_PROMPT),
-        HumanMessage(content=(
-            f"Command: {command}\n\n"
-            "NEW search queries:\n" + "\n".join(f"- {q}" for q in queries) + "\n\n"
-            f"CACHED fact sheet:\n{cached_summary}"
-        )),
-    ]
-    raw = ""
-    try:
-        async for chunk in ctx.llm_plain.astream(messages):
-            raw_c = chunk.content if hasattr(chunk, "content") else ""
-            if isinstance(raw_c, list):
-                raw += "".join(b.get("text", "") for b in raw_c if isinstance(b, dict) and b.get("type") == "text")
-            else:
-                raw += str(raw_c) if raw_c else ""
-    except Exception as e:
-        logger.warning("search_cache_check failed: %s", e)
-        return {"sufficient": False, "missing_queries": queries}
-
-    parsed = _extract_json(raw)
-    if isinstance(parsed, dict) and "sufficient" in parsed:
-        missing = [q for q in parsed.get("missing_queries", []) if isinstance(q, str) and q.strip()]
-        return {"sufficient": bool(parsed["sufficient"]), "missing_queries": missing}
-    return {"sufficient": False, "missing_queries": queries}
+def _is_cache_sufficient(cached_summary: str, queries: list[str]) -> bool:
+    """캐시가 모든 쿼리 키워드를 60% 이상 커버하는지 휴리스틱 판단 (LLM 호출 없음)."""
+    if not cached_summary:
+        return False
+    summary_lower = cached_summary.lower()
+    for query in queries:
+        tokens = [t for t in query.lower().split() if len(t) > 1]
+        if not tokens:
+            continue
+        hit = sum(1 for t in tokens if t in summary_lower)
+        if hit / len(tokens) < 0.6:
+            return False
+    return True
 
 
 def make_web_searcher(ctx: NodeContext):
@@ -55,19 +38,14 @@ def make_web_searcher(ctx: NodeContext):
         queries = [q for q in state.get("search_queries", []) if isinstance(q, str) and q.strip()]
         cached_summary = state.get("search_summary", "")
 
-        # 캐시 "존재 여부"가 아니라 "지금 필요한 데이터를 커버하는가"로 판단
+        # 캐시가 현재 쿼리를 커버하는지 키워드 휴리스틱으로 판단 (LLM 호출 없음)
         if cached_summary and queries:
-            if ctx.on_event:
-                ctx.on_event("node_start", "🔎 캐시 적합성 확인 중...")
-            check = await _check_cache_sufficiency(ctx, cached_summary, queries, state.get("command", ""))
-            if check["sufficient"]:
+            if _is_cache_sufficient(cached_summary, queries):
+                logger.info("  [web_searcher] cache sufficient — skipping search")
                 if ctx.on_event:
                     ctx.on_event("step_done", "search")
                     ctx.on_event("node_done", "✅ 캐시로 충분 — 재검색 생략")
                 return {}
-            queries = check["missing_queries"] or queries
-            logger.info("  [web_searcher] cache insufficient — re-searching %d/%d queries",
-                        len(queries), len(state.get("search_queries", [])))
 
         from app.core.config import settings
         if ctx.on_event:
@@ -78,28 +56,36 @@ def make_web_searcher(ctx: NodeContext):
             try:
                 from tavily import TavilyClient
                 client = TavilyClient(api_key=tavily_key)
-                for q in queries[:3]:
-                    resp = client.search(q, max_results=7, search_depth="advanced",
-                                         include_answer=True, include_raw_content=False)
-                    tavily_answer = resp.get("answer", "")
+
+                async def _search_one(q: str) -> dict:
+                    resp = await asyncio.to_thread(
+                        client.search, q,
+                        max_results=7, search_depth="advanced",
+                        include_answer=True, include_raw_content=False,
+                    )
                     q_tokens = set(q.replace("  ", " ").split())
 
                     def relevance_score(r: dict) -> float:
                         title = r.get("title", "").lower()
-                        score = r.get("score", 0)
                         overlap = sum(1 for t in q_tokens if t in title)
-                        return score + overlap * 0.1
+                        return r.get("score", 0) + overlap * 0.1
 
                     sorted_results = sorted(resp.get("results", []), key=relevance_score, reverse=True)
-                    results.append({
+                    return {
                         "query": q,
-                        "answer": tavily_answer,
+                        "answer": resp.get("answer", ""),
                         "results": [
                             {"title": r["title"], "url": r["url"],
                              "snippet": r.get("content", "")[:800], "score": r.get("score", 0)}
                             for r in sorted_results
                         ],
-                    })
+                    }
+
+                raw_results = await asyncio.gather(
+                    *[_search_one(q) for q in queries[:3]],
+                    return_exceptions=True,
+                )
+                results = [r for r in raw_results if isinstance(r, dict)]
             except Exception as e:
                 logger.warning("web_searcher failed: %s", e)
         if ctx.on_event:
