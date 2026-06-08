@@ -409,6 +409,7 @@ export default function ComponentInspector({ style }: Props) {
   const [showHistory, setShowHistory] = useState(false)
   const [dismissedProposalIds, setDismissedProposalIds] = useState<Set<string>>(new Set())
   const [approvingId, setApprovingId] = useState<string | null>(null)
+  const [expandedSummary, setExpandedSummary] = useState(false)
 
   const { proposals, approveProposal } = useProposalStore()
   const { presentation, currentSlideIndex } = useSlideStore()
@@ -860,7 +861,11 @@ export default function ComponentInspector({ style }: Props) {
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-500">변경 제안</span>
                 </div>
-                <p className="text-[11px] text-[var(--text-muted)] mb-2.5 leading-snug line-clamp-2">
+                <p
+                  className={`text-[11px] text-[var(--text-muted)] mb-2.5 leading-snug cursor-pointer ${expandedSummary ? 'break-words' : 'line-clamp-2'}`}
+                  onClick={() => setExpandedSummary(v => !v)}
+                  title={expandedSummary ? '접기' : '펼치기'}
+                >
                   {activeProposal.agent_name}: {activeProposal.summary || activeProposal.command}
                 </p>
                 <div className="flex gap-2">
