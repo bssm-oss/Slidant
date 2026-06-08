@@ -14,6 +14,7 @@ logger = logging.getLogger("slidant.agent")
 
 def make_dispatch_slides(_ctx: NodeContext):
     def dispatch_slides(state: AgentState):
+        logger.info("━━ [routing] dispatch_slides specs=%d", len(state.get("slide_specs") or []))
         from langgraph.constants import Send
         specs = state.get("slide_specs", [])
         if not specs:
@@ -26,16 +27,23 @@ def make_dispatch_slides(_ctx: NodeContext):
         if not specs:
             specs = [{"title": "슬라이드", "layout": "COVER", "key_points": [], "image_needed": False}]
         specs = specs[:settings.AGENT_MAX_SLIDES]
-        return [
-            Send("slide_composer", {
+        batch_size = settings.AGENT_BATCH_SIZE
+
+        sends = []
+        for i in range(0, len(specs), batch_size):
+            batch = specs[i:i + batch_size]
+            batch_specs = [{"index": i + j, "spec": s} for j, s in enumerate(batch)]
+            sends.append(Send("slide_composer", {
                 **state,
                 "slide_index": i,
-                "current_slide_spec": spec,
-                "slide_specs": specs,   # 전체 슬라이드 계획 전달 (목차 일관성)
-                "html_slides": "__RESET__",  # 이전 ops 누적 방지
-            })
-            for i, spec in enumerate(specs)
-        ]
+                "current_slide_spec": batch[0],
+                "batch_specs": batch_specs,
+                "slide_specs": specs,
+                "html_slides": "__RESET__",
+            }))
+        logger.info("  [dispatch_slides] %d specs → %d batches (batch_size=%d)",
+                    len(specs), len(sends), batch_size)
+        return sends
     return dispatch_slides
 
 
@@ -80,6 +88,7 @@ def make_context_reader(_ctx: NodeContext):
             try:
                 props = json.loads(props_str)
             except json.JSONDecodeError:
+                logger.warning("  [context_reader] JSONDecodeError parsing props for cid=%s", cid, exc_info=True)
                 props = {}
             component_map[cid] = {"id": cid, "type": ctype, "properties": props}
         logger.info("  [context_reader] components=%d", len(component_map))
