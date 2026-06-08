@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { useEditorStore } from '../store/editorStore'
 import { useAgentStore, type AgentStep } from '../store/agentStore'
 import { useSlideStore } from '../store/slideStore'
 import { cn } from '@/shared/lib/utils'
-import { Maximize2, Send, Loader2, ChevronDown, Search, X, History } from 'lucide-react'
+import { Send, Loader2, ChevronDown, X, History } from 'lucide-react'
 import type { Agent, ChatMessage } from '@/shared/types'
 import AgentManagerPanel from './AgentManagerPanel'
-import AgentHistoryPanel from './AgentHistoryPanel'
+import { AgentHistoryContent } from './AgentHistoryPanel'
 import ComponentInspector from './ComponentInspector'
 import SessionSelector from './SessionSelector'
 import { useSessionStore } from '../store/sessionStore'
@@ -63,7 +63,7 @@ function StepsChecklist({ steps }: { steps: AgentStep[] }) {
   const slideGroupReady = seqAllDone || anySlideActive
 
   return (
-    <div className="mx-3 my-2 px-3 py-2.5">
+    <div className="mx-1 my-2 px-1 py-2">
       {seqSteps.map((step, i) => {
         const isLast = i === seqSteps.length - 1 && !hasSlides
         return (
@@ -316,7 +316,7 @@ export default function RightPanel() {
   const { currentSessionId, currentUserId, sessions } = useSessionStore()
   const [elapsed, setElapsed] = useState(0)
   const { presentation } = useSlideStore()
-  const navigate = useNavigate()
+
   const { id } = useParams<{ id: string }>()
 
   const [showManager, setShowManager] = useState(false)
@@ -324,11 +324,9 @@ export default function RightPanel() {
   const [input, setInput] = useState('')
   const [showSlidePicker, setShowSlidePicker] = useState(false)
   const [mentionQuery, setMentionQuery] = useState<string | null>(null)
-  const [webSearchEnabled, setWebSearchEnabled] = useState(false)
   const [panelWidth, setPanelWidth] = useState(320)
   const [htmlStyle, setHtmlStyle] = useState<HtmlComponentStyle | null>(null)
-  const [activeTab, setActiveTab] = useState<'agent' | 'design'>('agent')
-  const [historyOpen, setHistoryOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState<'agent' | 'design' | 'history'>('agent')
   const prevHtmlStyleRef = useRef<HtmlComponentStyle | null>(null)
   const isResizingRef = useRef(false)
   const resizeStartXRef = useRef(0)
@@ -341,7 +339,7 @@ export default function RightPanel() {
       setHtmlStyle(detail ?? null)
       // null → non-null 전환 시 Design 탭으로 자동 이동
       if (detail && !prevHtmlStyleRef.current) setActiveTab('design')
-      if (!detail) setActiveTab('agent')
+      if (!detail) setActiveTab((prev) => prev === 'history' ? 'history' : 'agent')
       prevHtmlStyleRef.current = detail ?? null
     }
     window.addEventListener('html-component-select', handler)
@@ -414,9 +412,7 @@ export default function RightPanel() {
   const handleSend = async () => {
     let cmd = input.trim()
     if (!cmd || isRunning) return
-    if (webSearchEnabled) {
-      cmd = `[웹검색 활성화] ${cmd}`
-    }
+
     setInput('')
     if (inputRef.current) inputRef.current.style.height = '72px'
     setShowSlidePicker(false)
@@ -502,6 +498,17 @@ export default function RightPanel() {
         >
           Agent
         </button>
+        <button
+          onClick={() => setActiveTab('history')}
+          className={cn(
+            'flex-1 py-2 text-[12px] font-medium transition-colors border-b-2 -mb-px',
+            activeTab === 'history'
+              ? 'border-[var(--accent)] text-[var(--accent)]'
+              : 'border-transparent text-[var(--text-disabled)] hover:text-[var(--text-muted)]',
+          )}
+        >
+          History
+        </button>
       </div>
 
       {/* Design tab */}
@@ -527,18 +534,11 @@ export default function RightPanel() {
         )}
         <div className="flex items-center gap-0.5 ml-auto">
           <button
-            onClick={() => setHistoryOpen(true)}
+            onClick={() => setActiveTab('history')}
             className="p-1.5 rounded-[6px] text-[var(--text-disabled)] hover:text-[var(--text-muted)] hover:bg-[var(--bg-muted)] transition-colors"
             title="작업 이력"
           >
             <History size={14} />
-          </button>
-          <button
-            onClick={() => navigate(`/edit/${id}/agent`)}
-            className="p-1.5 rounded-[6px] text-[var(--text-disabled)] hover:text-[var(--text-muted)] hover:bg-[var(--bg-muted)] transition-colors"
-            title="전체 화면"
-          >
-            <Maximize2 size={14} />
           </button>
         </div>
       </div>
@@ -692,19 +692,6 @@ export default function RightPanel() {
                 @
               </button>
             )}
-            {/* Web search toggle */}
-            <button
-              onClick={() => setWebSearchEnabled((v) => !v)}
-              className={cn(
-                'px-1.5 py-1 rounded-[6px] text-[12px] font-medium transition-colors',
-                webSearchEnabled
-                  ? 'bg-[var(--accent-subtle)] text-[var(--accent)]'
-                  : 'text-[var(--text-disabled)] hover:text-[var(--text-muted)] hover:bg-[var(--bg-muted)]',
-              )}
-              title="웹 검색 포함"
-            >
-              <Search size={13} />
-            </button>
             {/* Send button */}
             <button
               onClick={handleSend}
@@ -717,15 +704,12 @@ export default function RightPanel() {
         </div>
       </div>
 
-      {id && (
-        <AgentHistoryPanel
-          projectId={id}
-          open={historyOpen}
-          onClose={() => setHistoryOpen(false)}
-        />
-      )}
-
       </> /* end Agent tab */}
+
+      {/* History tab */}
+      {activeTab === 'history' && id && (
+        <AgentHistoryContent projectId={id} active={activeTab === 'history'} />
+      )}
 
       <AgentManagerPanel open={showManager} onClose={() => setShowManager(false)} />
     </div>
