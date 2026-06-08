@@ -2,6 +2,7 @@
 슬라이드 이력 서비스 — 흐름(orchestration)만 담당.
 비즈니스 로직(diff, 스냅샷 생성)은 core/domain/history_diff.py에 있음.
 """
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -124,4 +125,52 @@ async def restore_component_from_history(uow, slide_id: UUID, history_id: UUID, 
         uow, slide_id, list(slide.content or []),
         f"컴포넌트 복원 ({component_id}, v{history.version})",
         html_content=new_html,
+    )
+
+
+@dataclass
+class HistoryDiffResult:
+    added: list[str]
+    removed: list[str]
+    modified: list[str]
+    before_html: str | None
+    after_html: str | None
+
+
+async def compute_history_diff(uow, slide_id: UUID, history_id: UUID) -> HistoryDiffResult:
+    """SlideHistory 한 항목과 그 직전 항목을 diff해 변경된 컴포넌트 ID 목록 반환."""
+    from fastapi import HTTPException, status
+    from app.core.domain.history_diff import _parse_html_components
+
+    entry = await uow.slide_history.get(history_id)
+    if not entry or entry.slide_id != slide_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="History entry not found")
+
+    prev = await uow.slide_history.get_previous_entry(slide_id, entry.created_at)
+
+    before_html = prev.html_content if prev else None
+    after_html = entry.html_content
+
+    old_map = _parse_html_components(before_html or "")
+    new_map = _parse_html_components(after_html or "")
+
+    all_ids = set(old_map) | set(new_map)
+    added, removed, modified = [], [], []
+
+    for comp_id in all_ids:
+        old = old_map.get(comp_id)
+        new = new_map.get(comp_id)
+        if old is None and new is not None:
+            added.append(comp_id)
+        elif old is not None and new is None:
+            removed.append(comp_id)
+        elif old != new:
+            modified.append(comp_id)
+
+    return HistoryDiffResult(
+        added=sorted(added),
+        removed=sorted(removed),
+        modified=sorted(modified),
+        before_html=before_html,
+        after_html=after_html,
     )
