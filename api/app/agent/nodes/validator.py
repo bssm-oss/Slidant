@@ -291,6 +291,52 @@ def make_validator(ctx: NodeContext):
     return validator_node
 
 
+def make_visual_validator(_ctx: NodeContext):
+    async def visual_validator_node(state: AgentState) -> AgentState:
+        from app.core.config import settings
+        import httpx
+
+        if not settings.VISUAL_VALIDATION_ENABLED:
+            return {}
+
+        slides = state.get("html_slides", [])
+        html_out = state.get("html_output", "")
+
+        targets: list[tuple[str, str]] = []
+        if html_out and "<div" in html_out:
+            targets.append(("슬라이드", html_out))
+        for s in slides:
+            if isinstance(s, dict) and s.get("html"):
+                targets.append((f"슬라이드 {s.get('index', 0) + 1}", s["html"]))
+
+        if not targets:
+            return {}
+
+        new_issues: list[str] = []
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                for label, html in targets:
+                    resp = await client.post(
+                        f"{settings.PLAYWRIGHT_SERVICE_URL}/check",
+                        json={"html": html},
+                    )
+                    if resp.status_code == 200:
+                        for item in resp.json().get("issues", []):
+                            new_issues.append(
+                                f"{label}/{item['component_id']}: [{item['type']}] {item['message']}"
+                            )
+        except Exception as e:
+            logger.warning("  [visual_validator] playwright 서비스 오류 (스킵): %s", e)
+            return {}
+
+        if new_issues:
+            logger.warning("  [visual_validator] %d개 시각 이슈: %s", len(new_issues), new_issues[:3])
+
+        existing = state.get("validation_errors") or []
+        return {"validation_errors": existing + new_issues}
+    return visual_validator_node
+
+
 def make_should_retry_legacy(_ctx: NodeContext):
     def should_retry(state: AgentState) -> str:
         from app.core.config import settings

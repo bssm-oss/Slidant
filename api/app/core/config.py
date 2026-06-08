@@ -25,6 +25,9 @@ class Settings(BaseSettings):
 
     TAVILY_API_KEY: str = ""
 
+    PLAYWRIGHT_SERVICE_URL: str = "http://playwright:3001"
+    VISUAL_VALIDATION_ENABLED: bool = True
+
     @property
     def is_production(self) -> bool:
         return self.APP_ENV == "production"
