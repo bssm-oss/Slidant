@@ -322,9 +322,10 @@ def make_visual_validator(_ctx: NodeContext):
                     )
                     if resp.status_code == 200:
                         for item in resp.json().get("issues", []):
-                            new_issues.append(
-                                f"{label}/{item.get('component_id','?')}: [{item.get('type','?')}] {item.get('message','')}"
-                            )
+                            if item.get("severity") == "error":
+                                new_issues.append(
+                                    f"{label}/{item.get('component_id','?')}: [{item.get('type','?')}] {item.get('message','')}"
+                                )
                     else:
                         logger.debug("  [visual_validator] /check returned %s", resp.status_code)
         except Exception as e:
