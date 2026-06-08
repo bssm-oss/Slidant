@@ -4,20 +4,35 @@ import { useEditorStore } from '../store/editorStore'
 import { useAgentStore, type AgentStep } from '../store/agentStore'
 import { useSlideStore } from '../store/slideStore'
 import { cn } from '@/shared/lib/utils'
-import { Send, Loader2, ChevronDown, X, History } from 'lucide-react'
+import { extractSlideTitle } from '@/shared/lib/slideHtml'
+import { Send, Loader2, ChevronDown, X, History, Brain, Search, FileText, PenLine, Settings2, Trash2 } from 'lucide-react'
 import type { Agent, ChatMessage } from '@/shared/types'
 import AgentManagerPanel from './AgentManagerPanel'
 import { AgentHistoryContent } from './AgentHistoryPanel'
+import AgentRunDetailModal from './AgentRunDetailModal'
+import type { AgentRunHistoryItem } from '@/shared/lib/agentApi'
 import ComponentInspector from './ComponentInspector'
 import SessionSelector from './SessionSelector'
 import { useSessionStore } from '../store/sessionStore'
 import type { HtmlComponentStyle } from './SlideCanvas'
+
+const STEP_TYPE_ICON: Record<string, React.ElementType> = {
+  plan: Brain,
+  search: Search,
+  create: FileText,
+  edit: PenLine,
+  component_edit: Settings2,
+  component_delete: Trash2,
+  delete: Trash2,
+}
 
 // ── 단일 노드 아이템 ──────────────────────────────────────────────────────────
 function StepNode({ step, showLine, lineGreen }: { step: AgentStep; showLine: boolean; lineGreen: boolean }) {
   const isDone = step.status === 'done'
   const isActive = step.status === 'active'
   const isFailed = step.status === 'failed'
+  const isPending = !isDone && !isFailed && !isActive
+  const TypeIcon = step.type ? STEP_TYPE_ICON[step.type] : null
   return (
     <div className="flex gap-3">
       <div className="flex flex-col items-center shrink-0">
@@ -26,7 +41,7 @@ function StepNode({ step, showLine, lineGreen }: { step: AgentStep; showLine: bo
           isDone && 'bg-emerald-500',
           isFailed && 'bg-red-500',
           isActive && 'bg-[var(--accent)] ring-4 ring-[var(--accent)] ring-opacity-20',
-          !isDone && !isFailed && !isActive && 'border-2 border-[var(--border)] bg-[var(--bg-muted)]',
+          isPending && 'border-2 border-[var(--border)] bg-[var(--bg-muted)]',
         )}>
           {isDone && (
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
@@ -45,13 +60,25 @@ function StepNode({ step, showLine, lineGreen }: { step: AgentStep; showLine: bo
         )}
       </div>
       <div className={cn(
-        'pb-3 pt-0.5 text-[12px] leading-[18px] transition-all duration-300 break-words min-w-0',
+        'pb-3 pt-0.5 text-[12px] leading-[18px] transition-all duration-300 break-words min-w-0 flex items-start gap-1.5',
         isDone && 'text-[var(--text-muted)]',
         isFailed && 'text-red-500 font-medium',
         isActive && 'text-[var(--text)] font-semibold',
-        !isDone && !isFailed && !isActive && 'text-[var(--text-disabled)]',
+        isPending && 'text-[var(--text-disabled)]',
         !showLine && 'pb-0',
       )}>
+        {TypeIcon && (
+          <TypeIcon
+            size={12}
+            className={cn(
+              'shrink-0 transition-colors duration-300',
+              isDone && 'text-[var(--text-muted)]',
+              isFailed && 'text-red-400',
+              isActive && 'text-[var(--accent)]',
+              isPending && 'text-[var(--text-disabled)]',
+            )}
+          />
+        )}
         {step.label}
         {isFailed && <span className="ml-1 text-[10px] text-red-400">(생성 실패)</span>}
       </div>
@@ -233,6 +260,20 @@ function formatContent(content: string, isUser: boolean): React.ReactNode {
 
 function ChatBubble({ msg }: { msg: ChatMessage }) {
   const isUser = msg.role === 'user'
+
+  if (msg.type === 'steps' && msg.steps) {
+    return (
+      <div className="flex flex-col items-start">
+        {msg.agentName && (
+          <span className="text-[10px] text-[var(--text-disabled)] px-1 mb-0.5">{msg.agentName}</span>
+        )}
+        <div className="max-w-[92%] px-3 py-2.5 rounded-[12px] rounded-bl-[4px] bg-[var(--bg-muted)] text-[var(--text)] text-[13px]">
+          <StepsChecklist steps={msg.steps} />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className={cn('flex flex-col', isUser ? 'items-end' : 'items-start')}>
       {!isUser && msg.agentName && (
@@ -327,10 +368,10 @@ function highlightMentions(text: string): React.ReactNode {
 }
 
 // ── Root ──────────────────────────────────────────────────────────────────────
-export default function RightPanel({ onWidthChange }: { onWidthChange?: (w: number) => void }) {
+export default function RightPanel({ onWidthChange, onResizingChange }: { onWidthChange?: (w: number) => void; onResizingChange?: (resizing: boolean) => void }) {
   const { agents, chatMessages, runningAgentIds, sendMessage, selectChatAgent,
           selectedAgentDefinitionId, loadChatHistory } = useEditorStore()
-  const { agentSteps, agentStartTime, estimatedSeconds, cancelAgent, agents: allAgents, lastRunAgentName } = useAgentStore()
+  const { agentSteps, agentStartTime, estimatedSeconds, cancelAgent, agents: allAgents, lastRunAgentName, stepHistory } = useAgentStore()
   const { currentSessionId, currentUserId, sessions } = useSessionStore()
   const [elapsed, setElapsed] = useState(0)
   const { presentation } = useSlideStore()
@@ -346,6 +387,7 @@ export default function RightPanel({ onWidthChange }: { onWidthChange?: (w: numb
   useEffect(() => { onWidthChange?.(panelWidth) }, [panelWidth, onWidthChange])
   const [htmlStyle, setHtmlStyle] = useState<HtmlComponentStyle | null>(null)
   const [activeTab, setActiveTab] = useState<'agent' | 'design' | 'history'>('agent')
+  const [selectedAgentRun, setSelectedAgentRun] = useState<AgentRunHistoryItem | null>(null)
   const prevHtmlStyleRef = useRef<HtmlComponentStyle | null>(null)
   const isResizingRef = useRef(false)
   const resizeStartXRef = useRef(0)
@@ -457,6 +499,7 @@ export default function RightPanel({ onWidthChange }: { onWidthChange?: (w: numb
   const handleResizeMouseDown = (e: React.MouseEvent) => {
     e.preventDefault()
     isResizingRef.current = true
+    onResizingChange?.(true)
     resizeStartXRef.current = e.clientX
     resizeStartWidthRef.current = panelWidth
     const onMove = (ev: MouseEvent) => {
@@ -466,6 +509,7 @@ export default function RightPanel({ onWidthChange }: { onWidthChange?: (w: numb
     }
     const onUp = () => {
       isResizingRef.current = false
+      onResizingChange?.(false)
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('mouseup', onUp)
     }
@@ -474,10 +518,11 @@ export default function RightPanel({ onWidthChange }: { onWidthChange?: (w: numb
   }
 
   const filteredSlides = mentionQuery !== null
-    ? slides.filter((_, i) => {
-        const label = `슬라이드${i + 1}`
+    ? slides.filter((s, i) => {
+        const title = extractSlideTitle(s.html_content, s.title, i)
         const numStr = `${i + 1}`
-        return label.startsWith(mentionQuery) || numStr.startsWith(mentionQuery.replace(/^슬라이드/, ''))
+        return title.toLowerCase().includes(mentionQuery.toLowerCase())
+          || numStr.startsWith(mentionQuery.replace(/^슬라이드\s*/i, ''))
       })
     : slides
 
@@ -575,7 +620,7 @@ export default function RightPanel({ onWidthChange }: { onWidthChange?: (w: numb
 
       {/* Chat messages */}
       <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2.5 min-h-0">
-        {msgs.length === 0 && agentSteps.length === 0 ? (
+        {msgs.length === 0 && agentSteps.length === 0 && stepHistory.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-center">
             <div className="w-10 h-10 rounded-full bg-[var(--accent-subtle)] flex items-center justify-center">
               <span className="text-[var(--accent)] text-[16px]">✦</span>
@@ -586,8 +631,28 @@ export default function RightPanel({ onWidthChange }: { onWidthChange?: (w: numb
           </div>
         ) : (
           <>
-            {msgs.map((msg: ChatMessage) => <ChatBubble key={msg.id} msg={msg} />)}
-            {/* 파이프라인 진행 시각화 — 채팅 버블 형태로 메시지 아래 표시 */}
+            {/* chatMessages와 stepHistory를 timestamp 순으로 병합 렌더링 */}
+            {(() => {
+              type StepEntry = { id: string; agentName: string; steps: import('@/shared/types').AgentStep[]; timestamp: string }
+              const combined: Array<{ ts: string; kind: 'msg'; msg: ChatMessage } | { ts: string; kind: 'steps'; entry: StepEntry }> = [
+                ...msgs.map((m) => ({ ts: m.timestamp, kind: 'msg' as const, msg: m })),
+                ...stepHistory.map((e) => ({ ts: e.timestamp, kind: 'steps' as const, entry: e })),
+              ]
+              combined.sort((a, b) => a.ts.localeCompare(b.ts))
+              return combined.map((item) =>
+                item.kind === 'msg'
+                  ? <ChatBubble key={item.msg.id} msg={item.msg} />
+                  : (
+                    <div key={item.entry.id} className="flex flex-col items-start">
+                      <span className="text-[10px] text-[var(--text-disabled)] px-1 mb-0.5">{item.entry.agentName}</span>
+                      <div className="max-w-[92%] px-3 py-2.5 rounded-[12px] rounded-bl-[4px] bg-[var(--bg-muted)] text-[var(--text)] text-[13px]">
+                        <StepsChecklist steps={item.entry.steps} />
+                      </div>
+                    </div>
+                  )
+              )
+            })()}
+            {/* 실행 중 live 파이프라인 진행 */}
             {agentSteps.length > 0 && (
               <div className="flex flex-col items-start">
                 <span className="text-[10px] text-[var(--text-disabled)] px-1 mb-0.5">
@@ -650,7 +715,7 @@ export default function RightPanel({ onWidthChange }: { onWidthChange?: (w: numb
                   <span className="w-5 h-5 flex items-center justify-center rounded-[4px] bg-[var(--bg-muted)] text-[10px] font-bold text-[var(--text-muted)] shrink-0">
                     {realIdx + 1}
                   </span>
-                  <span className="truncate text-[var(--text)]">{s.title || `슬라이드 ${realIdx + 1}`}</span>
+                  <span className="truncate text-[var(--text)]">{extractSlideTitle(s.html_content, s.title, realIdx)}</span>
                 </button>
               )
             })}
@@ -734,10 +799,17 @@ export default function RightPanel({ onWidthChange }: { onWidthChange?: (w: numb
 
       {/* History tab */}
       {activeTab === 'history' && id && (
-        <AgentHistoryContent projectId={id} active={activeTab === 'history'} />
+        <AgentHistoryContent projectId={id} active={activeTab === 'history'} onItemClick={(run) => setSelectedAgentRun(run)} />
       )}
 
       <AgentManagerPanel open={showManager} onClose={() => setShowManager(false)} />
+      {id && (
+        <AgentRunDetailModal
+          projectId={id}
+          run={selectedAgentRun}
+          onClose={() => setSelectedAgentRun(null)}
+        />
+      )}
     </div>
   )
 }

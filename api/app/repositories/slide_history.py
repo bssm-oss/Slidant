@@ -31,3 +31,33 @@ class SlideHistoryRepository(BaseRepository[SlideHistory]):
             .limit(1)
         )
         return result.scalars().first()
+
+    async def get_next_entry(self, slide_id: UUID, after_dt: datetime) -> SlideHistory | None:
+        """주어진 시각 이후에 저장된 가장 오래된 SlideHistory 반환."""
+        result = await self.session.execute(
+            select(SlideHistory)
+            .where(
+                SlideHistory.slide_id == slide_id,
+                SlideHistory.created_at > after_dt,
+            )
+            .order_by(SlideHistory.created_at.asc(), SlideHistory.id.asc())
+            .limit(1)
+        )
+        return result.scalars().first()
+
+    async def list_by_slides_in_timerange(
+        self, slide_ids: list[UUID], start: datetime, end: datetime,
+    ) -> list[SlideHistory]:
+        """여러 슬라이드에 대해 시간 범위 내 SlideHistory 반환."""
+        if not slide_ids:
+            return []
+        result = await self.session.execute(
+            select(SlideHistory)
+            .where(
+                SlideHistory.slide_id.in_(slide_ids),
+                SlideHistory.created_at >= start,
+                SlideHistory.created_at <= end,
+            )
+            .order_by(SlideHistory.created_at.asc())
+        )
+        return list(result.scalars().all())

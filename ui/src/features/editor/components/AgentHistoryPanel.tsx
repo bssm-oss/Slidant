@@ -36,9 +36,10 @@ function agentColor(name: string | null): string {
 interface ContentProps {
   projectId: string
   active: boolean
+  onItemClick?: (run: AgentRunHistoryItem) => void
 }
 
-export function AgentHistoryContent({ projectId, active }: ContentProps) {
+export function AgentHistoryContent({ projectId, active, onItemClick }: ContentProps) {
   const [runs, setRuns] = useState<AgentRunHistoryItem[]>([])
   const [loading, setLoading] = useState(false)
 
@@ -73,7 +74,7 @@ export function AgentHistoryContent({ projectId, active }: ContentProps) {
       ) : (
         <div className="flex flex-col divide-y divide-[var(--border)]">
           {runs.map((run) => (
-            <div key={run.id} className="flex items-start gap-3 px-4 py-3 hover:bg-[var(--bg-muted)] transition-colors">
+            <div key={run.id} onClick={() => onItemClick?.(run)} className={cn('flex items-start gap-3 px-4 py-3 hover:bg-[var(--bg-muted)] transition-colors', onItemClick && 'cursor-pointer')}>
               <div className="mt-0.5 shrink-0">
                 <StatusIcon status={run.status} />
               </div>

@@ -86,6 +86,21 @@ export async function fetchSlideHistory(
   return api.get(`/projects/${projectId}/slides/${slideId}/history${params}`)
 }
 
+export interface RunSlideChange {
+  slide_id: string
+  slide_order: number
+  slide_title: string
+  before_html: string | null
+  after_html: string | null
+  added: string[]
+  removed: string[]
+  modified: string[]
+}
+
+export async function fetchRunSlideChanges(projectId: string, runId: string): Promise<RunSlideChange[]> {
+  return api.get(`/agent/logs/${projectId}/run/${runId}/slide-changes`)
+}
+
 export async function restoreFromHistory(projectId: string, slideId: string, historyId: string): Promise<void> {
   await api.post<void>(`/projects/${projectId}/slides/${slideId}/history/${historyId}/restore`, {})
 }

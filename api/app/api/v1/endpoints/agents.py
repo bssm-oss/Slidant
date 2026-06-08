@@ -1,8 +1,10 @@
 import asyncio
 import logging
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
+from pydantic import BaseModel
 
 from app.core.config import settings
 from app.core.deps import CurrentUser, UoW
@@ -703,9 +705,44 @@ async def get_chat_history(
             "affected_component_ids": m.affected_component_ids,
             "slide_id": str(m.slide_id) if m.slide_id else None,
             "created_at": m.created_at.isoformat(),
+            "message_type": m.message_type,
+            "metadata": m.extra_data,
         }
         for m in msgs
     ]
+
+
+class SaveStepsMessageRequest(BaseModel):
+    agent_name: str
+    steps: list[dict]
+    agent_definition_id: UUID | None = None
+    session_id: UUID | None = None
+    created_at: datetime | None = None
+
+
+@router.post("/chat/{project_id}/steps", status_code=201)
+async def save_steps_message(
+    project_id: UUID,
+    body: SaveStepsMessageRequest,
+    current_user: CurrentUser,
+    uow: UoW,
+):
+    msg = ChatMessage(
+        project_id=project_id,
+        role="agent",
+        content="",
+        agent_name=body.agent_name,
+        agent_definition_id=body.agent_definition_id,
+        session_id=body.session_id,
+        user_id=current_user.id,
+        message_type="steps",
+        extra_data={"steps": body.steps},
+    )
+    if body.created_at:
+        msg.created_at = body.created_at
+    uow.chat_messages.add(msg)
+    await uow.commit()
+    return {"id": str(msg.id)}
 
 
 @router.get("/logs/{project_id}", response_model=list[dict])
@@ -724,6 +761,74 @@ async def get_agent_logs(project_id: UUID, current_user: CurrentUser, uow: UoW):
         }
         for r in runs
     ]
+
+
+@router.get("/logs/{project_id}/run/{run_id}/slide-changes", response_model=list[dict])
+async def get_run_slide_changes(
+    project_id: UUID, run_id: UUID,
+    current_user: CurrentUser, uow: UoW,
+):
+    from collections import defaultdict
+    from datetime import timedelta
+    from app.core.domain.history_diff import _parse_html_components
+
+    run = await uow.agent_runs.get(run_id)
+    if not run or run.project_id != project_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+
+    if not run.started_at or not run.finished_at:
+        return []
+
+    slides = await uow.slides.list_by_project(project_id)
+    slide_map = {s.id: s for s in slides}
+    slide_ids = [s.id for s in slides]
+
+    end_dt = run.finished_at + timedelta(seconds=5)
+    entries = await uow.slide_history.list_by_slides_in_timerange(slide_ids, run.started_at, end_dt)
+
+    by_slide: dict = defaultdict(list)
+    for e in entries:
+        by_slide[e.slide_id].append(e)
+
+    results = []
+    for slide_id, slide_entries in by_slide.items():
+        slide_entries.sort(key=lambda e: e.created_at)
+        first_entry = slide_entries[0]
+        last_entry = slide_entries[-1]
+        slide = slide_map.get(slide_id)
+
+        before_html = first_entry.html_content
+
+        next_entry = await uow.slide_history.get_next_entry(slide_id, last_entry.created_at)
+        after_html = next_entry.html_content if next_entry else (slide.html_content if slide else None)
+
+        old_map = _parse_html_components(before_html or "")
+        new_map = _parse_html_components(after_html or "")
+        all_ids = set(old_map) | set(new_map)
+        added, removed, modified = [], [], []
+        for comp_id in all_ids:
+            old = old_map.get(comp_id)
+            new = new_map.get(comp_id)
+            if old is None and new is not None:
+                added.append(comp_id)
+            elif old is not None and new is None:
+                removed.append(comp_id)
+            elif old != new:
+                modified.append(comp_id)
+
+        results.append({
+            "slide_id": str(slide_id),
+            "slide_order": slide.order if slide else 0,
+            "slide_title": slide.title if slide else "",
+            "before_html": before_html,
+            "after_html": after_html,
+            "added": sorted(added),
+            "removed": sorted(removed),
+            "modified": sorted(modified),
+        })
+
+    results.sort(key=lambda r: r["slide_order"])
+    return results
 
 
 async def _save_slide_ready(
