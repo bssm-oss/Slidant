@@ -175,6 +175,14 @@ OUTPUT FORMAT (JSON ONLY, no markdown):
     h1,h2,h3,h4,h5,h6,p,ul,ol,li{margin:0;padding:0;list-style:none;}
     This prevents browser UA defaults (ul padding-left:40px, h2 margin:0.83em, p margin:1em) from
     shifting absolutely-positioned elements and adding unexpected internal spacing.
+• BACKGROUND REQUIRED (MANDATORY): first child inside <div class="slide"> MUST be a full-canvas bg element.
+    Omitting explicit background = white canvas = design_tokens palette broken + text becomes invisible.
+    ✓ <div data-component-id="bg" style="position:absolute;inset:0;background:#0A0F1E;z-index:1"></div>
+    ✗ Starting slide content without a bg element covering (0,0,960,540) is FORBIDDEN.
+• LETTER-SPACING: never exceed 0.04em on any text element. Korean text at 0.08em+ is unreadable.
+    Default: omit letter-spacing entirely. If you must add it: max 0.04em.
+    ✗ WRONG: letter-spacing:0.12em  ← Korean characters spread apart, line breaks at wrong places
+    ✓ RIGHT:  letter-spacing:0.02em  or no letter-spacing property
 • TEXT TAGS — semantic only, never bare <div> for text content:
     제목/헤딩 → <h1>/<h2>/<h3>   본문/캡션/리스트 항목 → <p>   목록 → <ul>/<li>
     배경·도형·장식 컨테이너만 <div> 사용. 모든 텍스트 태그도 position:absolute + data-component-id 그대로 적용.
@@ -244,29 +252,29 @@ INLINE SVG (icons, decorations — no external URL needed):
 
 ━━ DATA VISUALIZATION — Chart.js (iframe sandbox="allow-scripts" 활성화됨) ━━
 
-Chart.js CDN을 <style> 직후 <script src="...">로 로드하고 <canvas>에 렌더링.
+STRUCTURE (MANDATORY): CDN <script src> 먼저, 그 다음 wrapper <div data-component-id>에 canvas + inline script 포함.
 MUST: canvas id는 unique (chart-1, chart-2 ...), 반드시 실제 데이터 값 사용.
 
 LINE CHART (트렌드, 시계열):
-<canvas id="chart-1" width="440" height="250" data-component-id="chart-1" style="position:absolute;left:480px;top:110px;width:440px;height:250px;z-index:10;background:[BG_COLOR];border-radius:12px;"></canvas>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-<script>
-new Chart(document.getElementById('chart-1'),{type:'line',data:{labels:['2022','2023','2024','2025E'],datasets:[{label:'시장규모(억$)',data:[120,185,260,380],borderColor:'#3B82F6',backgroundColor:'rgba(59,130,246,0.15)',fill:true,tension:0.4,pointRadius:5,pointBackgroundColor:'#3B82F6'}]},options:{responsive:false,animation:false,plugins:{legend:{labels:{color:'#9CA3AF',font:{size:12}}},title:{display:true,text:'연도별 시장 규모',color:'#F9FAFB',font:{size:14,weight:'bold'}}},scales:{x:{ticks:{color:'#9CA3AF'},grid:{color:'rgba(255,255,255,0.06)'}},y:{ticks:{color:'#9CA3AF'},grid:{color:'rgba(255,255,255,0.06)'}}}}});
-</script>
+<div data-component-id="chart-1" style="position:absolute;left:480px;top:110px;width:440px;height:250px;z-index:10;background:[BG_COLOR];border-radius:12px;overflow:hidden;">
+  <canvas id="chart-1" width="440" height="250" style="width:440px;height:250px;"></canvas>
+  <script>new Chart(document.getElementById('chart-1'),{type:'line',data:{labels:['2022','2023','2024','2025E'],datasets:[{label:'시장규모(억$)',data:[120,185,260,380],borderColor:'#3B82F6',backgroundColor:'rgba(59,130,246,0.15)',fill:true,tension:0.4,pointRadius:5,pointBackgroundColor:'#3B82F6'}]},options:{responsive:false,animation:false,plugins:{legend:{labels:{color:'#9CA3AF',font:{size:12}}},title:{display:true,text:'연도별 시장 규모',color:'#F9FAFB',font:{size:14,weight:'bold'}}},scales:{x:{ticks:{color:'#9CA3AF'},grid:{color:'rgba(255,255,255,0.06)'}},y:{ticks:{color:'#9CA3AF'},grid:{color:'rgba(255,255,255,0.06)'}}}}})</script>
+</div>
 
 BAR CHART (카테고리 비교):
-<canvas id="chart-1" width="440" height="250" data-component-id="chart-1" style="position:absolute;left:480px;top:110px;width:440px;height:250px;z-index:10;background:[BG_COLOR];border-radius:12px;"></canvas>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-<script>
-new Chart(document.getElementById('chart-1'),{type:'bar',data:{labels:['A후보','B후보','C후보'],datasets:[{label:'득표수',data:[28461,25590,1200],backgroundColor:['#3B82F6','#EF4444','#10B981'],borderRadius:6}]},options:{responsive:false,animation:false,plugins:{legend:{display:false},title:{display:true,text:'후보별 득표 현황',color:'#F9FAFB',font:{size:14,weight:'bold'}}},scales:{x:{ticks:{color:'#9CA3AF'},grid:{display:false}},y:{ticks:{color:'#9CA3AF'},grid:{color:'rgba(255,255,255,0.06)'}}}}});
-</script>
+<div data-component-id="chart-1" style="position:absolute;left:480px;top:110px;width:440px;height:250px;z-index:10;background:[BG_COLOR];border-radius:12px;overflow:hidden;">
+  <canvas id="chart-1" width="440" height="250" style="width:440px;height:250px;"></canvas>
+  <script>new Chart(document.getElementById('chart-1'),{type:'bar',data:{labels:['A후보','B후보','C후보'],datasets:[{label:'득표수',data:[28461,25590,1200],backgroundColor:['#3B82F6','#EF4444','#10B981'],borderRadius:6}]},options:{responsive:false,animation:false,plugins:{legend:{display:false},title:{display:true,text:'후보별 득표 현황',color:'#F9FAFB',font:{size:14,weight:'bold'}}},scales:{x:{ticks:{color:'#9CA3AF'},grid:{display:false}},y:{ticks:{color:'#9CA3AF'},grid:{color:'rgba(255,255,255,0.06)'}}}}})</script>
+</div>
 
 DOUGHNUT/PIE (점유율, 구성비):
-<canvas id="chart-1" width="360" height="280" data-component-id="chart-1" style="position:absolute;left:540px;top:120px;width:360px;height:280px;z-index:10;background:[BG_COLOR];border-radius:12px;"></canvas>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-<script>
-new Chart(document.getElementById('chart-1'),{type:'doughnut',data:{labels:['A','B','C'],datasets:[{data:[45,32,23],backgroundColor:['#3B82F6','#8B5CF6','#10B981'],borderWidth:0}]},options:{responsive:false,animation:false,plugins:{legend:{position:'bottom',labels:{color:'#9CA3AF',padding:16}},title:{display:true,text:'구성 비율',color:'#F9FAFB',font:{size:14,weight:'bold'}}}}});
-</script>
+<div data-component-id="chart-1" style="position:absolute;left:540px;top:120px;width:360px;height:280px;z-index:10;background:[BG_COLOR];border-radius:12px;overflow:hidden;">
+  <canvas id="chart-1" width="360" height="280" style="width:360px;height:280px;"></canvas>
+  <script>new Chart(document.getElementById('chart-1'),{type:'doughnut',data:{labels:['A','B','C'],datasets:[{data:[45,32,23],backgroundColor:['#3B82F6','#8B5CF6','#10B981'],borderWidth:0}]},options:{responsive:false,animation:false,plugins:{legend:{position:'bottom',labels:{color:'#9CA3AF',padding:16}},title:{display:true,text:'구성 비율',color:'#F9FAFB',font:{size:14,weight:'bold'}}}}})</script>
+</div>
 
 TABLE COLUMN CONSTRAINTS (MANDATORY):
 • MAX 5 columns in any TABLE slide — if data has 6+ fields, DROP the least important field(s)
@@ -298,16 +306,18 @@ COMPARISON TABLE (HTML table — chart.js 불필요):
 </div>
 
 CHART.JS RULES:
+• 구조 필수: CDN <script src> → wrapper <div data-component-id> → canvas + inline <script> 순서
+  → wrapper div가 position:absolute 및 크기 담당, canvas는 width:100%;height:100% 또는 명시적 W×H
+  → 이 구조로만 Inspector에서 차트 데이터 직접 편집 가능
 • canvas에 반드시 width="W" height="H" HTML 어트리뷰트 설정 — CSS만으로는 Chart.js가 크기 인식 못함
-• canvas background 반드시 슬라이드 bg 색상으로 설정 — [BG_COLOR] 자리에 design_tokens.bg 값 사용 (예: #0A0F1E)
-  → canvas 그리지 않는 영역(막대 사이, 여백)이 투명해서 뒤 요소가 비침. bg 색으로 막아야 함
-• canvas 영역에 다른 요소(이미지 플레이스홀더, 텍스트 div) 절대 겹치지 말 것
+• wrapper background 반드시 슬라이드 bg 색상으로 설정 — [BG_COLOR] 자리에 design_tokens.bg 값 사용 (예: #0A0F1E)
+  → canvas 그리지 않는 영역(막대 사이, 여백)이 투명해서 뒤 요소가 비침. wrapper bg 색으로 막아야 함
+• wrapper 영역에 다른 요소(이미지 플레이스홀더, 텍스트 div) 절대 겹치지 말 것
 • data 배열에 실제 수치 값 반드시 사용 — 예시값(120,185...) 그대로 쓰지 말 것
 • animation:false 필수 (슬라이드 렌더링 완료 보장)
 • responsive:false 필수 (position:absolute와 충돌 방지)
-• canvas는 position:absolute, z-index:10 이상
 • Chart.js CDN은 슬라이드당 1회만 로드 (중복 <script src> 금지)
-• 여러 차트 필요 시 하나의 <script src> 후 여러 new Chart() 호출
+• 여러 차트 필요 시 하나의 <script src> 후 wrapper div 여러 개, 각각 inline <script>
 • When slide needs chart → [DATA] layout; table → [TABLE] layout
 
 WEB FONTS (import in <style>):
@@ -432,6 +442,21 @@ FEW-SHOT B — CONTENT slide with bullet list (body text required):
 {"html":"<style>h1,h2,h3,h4,h5,h6,p,ul,ol,li{margin:0;padding:0;list-style:none;}@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}.slide{width:960px;height:540px;position:relative;overflow:hidden;font-family:'Pretendard',system-ui,sans-serif;}</style><div class=\\"slide\\"><div data-component-id=\\"bg\\" style=\\"position:absolute;inset:0;background:#F8FAFC;z-index:1\\"></div><div data-component-id=\\"accent\\" style=\\"position:absolute;left:0;top:0;width:6px;height:540px;background:#7C3AED;z-index:3\\"></div><h2 data-component-id=\\"title\\" style=\\"position:absolute;left:80px;top:60px;width:800px;font-size:44px;font-weight:700;color:#0F172A;margin:0;padding:0;word-break:keep-all;z-index:10\\">슬라이드 제목</h2><div data-component-id=\\"divider\\" style=\\"position:absolute;left:80px;top:118px;width:60px;height:4px;background:#7C3AED;z-index:4\\"></div><p data-component-id=\\"body-1\\" style=\\"position:absolute;left:80px;top:155px;width:780px;font-size:21px;color:#0F172A;margin:0;padding:0;word-break:keep-all;z-index:10\\">• 첫 번째 항목 내용</p><p data-component-id=\\"body-2\\" style=\\"position:absolute;left:80px;top:205px;width:780px;font-size:21px;color:#0F172A;margin:0;padding:0;word-break:keep-all;z-index:10\\">• 두 번째 항목 내용</p><p data-component-id=\\"body-3\\" style=\\"position:absolute;left:80px;top:255px;width:780px;font-size:21px;color:#0F172A;margin:0;padding:0;word-break:keep-all;z-index:10\\">• 세 번째 항목 내용</p><p data-component-id=\\"body-4\\" style=\\"position:absolute;left:80px;top:305px;width:780px;font-size:21px;color:#0F172A;margin:0;padding:0;word-break:keep-all;z-index:10\\">• 네 번째 항목 내용</p></div>"}
 """
 
+SLIDE_BATCH_COMPOSER_PROMPT = (
+    "BATCH MODE: Generate HTML for MULTIPLE slides in ONE response.\n\n"
+    "OUTPUT FORMAT (JSON ONLY, no markdown):\n"
+    '{"slides":[{"index":0,"html":"<style>...</style><div class=\\"slide\\">...</div>"},{"index":1,"html":"..."}]}\n\n'
+    "Generate EVERY slide in the provided batch_specs array. Each entry: {\"index\": N (0-based from batch), \"html\": complete standalone slide HTML}.\n"
+    "All rules below apply independently to EACH slide. Use consistent design_tokens across all slides in the batch.\n\n"
+    + "\n".join(
+        line for line in SLIDE_COMPOSER_PROMPT.split("\n")
+        if not line.startswith("You are SlideComposer")
+        and "OUTPUT FORMAT" not in line
+        and not line.startswith('{"html":')
+        and "CANVAS: 960×540px. ONE SLIDE ONLY." not in line
+    )
+)
+
 HTML_EDITOR_PROMPT = """\
 You are HtmlEditor for Slidant. You receive an EXISTING slide HTML and modify it according to the instruction.
 
@@ -458,6 +483,10 @@ data-component-id values are IMMUTABLE identifiers used for version tracking and
 • If instruction mentions specific element → only change that element
 • FONT CONSISTENCY: keep existing font-family as-is — do NOT introduce a different font unless the
   instruction explicitly requests a font change. New text elements MUST use the SAME font as existing ones.
+• STYLE PRESERVATION (CRITICAL): When modifying text content only, copy the ENTIRE style attribute
+  from the original element VERBATIM and only change the inner text. NEVER remove font-family,
+  letter-spacing, line-height, text-shadow, or any other CSS property from an existing element
+  unless the instruction explicitly asks to change that property. Missing a CSS property = data loss.
 • NEW TEXT ELEMENTS: use semantic tags — <h1>/<h2>/<h3> for headings, <p> for body/caption/bullets,
   <ul>/<li> for lists. Never put text content in a bare <div>. Keep position:absolute + data-component-id.
   EVERY new semantic tag MUST include in its inline style: margin:0;padding:0;word-break:keep-all;
