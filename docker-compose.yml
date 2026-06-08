@@ -44,6 +44,8 @@ services:
       # LANGSMITH_* 및 LANGCHAIN_* 는 env_file(./api/.env)에서 자동 주입
       APP_ENV: production
       CORS_ORIGINS: http://localhost,http://localhost:80,http://localhost:3000,http://localhost:3002,http://localhost:5173,${EXTRA_CORS_ORIGINS:-}
+      PLAYWRIGHT_SERVICE_URL: http://playwright:3001
+      VISUAL_VALIDATION_ENABLED: "true"
     ports:
       - "8000:8000"
     depends_on:
@@ -51,9 +53,22 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      playwright:
+        condition: service_healthy
     healthcheck:
       disable: true
     restart: unless-stopped
+
+  playwright:
+    build: ./playwright
+    container_name: slidant-playwright
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   ui:
     build:
