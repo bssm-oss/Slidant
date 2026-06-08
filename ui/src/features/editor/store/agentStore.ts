@@ -387,18 +387,22 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           useSlideStore.setState((s) => {
             if (!s.presentation) return s
             const slides = [...s.presentation.slides]
-            const existingIdx = slides.findIndex((_, i) => i === data.index)
+            // order 값으로 기존 슬롯 탐색 (배열 위치가 아니라 order 기준)
+            const existingIdx = slides.findIndex((sl) => (sl.order ?? -1) === data.index)
             if (existingIdx >= 0) {
               slides[existingIdx] = { ...slides[existingIdx], html_content: data.html, title: data.title || slides[existingIdx].title }
             } else {
-              // 인덱스 위치에 삽입
-              slides.splice(data.index, 0, {
-                id: `preview-slide-${data.index}-${Date.now()}`,
+              const newSlide = {
+                id: `preview-slide-${data.index}`,
                 order: data.index,
                 title: data.title,
                 html_content: data.html,
                 components: [],
-              })
+              }
+              // order 순서에 맞는 위치에 삽입 (병렬 도착 시에도 정렬 유지)
+              const insertAt = slides.findIndex((sl) => (sl.order ?? Infinity) > data.index)
+              if (insertAt === -1) slides.push(newSlide)
+              else slides.splice(insertAt, 0, newSlide)
             }
             return { presentation: { ...s.presentation, slides } }
           })

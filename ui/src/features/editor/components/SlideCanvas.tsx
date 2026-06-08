@@ -416,7 +416,11 @@ export interface HtmlComponentStyle {
 
 function parseElementStyle(el: HTMLElement): HtmlComponentStyle {
   const cs = el.ownerDocument.defaultView?.getComputedStyle(el) ?? el.style as CSSStyleDeclaration
-  const num = (inline: string, computed: string) => parseFloat(inline) || parseFloat(computed) || 0
+  // inline 값이 'left:0', 'width:100%' 등 px 아닌 단위면 그대로 parseFloat 하면
+  // 100%→100px 처럼 잘못 해석됨 — px 단위일 때만 inline 신뢰, 아니면 항상 px로
+  // 변환되어 있는 computed 값 사용
+  const num = (inline: string, computed: string) =>
+    (inline && /px$/.test(inline) ? parseFloat(inline) : parseFloat(computed)) || 0
   const opStr = el.style.opacity || (cs as CSSStyleDeclaration).opacity
   return {
     componentId: el.getAttribute('data-component-id') ?? '',
@@ -730,10 +734,15 @@ export default function SlideCanvas() {
     const addIndicator = (id: string, type: 'change' | 'delete') => {
       const el = doc.querySelector(`[data-component-id="${id}"]`) as HTMLElement | null
       if (!el) return
-      const x = parseFloat(el.style.left) || 0
-      const y = parseFloat(el.style.top) || 0
-      const w = parseFloat(el.style.width) || el.offsetWidth
-      const h = parseFloat(el.style.height) || el.offsetHeight
+      // 'width:100%' 같은 비-px inline 값은 parseFloat로 그대로 읽으면 100%→100px로
+      // 잘못 해석됨 — px 단위 inline만 신뢰, 아니면 항상 px로 정규화된 computed/offset 사용
+      const cs = doc.defaultView?.getComputedStyle(el)
+      const px = (inline: string, computed?: string) =>
+        inline && /px$/.test(inline) ? parseFloat(inline) : parseFloat(computed || '') || 0
+      const x = px(el.style.left, cs?.left)
+      const y = px(el.style.top, cs?.top)
+      const w = px(el.style.width, cs?.width) || el.offsetWidth
+      const h = px(el.style.height, cs?.height) || el.offsetHeight
       indicators.push({ id, type, x, y, w, h })
     }
     changedSet.forEach((id) => { if (!deletedSet.has(id)) addIndicator(id, 'change') })
