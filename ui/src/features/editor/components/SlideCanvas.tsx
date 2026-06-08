@@ -891,7 +891,7 @@ export default function SlideCanvas() {
 
     return (
       <div ref={containerRef}
-        className="flex-1 relative flex items-center justify-center bg-[var(--bg-muted)] overflow-hidden"
+        className="flex-1 relative flex items-center justify-center bg-[var(--bg-muted)]"
         onClick={() => { setSelectedHtmlStyle(null); selectComponent(null) }}>
         {/* hidden file input for image upload */}
         <input
@@ -970,7 +970,7 @@ export default function SlideCanvas() {
           )}
         </div>
         {/* Proposal 전체 적용 배너 */}
-        {pendingProposal && (
+        {pendingProposal && !isViewer && (
           <SlideProposalBanner proposal={pendingProposal} />
         )}
         {/* 우측 속성 패널과 상태 공유 */}

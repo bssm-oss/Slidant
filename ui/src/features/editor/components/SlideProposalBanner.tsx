@@ -26,6 +26,7 @@ function clearPreview() {
 export default function SlideProposalBanner({ proposal }: Props) {
   const { approveProposal, rejectProposal } = useProposalStore()
   const [approving, setApproving] = useState(false)
+  const [expanded, setExpanded] = useState(false)
 
   const handleApprove = async () => {
     clearPreview()
@@ -44,16 +45,20 @@ export default function SlideProposalBanner({ proposal }: Props) {
 
   return (
     <div
-      className="absolute bottom-5 left-1/2 -translate-x-1/2 z-30 pointer-events-auto"
+      className="absolute top-[calc(100%-76px)] left-1/2 -translate-x-1/2 z-30 pointer-events-auto"
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="flex items-center gap-3 px-4 py-2.5 rounded-[12px] bg-[var(--bg-card)] border border-[var(--border)] shadow-[0_8px_32px_rgba(0,0,0,0.28)] min-w-[380px] max-w-[560px]">
+      <div className="flex items-start gap-3 px-4 py-2.5 rounded-[12px] bg-[var(--bg-card)] border border-[var(--border)] shadow-[0_8px_32px_rgba(0,0,0,0.28)] w-[560px]">
         <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0 animate-pulse" />
         <div className="flex-1 min-w-0">
           <span className="text-[11px] font-semibold text-amber-400 block leading-none mb-0.5">
             {proposal.agent_name}
           </span>
-          <p className="text-[12px] text-[var(--text-muted)] truncate leading-snug">
+          <p
+            className={`text-[12px] text-[var(--text-muted)] leading-snug break-words cursor-pointer ${expanded ? '' : 'truncate'}`}
+            onClick={() => setExpanded(v => !v)}
+            title={expanded ? '접기' : '펼치기'}
+          >
             {proposal.summary || proposal.command}
           </p>
         </div>
