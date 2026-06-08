@@ -24,7 +24,7 @@ function CopyRow({ url, label }: { url: string; label?: string }) {
       onClick={copy}
       title="클릭하여 복사"
     >
-      <span className="flex-1 text-[12px] text-[var(--text-muted)] truncate select-all">{label ?? url}</span>
+      <span className="flex-1 text-[12px] text-[var(--text-muted)] truncate select-none">{label ?? url}</span>
       <span className="shrink-0 p-1.5">
         {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} className="text-[var(--text-muted)]" />}
       </span>
