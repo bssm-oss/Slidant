@@ -85,6 +85,7 @@ interface AgentState {
   agentSteps: AgentStep[]
   presenceUsers: PresenceUser[]
   currentAgentRunId: string | null
+  currentRunSessionId: string | null
   pendingSlideCount: number
   agentStartTime: number | null
   estimatedSeconds: number | null
@@ -114,6 +115,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   activeRightTab: 'agent',
   agentSteps: [],
   currentAgentRunId: null,
+  currentRunSessionId: null,
   pendingSlideCount: 0,
   agentStartTime: null,
   estimatedSeconds: null,
@@ -218,19 +220,6 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             isAgentRunning: false,
           })),
         })
-        return
-      }
-
-      // 다른 유저의 에이전트 실행 상태 — presence 아웃라인 표시
-      if (type === 'agent_started') {
-        const runningUserId = msg.user_id as string | undefined
-        if (runningUserId) {
-          set((s) => ({
-            presenceUsers: s.presenceUsers.map((u) =>
-              u.userId === runningUserId ? { ...u, isAgentRunning: true } : u
-            ),
-          }))
-        }
         return
       }
 
@@ -340,6 +329,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         const role = (msg.role as string) ?? 'content'
         const agentName = (msg.agent_name as string) ?? `${role.charAt(0).toUpperCase()}${role.slice(1)}Agent`
         const isResumed = !!(msg.resumed)
+        const runningUserId = msg.user_id as string | undefined
+        const runSessionId = (msg.session_id as string | undefined) ?? null
         set((s) => {
           const runningAgent = s.agents.find((a) => a.name === agentName)
           const newRunningIds = new Set(s.runningAgentIds)
@@ -348,6 +339,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             overallStatus: 'running',
             runningAgentIds: newRunningIds,
             currentAgentRunId: (msg.agent_run_id as string) ?? s.currentAgentRunId,
+            currentRunSessionId: runSessionId,
             agentStartTime: Date.now(),
             agents: s.agents.map((a) =>
               a.name === agentName
@@ -360,6 +352,9 @@ export const useAgentStore = create<AgentState>((set, get) => ({
                   }
                 : a,
             ),
+            presenceUsers: runningUserId
+              ? s.presenceUsers.map((u) => u.userId === runningUserId ? { ...u, isAgentRunning: true } : u)
+              : s.presenceUsers,
           }
         })
         // 재연결 후 replay 완료되면 첫 번째 pending step을 active로 승격
@@ -416,6 +411,12 @@ export const useAgentStore = create<AgentState>((set, get) => ({
 
         // steps_init: 단계 목록 초기화
         if (eventType === 'steps_init') {
+          // replayed 이벤트는 현재 세션이 시작한 agent run에 한해서만 표시
+          if (isReplayed) {
+            const { currentRunSessionId } = get()
+            const { currentSessionId } = useSessionStore.getState()
+            if (!currentRunSessionId || currentRunSessionId !== currentSessionId) return
+          }
           try {
             const raw = JSON.parse(message) as {id: string, label: string}[]
             const steps: AgentStep[] = raw.map((s, i) => ({
@@ -684,6 +685,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             conflictComponentIds: newConflicts,
             agentSteps: completedSteps,
             currentAgentRunId: null,
+            currentRunSessionId: null,
             pendingSlideCount: 0,
             agentStartTime: null,
             estimatedSeconds: null,
@@ -810,6 +812,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             runningAgentIds: newRunningIds,
             overallStatus: newRunningIds.size > 0 ? 'running' : 'idle',
             currentAgentRunId: null,
+            currentRunSessionId: null,
             pendingSlideCount: 0,
             agentStartTime: null,
             estimatedSeconds: null,

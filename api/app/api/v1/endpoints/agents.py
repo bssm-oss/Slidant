@@ -102,6 +102,7 @@ async def run_agent_endpoint(
         "role": agent_def.role,
         "command": body.command,
         "user_id": str(current_user.id),
+        "session_id": str(body.session_id) if body.session_id else None,
     })
 
     return agent_run
