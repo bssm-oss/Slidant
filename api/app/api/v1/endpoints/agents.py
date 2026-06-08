@@ -131,6 +131,25 @@ async def cancel_agent_run(
     return {"status": "cancelled"}
 
 
+async def _update_presentation_title(
+    *, project_id: UUID, command: str, encrypted_api_key: str, provider: str
+) -> None:
+    """프레젠테이션 제목 자동 생성 — agent_done 이후 백그라운드에서 실행."""
+    from app.db.uow import UnitOfWork
+    candidate = await generate_presentation_title(command, encrypted_api_key, provider)
+    if not candidate:
+        return
+    try:
+        async with UnitOfWork() as uow:
+            project = await uow.projects.get(project_id)
+            if project and (not project.title or project.title in ("제목 없는 프레젠테이션", "Untitled")):
+                project.title = candidate
+                await uow.commit()
+                logger.info("   프레젠테이션 제목 자동 설정: %r", candidate)
+    except Exception as e:
+        logger.warning("title_update failed: %s", e)
+
+
 async def _run_agent_background(
     *,
     body: AgentRunRequest,
@@ -312,7 +331,7 @@ async def _run_agent_background_inner(
                 cached_search_summary=(project.search_summary or "") if project else "",
                 slide_html_content=(slide.html_content or "") if slide else "",
             )
-            patches, _, llm_summary, html_output, html_slides, delete_slide, search_cache = await run_agent(**run_kwargs)
+            patches, _, llm_summary, html_output, html_slides, delete_slide, search_cache, agent_mode = await run_agent(**run_kwargs)
 
             # 새 검색 결과 있으면 프로젝트에 캐시 저장
             if search_cache:
@@ -360,8 +379,8 @@ async def _run_agent_background_inner(
             # - delete+create 혼합: 명시적 전체 교체 의도
             # - create-only(2장+, not edit): 새 PPT 생성 의도 → 기존도 정리
             # - N장 생성 의도 + html_slides 1개 이상: 일부 composer 실패해도 전체 교체
-            _edit_keywords = ("수정", "변경", "바꿔", "적용", "고쳐", "다시")
-            is_edit_cmd = any(k in body.command for k in _edit_keywords)
+            # agent_mode: planner가 결정한 "edit" | "create" — 키워드 heuristic보다 정확
+            is_edit_cmd = (agent_mode == "edit") or slide_scope_locked
             _creation_keywords = ("만들어", "생성", "제작", "PPT", "ppt", "프레젠테이션", "작성")
             _n_slides_creation = (
                 _re.search(r'\d+\s*장', body.command)
@@ -466,7 +485,7 @@ async def _run_agent_background_inner(
                     first = specs[0]
                     first_html = sanitize_slide_html(first.get("html", ""))
                     if is_edit_cmd:
-                        # 편집 의도(@슬라이드N ... 수정/변경/바꿔 등)인데 LLM이 html 대신 slides
+                        # planner mode="edit" 또는 @슬라이드N — LLM이 html 대신 slides
                         # 포맷으로 응답한 경우 — html_output과 동일하게 Proposal 경로로 보내야 함
                         # (여기서 즉시 적용하면 "Agent 편집은 승인 후 반영" 원칙 위반 + 사용자가
                         #  검토·거절할 수단이 사라짐)
@@ -565,12 +584,7 @@ async def _run_agent_background_inner(
             )
             uow.chat_messages.add(agent_msg)
 
-            # 프레젠테이션 제목 자동 설정 (기본값인 경우만, 사용자 요청 기반 1회 생성)
-            if project and (not project.title or project.title in ("제목 없는 프레젠테이션", "Untitled")):
-                candidate = await generate_presentation_title(body.command, encrypted_api_key, provider)
-                if candidate:
-                    project.title = candidate
-                    logger.info("   프레젠테이션 제목 자동 설정: %r", candidate)
+            needs_title_update = project and (not project.title or project.title in ("제목 없는 프레젠테이션", "Untitled"))
 
             broadcast_payload: dict = {
                 "type": "agent_done",
@@ -625,6 +639,15 @@ async def _run_agent_background_inner(
                         await ws_manager.broadcast_bytes(project_id_str, upd)
 
             await _broadcast(project_id_str, broadcast_payload)
+
+            # 제목 생성은 agent_done 이후 백그라운드에서 (SSE 지연 없음)
+            if needs_title_update:
+                asyncio.create_task(_update_presentation_title(
+                    project_id=body.project_id,
+                    command=body.command,
+                    encrypted_api_key=encrypted_api_key,
+                    provider=provider,
+                ))
 
         except Exception as e:
             logger.error("━━ ERROR  agent_run=%s  %s", agent_run_id, str(e), exc_info=True)
