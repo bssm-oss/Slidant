@@ -5,12 +5,12 @@ import { Badge, Button, Card, Spinner } from '@/shared/components/ui'
 import { useToastStore } from '@/shared/components/ui/Toast'
 import { cn } from '@/shared/lib/utils'
 import { Bot, Plus, Settings2, Trash2, Zap } from 'lucide-react'
-import { fetchAgents, createAgent, deleteAgent, type AgentDefinition } from '@/shared/lib/agentApi'
+import { fetchAgents, createAgent, deleteAgent, getAgentDisplayName, type AgentDefinition } from '@/shared/lib/agentApi'
 import { isLoggedIn } from '@/shared/lib/auth'
 type AgentRole = 'content' | 'design' | 'layout' | 'custom'
 
 const roleConfig: Record<string, { label: string; color: 'violet' | 'sky' | 'mint' | 'pink' | 'orange' }> = {
-  content: { label: '콘텐츠', color: 'violet' },
+  content: { label: '슈퍼 에이전트', color: 'violet' },
   design:  { label: '디자인',  color: 'pink' },
   layout:  { label: '레이아웃', color: 'sky' },
   custom:  { label: '커스텀',  color: 'mint' },
@@ -29,6 +29,7 @@ function AgentCard({ agent, onDelete }: { agent: AgentDefinition; onDelete?: () 
   const { label, color } = roleConfig[role] ?? { label: agent.role, color: 'mint' as const }
   const { bg, icon } = colorStyles[color]
   const description = (agent.config?.description as string) ?? ''
+  const displayName = getAgentDisplayName(agent)
 
   return (
     <Card glow={agent.is_system} className="p-5 flex flex-col gap-3">
@@ -38,8 +39,8 @@ function AgentCard({ agent, onDelete }: { agent: AgentDefinition; onDelete?: () 
             <Bot size={16} className={icon} />
           </div>
           <div>
-            <p className="text-sm font-bold text-[var(--text)]">{agent.name}</p>
-            <Badge variant={color} className="mt-0.5">{label}</Badge>
+            <p className="text-sm font-bold text-[var(--text)]">{displayName}</p>
+            {agent.is_system && <Badge variant={color} className="mt-0.5">{label}</Badge>}
           </div>
         </div>
         {!agent.is_system && onDelete && (
@@ -68,7 +69,6 @@ export default function AgentsPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [newName, setNewName] = useState('')
   const [newDesc, setNewDesc] = useState('')
-  const [newRole, setNewRole] = useState<AgentRole>('custom')
   const [creating, setCreating] = useState(false)
 
   const load = async () => {
@@ -92,9 +92,9 @@ export default function AgentsPage() {
     if (!newName.trim()) return
     setCreating(true)
     try {
-      const agent = await createAgent({ name: newName.trim(), role: newRole, description: newDesc.trim() })
+      const agent = await createAgent({ name: newName.trim(), role: 'custom', description: newDesc.trim() })
       setCustomAgents((prev) => [...prev, agent])
-      setNewName(''); setNewDesc(''); setNewRole('custom')
+      setNewName(''); setNewDesc('')
       setShowCreate(false)
       toast(`${agent.name} 생성됨`, 'success')
     } catch (e: any) {
@@ -129,7 +129,6 @@ export default function AgentsPage() {
                   <div className="flex items-center gap-2 mb-5">
                     <Zap size={16} className="text-[var(--accent)]" />
                     <h2 className="text-base font-bold text-[var(--text)]">기본 제공 Agent</h2>
-                    <Badge variant="violet" className="ml-1">시스템</Badge>
                   </div>
                   {systemAgents.length === 0 ? (
                     <p className="text-sm text-[var(--text-disabled)]">시스템 Agent 없음 (서버에서 초기화 필요)</p>
@@ -156,27 +155,13 @@ export default function AgentsPage() {
                   {showCreate && (
                     <Card className="p-5 mb-4 border-[var(--accent)]/30">
                       <div className="flex flex-col gap-3">
-                        <div className="flex gap-3">
-                          <div className="flex-1 flex flex-col gap-1.5">
-                            <label className="text-xs font-semibold text-[var(--text-muted)]">Agent 이름</label>
-                            <input
-                              value={newName} onChange={(e) => setNewName(e.target.value)}
-                              placeholder="MyAgent"
-                              className="h-9 px-3 text-sm border border-[var(--border)] rounded-[8px] outline-none focus:border-[var(--accent)] bg-white"
-                            />
-                          </div>
-                          <div className="flex flex-col gap-1.5">
-                            <label className="text-xs font-semibold text-[var(--text-muted)]">역할</label>
-                            <select
-                              value={newRole} onChange={(e) => setNewRole(e.target.value as AgentRole)}
-                              className="h-9 px-3 text-sm border border-[var(--border)] rounded-[8px] outline-none focus:border-[var(--accent)] bg-white cursor-pointer"
-                            >
-                              <option value="content">콘텐츠</option>
-                              <option value="design">디자인</option>
-                              <option value="layout">레이아웃</option>
-                              <option value="custom">커스텀</option>
-                            </select>
-                          </div>
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-xs font-semibold text-[var(--text-muted)]">Agent 이름</label>
+                          <input
+                            value={newName} onChange={(e) => setNewName(e.target.value)}
+                            placeholder="MyAgent"
+                            className="h-9 px-3 text-sm border border-[var(--border)] rounded-[8px] outline-none focus:border-[var(--accent)] bg-white"
+                          />
                         </div>
                         <div className="flex flex-col gap-1.5">
                           <label className="text-xs font-semibold text-[var(--text-muted)]">설명</label>

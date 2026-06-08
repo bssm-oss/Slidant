@@ -9,6 +9,16 @@ export interface AgentDefinition {
   config: Record<string, unknown>
 }
 
+const SYSTEM_AGENT_NAMES: Record<string, string> = {
+  content: '콘텐츠 에이전트',
+  design: '디자인 에이전트',
+  layout: '레이아웃 에이전트',
+}
+
+export function getAgentDisplayName(agent: Pick<AgentDefinition, 'name' | 'role' | 'is_system'>): string {
+  return agent.is_system ? (SYSTEM_AGENT_NAMES[agent.role] ?? agent.name) : agent.name
+}
+
 export interface AgentListResponse {
   system: AgentDefinition[]
   library: AgentDefinition[]
