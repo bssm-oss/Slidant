@@ -89,17 +89,20 @@ def _build_html_graph(ctx: NodeContext):
             return "html_editor"
         if op_type == "component_delete":
             return "component_deleter"
+        if op_type == "create":
+            return "slide_dispatch"
         return "ops_dispatcher"
 
     graph.add_conditional_edges("retry_inc", _route_from_retry, {
         "html_editor": "html_editor",
         "component_deleter": "component_deleter",
+        "slide_dispatch": "slide_dispatch",
         "ops_dispatcher": "ops_dispatcher",
     })
 
     graph.add_conditional_edges("slide_dispatch", dispatch_slides, ["slide_composer"])
     graph.add_edge("slide_composer",  "html_aggregator")
-    graph.add_edge("html_aggregator", "ops_dispatcher")
+    graph.add_edge("html_aggregator", "visual_validator")
     graph.add_edge("slide_deleter",   "ops_dispatcher")
 
     graph.add_conditional_edges("self_reviewer", route_from_reviewer, {
