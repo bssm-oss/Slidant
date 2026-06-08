@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { Users, Eye } from 'lucide-react'
 import { api } from '@/shared/lib/apiClient'
 
 interface InviteInfo {
@@ -96,7 +97,9 @@ export default function InvitePage() {
     <div className="min-h-screen flex items-center justify-center bg-[var(--bg)]">
       <div className="bg-white rounded-2xl shadow-2xl p-8 w-[400px] text-center">
         <div className="w-12 h-12 rounded-full bg-[var(--accent-subtle)] flex items-center justify-center mx-auto mb-4">
-          <span className="text-2xl">{info.role === 'editor' ? '✏️' : '👁️'}</span>
+          {info.role === 'editor'
+            ? <Users size={22} className="text-[var(--accent)]" />
+            : <Eye size={22} className="text-[var(--accent)]" />}
         </div>
 
         <h1 className="text-[18px] font-bold text-[var(--text)] mb-1">협업 초대</h1>
