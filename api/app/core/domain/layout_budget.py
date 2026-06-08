@@ -179,10 +179,15 @@ def _content_budget(lines: list, n_items: int) -> None:
 
 
 def _split_budget(lines: list, n_items: int) -> None:
+    # Left panel title at width=320 — assume 2-line wrap for safety (Korean titles wrap easily)
+    left_title_h = 128  # 2 lines × ~64px each — use this even if text is short
+    left_subtitle_top = 60 + left_title_h + 12  # start subtitle BELOW 2-line title
     lines += [
         "SPLIT layout:",
         "  Left panel: left=0, width=440, clip at diagonal ~420px",
         "  Left text zone: left=60, width=320 (right edge ≤ 380px)",
+        f"  ⚠ Left title WRAPS to 2 lines at width=320 — assume height={left_title_h}px",
+        f"  Left subtitle/body top: ≥{left_subtitle_top}px (below 2-line title)",
         "  Right text zone: left=500, width=420 (right edge ≤ 920px)",
         "  Gap between panels: ≥80px — never place text in 380–500px range",
         "  Both sides need independent title elements within their own zone",

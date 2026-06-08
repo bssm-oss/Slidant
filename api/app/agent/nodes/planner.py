@@ -10,30 +10,10 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from app.agent.context import NodeContext
 from app.agent.state import AgentState
 from app.agent.prompts import UNIFIED_PLANNER_PROMPT, PLANNER_PROMPT, DESIGN_RESOLVER_PROMPT
+from app.core.config import settings
+from app.agent.utils import extract_json as _extract_json
 
 logger = logging.getLogger("slidant.agent")
-
-
-def _extract_json(text: str):
-    text = text.strip()
-    try:
-        return json.loads(text)
-    except Exception:
-        pass
-    m = re.search(r"```(?:json)?\s*(\{[\s\S]*?\}|\[[\s\S]*?\])\s*```", text)
-    if m:
-        try:
-            return json.loads(m.group(1))
-        except Exception:
-            pass
-    for pattern in (r"(\{[\s\S]*\})", r"(\[[\s\S]*\])"):
-        m = re.search(pattern, text)
-        if m:
-            try:
-                return json.loads(m.group(1))
-            except Exception:
-                continue
-    return None
 
 
 def make_unified_planner(ctx: NodeContext):
@@ -90,6 +70,10 @@ def make_unified_planner(ctx: NodeContext):
         slide_specs = []
         mode = "create"
 
+        # @슬라이드N 단일 슬라이드 지정 명령인지 미리 판별 (이후 두 분기 모두에서 위반 방어에 사용)
+        scope_matches = re.findall(r'@슬라이드(\d+)', state.get("command", ""))
+        scope_forced_idx = int(scope_matches[0]) - 1 if len(scope_matches) == 1 else None
+
         if operations:
             # 방어: edit(첫번째) + create×N 패턴 → 전체 교체 의도이므로 edit을 create로 변환
             # 단, @슬라이드N 명령(scope_locked)은 의도적 edit이므로 변환하지 않음
@@ -113,18 +97,64 @@ def make_unified_planner(ctx: NodeContext):
                     "  [unified_planner] edit+create 패턴 감지 → create로 변환 (총 %d ops)",
                     len(operations),
                 )
+
+            # 방어: "N장 만들어줘" 생성 요청인데 create ops가 N의 절반에 못 미치면 → create×N으로 변환
+            # (edit-only, create×1+edit, create×소수 등 모든 부족 케이스 포괄)
+            _cmd = state.get("command", "")
+            _count_m = re.search(r'(\d+)\s*장', _cmd)
+            _creation_intent = any(k in _cmd for k in ("만들어", "생성", "제작", "PPT", "ppt", "프레젠테이션"))
+            if (
+                not ctx.slide_scope_locked
+                and scope_forced_idx is None
+                and _count_m
+                and _creation_intent
+                and operations
+            ):
+                n = min(int(_count_m.group(1)), settings.AGENT_MAX_SLIDES)
+                n_creates = sum(1 for op in operations if op.get("type") == "create")
+                if n_creates < max(n // 2, 1):
+                    _layouts = (["COVER", "TOC"] + ["CONTENT"] * (n - 3) + ["CLOSING"]) if n >= 3 else ["COVER"] * n
+                    operations = [
+                        {
+                            "type": "create",
+                            "spec": {
+                                "title": f"슬라이드 {i+1}",
+                                "layout": _layouts[i] if i < len(_layouts) else "CONTENT",
+                                "key_points": [],
+                            },
+                        }
+                        for i in range(n)
+                    ]
+                    logger.warning(
+                        "  [unified_planner] N장 생성 요청(%d), create ops 부족(%d) → create×%d 변환",
+                        n, n_creates, n,
+                    )
             # @슬라이드N 명령 → 0-based slide_index 강제 교정 (LLM이 1-based로 잘못 출력하는 경우 방지)
-            scope_matches = re.findall(r'@슬라이드(\d+)', state.get("command", ""))
-            if len(scope_matches) == 1:
-                forced_idx = int(scope_matches[0]) - 1  # 1-based UI → 0-based
+            # + create op 절대 금지 위반 시 edit으로 강제 변환 (PROMPT의 ABSOLUTE 규칙을 LLM이 무시하는 경우 방어 —
+            #   미차단 시 기존 슬라이드가 proposal 없이 즉시 교체/파괴됨)
+            if scope_forced_idx is not None:
+                fixed_ops = []
                 for op in operations:
-                    if op.get("type") in ("edit", "component_edit", "component_delete", "delete"):
-                        if op.get("slide_index", forced_idx) != forced_idx:
+                    t = op.get("type")
+                    if t == "create":
+                        logger.warning(
+                            "  [unified_planner] @슬라이드%s + create op 위반 감지 → edit 변환 (slide_index=%d)",
+                            scope_matches[0], scope_forced_idx,
+                        )
+                        op = {
+                            "type": "edit",
+                            "slide_index": scope_forced_idx,
+                            "instruction": op.get("spec", {}).get("title") or state.get("command", ""),
+                        }
+                    elif t in ("edit", "component_edit", "component_delete", "delete"):
+                        if op.get("slide_index", scope_forced_idx) != scope_forced_idx:
                             logger.info(
                                 "  [unified_planner] @슬라이드%s 강제 보정: slide_index %s → %d",
-                                scope_matches[0], op.get("slide_index"), forced_idx,
+                                scope_matches[0], op.get("slide_index"), scope_forced_idx,
                             )
-                        op["slide_index"] = forced_idx
+                        op["slide_index"] = scope_forced_idx
+                    fixed_ops.append(op)
+                operations = fixed_ops
 
             ops_queue = list(operations)
             mode = operations[0].get("type", "create") if operations else "create"
@@ -132,6 +162,23 @@ def make_unified_planner(ctx: NodeContext):
             ops_queue = []
             slide_specs = parsed.get("slides", [])
             mode = parsed.get("mode", "create")
+
+            # @슬라이드N + slides/mode 직접 출력(operations 미사용) 위반 방어:
+            # LLM이 operations 배열 대신 곧장 slides+mode="create"를 내놓으면
+            # create 파이프라인(slide_composer)으로 빠져 proposal 없이 기존 슬라이드가 즉시 교체됨
+            if scope_forced_idx is not None and mode == "create":
+                logger.warning(
+                    "  [unified_planner] @슬라이드%s + slides/mode=create 위반 감지 → edit 변환 (slide_index=%d)",
+                    scope_matches[0], scope_forced_idx,
+                )
+                operations = [{
+                    "type": "edit",
+                    "slide_index": scope_forced_idx,
+                    "instruction": state.get("command", ""),
+                }]
+                ops_queue = list(operations)
+                slide_specs = []
+                mode = "edit"
 
         if ctx.on_event:
             steps = [{"id": "plan", "label": "계획 수립"}]
@@ -213,7 +260,7 @@ def make_ops_dispatcher(ctx: NodeContext):
             create_ops = [op]
             while queue and queue[0].get("type") == "create":
                 create_ops.append(queue.pop(0))
-            create_ops = create_ops[:20]  # LLM 오버생성 방어: 최대 20장
+            create_ops = create_ops[:settings.AGENT_MAX_SLIDES]
             slide_specs = [
                 co.get("spec", {"title": f"슬라이드 {i+1}", "layout": "CONTENT", "key_points": []})
                 for i, co in enumerate(create_ops)
@@ -235,7 +282,7 @@ def make_ops_dispatcher(ctx: NodeContext):
         all_slides = state.get("all_slides_context", [])
         target = next(
             (s for s in all_slides if s.get("order") == slide_idx),
-            all_slides[0] if all_slides else {},
+            {},
         )
         slide_ctx = target.get("html_content", "") or state.get("slide_context", "")
 

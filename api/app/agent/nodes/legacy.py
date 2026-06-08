@@ -3,37 +3,15 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.agent.context import NodeContext
 from app.agent.state import AgentState
 from app.agent.prompts import DESIGN_RESOLVER_PROMPT, LAYOUT_COMPOSER_PROMPT
+from app.agent.utils import extract_json as _extract_json
 
 logger = logging.getLogger("slidant.agent")
-
-
-def _extract_json(text: str):
-    text = text.strip()
-    try:
-        return json.loads(text)
-    except Exception:
-        pass
-    m = re.search(r"```(?:json)?\s*(\{[\s\S]*?\}|\[[\s\S]*?\])\s*```", text)
-    if m:
-        try:
-            return json.loads(m.group(1))
-        except Exception:
-            pass
-    for pattern in (r"(\{[\s\S]*\})", r"(\[[\s\S]*\])"):
-        m = re.search(pattern, text)
-        if m:
-            try:
-                return json.loads(m.group(1))
-            except Exception:
-                continue
-    return None
 
 
 def _flatten_ops(ops: list) -> list[dict]:
@@ -75,7 +53,7 @@ def make_design_resolver(ctx: NodeContext):
         logger.info("  [design_resolver] palette=%s", design_tokens.get("palette", "?"))
         if ctx.on_event:
             ctx.on_event("node_done", f"✅ {design_tokens.get('palette', 'DARK')} 팔레트 확정")
-        return {**state, "design_tokens": design_tokens}
+        return {"design_tokens": design_tokens}
     return design_resolver_node
 
 
@@ -138,5 +116,5 @@ def make_layout_composer(ctx: NodeContext):
         logger.info("  [layout_composer] ops=%d  parse_ok=%s", len(ops), parsed is not None)
         if ctx.on_event:
             ctx.on_event("node_done", f"✅ {len(ops)}개 op 생성")
-        return {**state, "component_specs": ops, "result_summary": summary, "messages": []}
+        return {"component_specs": ops, "result_summary": summary, "messages": []}
     return layout_composer_node

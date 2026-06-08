@@ -359,9 +359,20 @@ async def _run_agent_background_inner(
             # 전체 프레젠테이션 교체 판단 (Proposal 생성과 충돌 방지 위해 먼저 계산):
             # - delete+create 혼합: 명시적 전체 교체 의도
             # - create-only(2장+, not edit): 새 PPT 생성 의도 → 기존도 정리
+            # - N장 생성 의도 + html_slides 1개 이상: 일부 composer 실패해도 전체 교체
             _edit_keywords = ("수정", "변경", "바꿔", "적용", "고쳐", "다시")
             is_edit_cmd = any(k in body.command for k in _edit_keywords)
-            is_full_replace = bool(html_slides) and len(html_slides) >= 2 and not is_edit_cmd
+            _creation_keywords = ("만들어", "생성", "제작", "PPT", "ppt", "프레젠테이션", "작성")
+            _n_slides_creation = (
+                _re.search(r'\d+\s*장', body.command)
+                and any(k in body.command for k in _creation_keywords)
+                and not is_edit_cmd
+            )
+            is_full_replace = (
+                bool(html_slides)
+                and not is_edit_cmd
+                and (len(html_slides) >= 2 or _n_slides_creation)
+            )
 
             # HTML 모드: html_output → Proposal 저장 (사용자 승인 후 적용)
             # is_full_replace면 현재 슬라이드 자체가 삭제되므로 Proposal 생성 스킵
@@ -378,6 +389,7 @@ async def _run_agent_background_inner(
                     patches=[],
                     summary=llm_summary,
                     html_content=html_sanitized,
+                    base_html_content=slide.html_content or "",
                     status='pending',
                 )
                 uow.proposals.add(_proposal_obj)
@@ -413,15 +425,20 @@ async def _run_agent_background_inner(
                     # 기존 슬라이드 전량 삭제 후 fresh 생성 (order 0부터 재배치)
                     # body.slide_id는 이미 삭제됐을 수 있음(delete_slide=True), 아니면 지금 삭제
                     existing_slides = await uow.slides.list_by_project(body.project_id)
-                    existing_ids = [str(ex.id) for ex in existing_slides]
+                    existing_ids = [ex.id for ex in existing_slides]
                     if existing_ids:
                         from sqlalchemy import text as _sql_text
-                        id_list = ", ".join(f"'{eid}'" for eid in existing_ids)
                         # 자식 rows 먼저 삭제 (relationship + CASCADE 미선언으로 ORM이 순서 보장 못 함)
-                        await uow.session.execute(_sql_text(f"DELETE FROM component_history WHERE slide_id IN ({id_list})"))
-                        await uow.session.execute(_sql_text(f"DELETE FROM slide_history WHERE slide_id IN ({id_list})"))
-                        await uow.session.execute(_sql_text(f"DELETE FROM agent_proposals WHERE slide_id IN ({id_list})"))
-                        await uow.session.execute(_sql_text(f"DELETE FROM slides WHERE id IN ({id_list})"))
+                        for _tbl, _col in (
+                            ("component_history", "slide_id"),
+                            ("slide_history", "slide_id"),
+                            ("agent_proposals", "slide_id"),
+                            ("slides", "id"),
+                        ):
+                            await uow.session.execute(
+                                _sql_text(f"DELETE FROM {_tbl} WHERE {_col} = ANY(:ids)"),
+                                {"ids": existing_ids},
+                            )
                         await uow.session.flush()
                     logger.info("   기존 슬라이드 %d장 전량 제거 (전체 교체)", len(existing_slides))
                     reason = f'{agent_def_name}: {body.command[:120]}'
@@ -446,34 +463,53 @@ async def _run_agent_background_inner(
                                     i + 1, len(specs), spec.get("title"))
 
                 elif specs and slide and _proposal_obj is None:
-                    # html_output으로 이미 Proposal 생성됐다면 동일 편집을 여기서 즉시 적용하면 안 됨
-                    # (승인 전인데 내용이 먼저 반영돼버려 Proposal이 무의미한 고아 상태로 남는 버그 방지)
-                    # 단일 슬라이드 생성 또는 edit: specs[0]→현재 슬라이드 덮어쓰기
                     first = specs[0]
-                    reason = f'{agent_def_name}: {body.command[:120]}'
-                    await slide_history_service.archive_and_apply(
-                        uow, body.slide_id, list(slide.content or []),
-                        reason, agent_name=agent_def_name,
-                        html_content=sanitize_slide_html(first.get("html", ""))
-                    )
-                    if first.get("title") and not slide.title:
-                        slide.title = first["title"]
-                    logger.info("   HTML[0] → 현재 슬라이드 적용: title=%r  html=%d chars",
-                                first.get("title"), len(first.get("html", "")))
-                    specs_to_create = [] if is_edit_cmd else specs[1:]
-                    base_order = await uow.slides.get_last_order(body.project_id)
-                    for i, spec in enumerate(specs_to_create):
-                        new_slide = SlideModel(
-                            project_id=body.project_id,
-                            title=spec.get("title", ""),
-                            html_content=sanitize_slide_html(spec.get("html", "")),
-                            content=[],
-                            order=base_order + i,
+                    first_html = sanitize_slide_html(first.get("html", ""))
+                    if is_edit_cmd:
+                        # 편집 의도(@슬라이드N ... 수정/변경/바꿔 등)인데 LLM이 html 대신 slides
+                        # 포맷으로 응답한 경우 — html_output과 동일하게 Proposal 경로로 보내야 함
+                        # (여기서 즉시 적용하면 "Agent 편집은 승인 후 반영" 원칙 위반 + 사용자가
+                        #  검토·거절할 수단이 사라짐)
+                        from app.models.agent_proposal import AgentProposal as _AgentProposal
+                        _proposal_obj = _AgentProposal(
+                            slide_id=slide.id,
+                            agent_run_id=agent_run.id,
+                            agent_name=agent_def_name,
+                            command=body.command,
+                            patches=[],
+                            summary=llm_summary,
+                            html_content=first_html,
+                            base_html_content=slide.html_content or "",
+                            status='pending',
                         )
-                        uow.slides.add(new_slide)
-                        slide_history_service.record_initial_slide(uow, new_slide, reason, agent_def_name)
-                        new_slides.append(new_slide)
-                        logger.info("   HTML 슬라이드 추가: title=%r", spec.get("title"))
+                        uow.proposals.add(_proposal_obj)
+                        logger.info("   HTML[0]→Proposal 변환 저장 (slides 포맷 edit 응답): proposal=%s  %d chars",
+                                    _proposal_obj.id, len(first_html))
+                    else:
+                        # 단일 슬라이드 생성: specs[0]→현재 슬라이드 덮어쓰기 (즉시 적용)
+                        reason = f'{agent_def_name}: {body.command[:120]}'
+                        await slide_history_service.archive_and_apply(
+                            uow, body.slide_id, list(slide.content or []),
+                            reason, agent_name=agent_def_name,
+                            html_content=first_html,
+                        )
+                        if first.get("title") and not slide.title:
+                            slide.title = first["title"]
+                        logger.info("   HTML[0] → 현재 슬라이드 적용: title=%r  html=%d chars",
+                                    first.get("title"), len(first_html))
+                        base_order = await uow.slides.get_last_order(body.project_id)
+                        for i, spec in enumerate(specs[1:]):
+                            new_slide = SlideModel(
+                                project_id=body.project_id,
+                                title=spec.get("title", ""),
+                                html_content=sanitize_slide_html(spec.get("html", "")),
+                                content=[],
+                                order=base_order + i,
+                            )
+                            uow.slides.add(new_slide)
+                            slide_history_service.record_initial_slide(uow, new_slide, reason, agent_def_name)
+                            new_slides.append(new_slide)
+                            logger.info("   HTML 슬라이드 추가: title=%r", spec.get("title"))
             elif slide_ops:
                 from app.services.project_service import create_slide_with_components
                 for op in slide_ops[:5]:  # 한 번에 최대 5장

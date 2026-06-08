@@ -20,7 +20,8 @@ class Settings(BaseSettings):
     ANTHROPIC_MODEL: str = "claude-sonnet-4-6"
     OPENROUTER_MODEL: str = "deepseek/deepseek-v4-pro"
     AGENT_MAX_RETRIES: int = 2
-    AGENT_MAX_TOKENS: int = 4096
+    AGENT_MAX_TOKENS: int = 2048
+    AGENT_MAX_SLIDES: int = 50
 
     TAVILY_API_KEY: str = ""
 

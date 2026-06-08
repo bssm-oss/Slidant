@@ -11,35 +11,16 @@ from app.agent.state import AgentState
 from app.agent.prompts import SLIDE_COMPOSER_PROMPT, HTML_EDITOR_PROMPT
 from app.core.domain.layout_budget import compute_layout_budget
 from app.core.domain.html_slide import HtmlSlide
+from app.agent.utils import extract_json as _extract_json
 
 logger = logging.getLogger("slidant.agent")
 
 
-def _extract_json(text: str):
-    import re
-    text = text.strip()
-    try:
-        return json.loads(text)
-    except Exception:
-        pass
-    m = re.search(r"```(?:json)?\s*(\{[\s\S]*?\}|\[[\s\S]*?\])\s*```", text)
-    if m:
-        try:
-            return json.loads(m.group(1))
-        except Exception:
-            pass
-    for pattern in (r"(\{[\s\S]*\})", r"(\[[\s\S]*\])"):
-        m = re.search(pattern, text)
-        if m:
-            try:
-                return json.loads(m.group(1))
-            except Exception:
-                continue
-    return None
-
-
 def make_slide_composer(ctx: NodeContext):
     async def slide_composer_node(state: AgentState) -> dict:
+        from app.core.config import settings
+        from app.agent.nodes.validator import _check_slide_html
+
         idx = state.get("slide_index", 0)
         spec = state.get("current_slide_spec") or (state.get("slide_specs") or [{}])[0]
         design_tokens = state.get("design_tokens", {})
@@ -55,7 +36,6 @@ def make_slide_composer(ctx: NodeContext):
                 + "\n"
             )
 
-        # 전체 슬라이드 계획 요약 (목차 일관성 — 내 슬라이드가 전체에서 어디에 위치하는지)
         all_specs = state.get("slide_specs", [])
         toc_ctx = ""
         if all_specs and len(all_specs) > 1:
@@ -68,54 +48,69 @@ def make_slide_composer(ctx: NodeContext):
                 "이 목차와 일치하는 내용으로 생성할 것."
             )
 
-        # 살아있는 제약 명세: 이 슬라이드의 실제 픽셀 예산 동적 계산
         layout_budget = compute_layout_budget(spec, all_specs)
-
-        retry_ctx = ""
-        validation_errors = state.get("validation_errors") or []
-        if state.get("retry_count", 0) > 0 and validation_errors:
-            retry_ctx = (
-                "\n\n## 이전 시도 검증 실패 — 아래 문제 반드시 수정:\n"
-                + "\n".join(f"- {e}" for e in validation_errors[:8])
-            )
-
-        human_text = (
-            f"Slide spec: {json.dumps(spec, ensure_ascii=False)}\n\n"
-            f"Design tokens: {json.dumps(design_tokens, ensure_ascii=False)}\n\n"
-            f"Slide index: {idx} (0-based)\n\n"
-            f"Current slide HTML (for reference/edit):\n{state.get('slide_context', '(empty)')}"
-            f"{toc_ctx}{search_ctx}"
-            f"{layout_budget}"
-            f"{retry_ctx}"
-        )
 
         composer_system = SLIDE_COMPOSER_PROMPT
         if isinstance(ctx.gen_prompt, str):
             composer_system = ctx.gen_prompt
 
-        messages = [SystemMessage(content=composer_system), HumanMessage(content=human_text)]
-        raw = ""
-        try:
-            async for chunk in ctx.llm.astream(messages):
-                raw_c = chunk.content if hasattr(chunk, "content") else ""
-                if isinstance(raw_c, list):
-                    token = "".join(b.get("text", "") for b in raw_c if isinstance(b, dict) and b.get("type") == "text")
-                else:
-                    token = str(raw_c) if raw_c else ""
-                raw += token
-        except Exception as e:
-            logger.warning("slide_composer[%d] failed: %s", idx, e)
-
-        parsed = _extract_json(raw)
-        html = parsed.get("html", "") if isinstance(parsed, dict) else ""
-        if html:
-            html = HtmlSlide(html=html).clamp_positions().html
+        html = ""
         title = spec.get("title", f"슬라이드 {idx+1}")
+        local_issues: list[str] = []
 
-        if ctx.on_event and html:
-            ctx.on_event("slide_ready", json.dumps({"index": idx, "title": title, "html": html}, ensure_ascii=False))
+        for attempt in range(2):  # layout 검증 retry는 1회만 (속도 우선)
+            retry_ctx = ""
+            if attempt > 0 and local_issues:
+                retry_ctx = (
+                    "\n\n## 이전 시도 검증 실패 — 아래 문제 반드시 수정:\n"
+                    + "\n".join(f"- {e}" for e in local_issues[:8])
+                )
+
+            human_text = (
+                f"Slide spec: {json.dumps(spec, ensure_ascii=False)}\n\n"
+                f"Design tokens: {json.dumps(design_tokens, ensure_ascii=False)}\n\n"
+                f"Slide index: {idx} (0-based)\n\n"
+                f"Current slide HTML (for reference/edit):\n{state.get('slide_context', '(empty)')}"
+                f"{toc_ctx}{search_ctx}"
+                f"{layout_budget}"
+                f"{retry_ctx}"
+            )
+
+            messages = [SystemMessage(content=composer_system), HumanMessage(content=human_text)]
+            raw = ""
+            try:
+                async for chunk in ctx.llm.astream(messages):
+                    raw_c = chunk.content if hasattr(chunk, "content") else ""
+                    if isinstance(raw_c, list):
+                        token = "".join(b.get("text", "") for b in raw_c if isinstance(b, dict) and b.get("type") == "text")
+                    else:
+                        token = str(raw_c) if raw_c else ""
+                    raw += token
+            except Exception as e:
+                logger.warning("slide_composer[%d] attempt=%d failed: %s", idx, attempt, e)
+                break
+
+            parsed = _extract_json(raw)
+            attempt_html = parsed.get("html", "") if isinstance(parsed, dict) else ""
+            if not attempt_html:
+                break  # LLM 빈 응답 — 이전 시도 HTML 보존
+
+            html = HtmlSlide(html=attempt_html).clamp_positions().html
+            local_issues = _check_slide_html(html, f"슬라이드{idx+1}")
+            if not local_issues:
+                break
+            logger.warning(
+                "  [slide_composer] idx=%d attempt=%d/%d issues=%d: %s",
+                idx, attempt, settings.AGENT_MAX_RETRIES, len(local_issues), local_issues[:2],
+            )
+
+        if ctx.on_event:
+            if html:
+                ctx.on_event("slide_ready", json.dumps({"index": idx, "title": title, "html": html}, ensure_ascii=False))
+                ctx.on_event("node_done", f"✅ {title[:15]} 완성")
+            else:
+                ctx.on_event("node_done", f"⚠️ {title[:15]} 생성 실패")
             ctx.on_event("step_done", f"slide-{idx}")
-            ctx.on_event("node_done", f"✅ {title[:15]} 완성")
 
         logger.info("  [slide_composer] idx=%d html=%d chars", idx, len(html))
         return {"html_slides": [{"index": idx, "title": title, "html": html}]}

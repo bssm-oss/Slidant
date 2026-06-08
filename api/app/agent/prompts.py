@@ -171,11 +171,25 @@ OUTPUT FORMAT (JSON ONLY, no markdown):
 • <div class="slide"> must have: width:960px;height:540px;position:relative;overflow:hidden;font-family:'[design_tokens.font]',system-ui,sans-serif;
 • Every element: position:absolute; data-component-id="[unique-kebab-id]"
 • Use design_tokens for ALL colors/sizes (incl. font — same font for ALL text in this slide). No <script> tags.
+• CSS RESET (MANDATORY — include in EVERY <style> block, immediately after @import if present):
+    h1,h2,h3,h4,h5,h6,p,ul,ol,li{margin:0;padding:0;list-style:none;}
+    This prevents browser UA defaults (ul padding-left:40px, h2 margin:0.83em, p margin:1em) from
+    shifting absolutely-positioned elements and adding unexpected internal spacing.
 • TEXT TAGS — semantic only, never bare <div> for text content:
     제목/헤딩 → <h1>/<h2>/<h3>   본문/캡션/리스트 항목 → <p>   목록 → <ul>/<li>
     배경·도형·장식 컨테이너만 <div> 사용. 모든 텍스트 태그도 position:absolute + data-component-id 그대로 적용.
-    ✓ <p data-component-id="body-1" style="position:absolute;left:80px;top:240px;font-size:21px;...">설명 텍스트</p>
+    Every semantic tag inline style MUST include margin:0;padding:0;word-break:keep-all;
+    ✓ <p data-component-id="body-1" style="position:absolute;left:80px;top:240px;width:380px;font-size:21px;margin:0;padding:0;word-break:keep-all;...">설명 텍스트</p>
     ✗ <div data-component-id="body-1" style="position:absolute;...">설명 텍스트</div>
+    ✗ <p data-component-id="body-1" style="position:absolute;left:80px;top:240px;font-size:21px;">텍스트</p>  ← margin:0;word-break:keep-all 누락
+• BODY CONTENT REQUIRED: every slide MUST have ≥2 text elements below the title (top > 190px).
+    Title-only slides (divider + accent + bg only) are INVALID — always include body text.
+• TITLE ACCENT LINE — CRITICAL: 제목(h1/h2) 하단 강조선은 반드시 border-bottom 인라인 스타일로.
+    별도 position:absolute div/shape 엘리먼트 절대 금지 — 줄바꿈 시 강조선이 텍스트 위에 겹침.
+    ✓ <h2 style="...;border-bottom:4px solid #3B82F6;padding-bottom:10px;word-break:keep-all;">제목</h2>
+    ✗ <div style="position:absolute;top:148px;width:60px;height:4px;background:#3B82F6">  ← FORBIDDEN
+    CONTENT 슬라이드 제목 h2: width≥460px, height 최소 120px 확보 (2줄 줄바꿈 대비).
+    본문 첫 번째 요소: top ≥ 제목_top + 130px (기본 제목 top:60 → body top:190 이상)
 • z-index STRICT 3-TIER — no values between 5 and 9:
     bg/overlay/accent-bars/shapes/SVG-decorations: 1–4 ONLY (hard cap = 4)
     text/cards/charts/interactive: 10+ ONLY (minimum = 10)
@@ -213,6 +227,20 @@ CSS ANIMATIONS (use for key elements — entrance only, forwards fill):
 INLINE SVG (icons, decorations — no external URL needed):
   • Abstract shape, geometric accent, icon as <svg> directly in HTML
   • Example accent: <svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="none" stroke="#3B82F6" stroke-width="2" opacity="0.3"/></svg>
+  • LUCIDE ICONS — prefer over emoji for callouts/UI icons. Draw directly as inline SVG:
+    Check:    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+    Arrow:    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+    Star:     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+    Globe:    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+    Alert:    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+  • Do NOT use emoji for icons unless brief explicitly asks playful/emoji tone.
+
+━━ ART DIRECTION DEFAULTS ━━
+  • One slide, one job — single dominant visual anchor, one primary takeaway.
+  • Copy short enough to scan in 3 seconds — no wall of text.
+  • Prefer cardless layouts unless cards improve structure.
+  • Whitespace, alignment, scale, contrast before decorative chrome.
+  • One accent color. Two typefaces max. If unsure: Pretendard only.
 
 ━━ DATA VISUALIZATION — Chart.js (iframe sandbox="allow-scripts" 활성화됨) ━━
 
@@ -295,7 +323,7 @@ LAYOUT PATTERNS (go beyond rectangles):
 
 ━━ STANDARD LAYOUT TEMPLATES ━━
 [COVER]   bg → radial-spotlight-overlay → accent-bar(left,6×540) → title(80,170,fw:700) → subtitle(80,300)
-[CONTENT] bg → accent-bar → title(60,60) → divider-line(60,140,60px×4px) → body-items(60,165+45n) → [right-image]
+[CONTENT] bg → accent-bar → title(60,60,w:460,h:120,border-bottom:4px solid accent,pb:10) → body-items(60,200+45n) → [right-image]
 [TOC]     bg → accent-bar → title(60,60) → divider → numbered items:
   N=3–4: start_y=175, gap=70px, num_size=40px, title_size=24px
   N=5:   start_y=165, gap=62px, num_size=36px, title_size=22px
@@ -328,18 +356,30 @@ CANVAS = 960×540px. All absolute elements MUST fit inside. Verify before output
 
 CONTENT SAFE ZONE:
   • Horizontal: left ≥ 60px, right edge ≤ 900px
-  • Vertical body area: top 140px → bottom 500px = 360px for content
+  • Vertical body area: top 190px → bottom 500px = 310px for content (제목 2줄 대비)
   • Footer/watermark (if any): top 500–525px only
 
+BULLET LIST STRUCTURE — FLEX PREFERRED:
+  Use a single position:absolute <ul> container with flex column layout.
+  Each <li> flows naturally — no per-item top calculation needed.
+  ✓ <ul data-component-id="body-list" style="position:absolute;left:80px;top:200px;width:400px;
+       margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:16px;z-index:10;">
+       <li style="font-size:21px;color:#F9FAFB;word-break:keep-all;">• 항목 1</li>
+       <li style="font-size:21px;color:#F9FAFB;word-break:keep-all;">• 항목 2</li>
+     </ul>
+  ✗ <p style="position:absolute;top:200px">• 항목 1</p>
+     <p style="position:absolute;top:245px">• 항목 2</p>  ← top 하드코드 금지
+  Max 6 items. If 7+: MUST use 2-column (two separate <ul> containers, left=80 and left=500).
+
 BULLET LIST DENSITY RULES:
-  • Each bullet item = font-size × line-height + gap. Default: 21px × 1.5 + 8px ≈ 40px per item
-  • Body area height = 360px → max 9 items at 40px. But keep to ≤ 6 for readability
+  • Each bullet item ≈ 40px (21px font × 1.5 lh + 8px gap). Body area ≤ 310px → max 7 items.
+  • Keep to ≤ 6 for readability.
   • If content has 7+ items: MUST use 2-column layout (each col: left=60,w=360 | left=480,w=380)
   • 2-column: each column handles half the items independently; never let items cross columns
 
 2-COLUMN LAYOUT RULES:
-  • Left col:  left=60px,  width=380px, top=140px → max bottom=500px
-  • Right col: left=480px, width=420px, top=140px → max bottom=500px
+  • Left col:  left=60px,  width=380px, top=190px → max bottom=500px
+  • Right col: left=480px, width=420px, top=190px → max bottom=500px
   • Each column is visually ISOLATED — no element overlaps the other column's area
   • Title always spans full width (left=60, width=840)
 
@@ -386,30 +426,10 @@ FONT SIZE ADAPTATION:
 TEXT SAFE ZONE: left≥60px right≤900px. Never fontSize<15.
 
 FEW-SHOT A — COVER with animations + radial gradient:
-{"html":"<style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');@keyframes fadeUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:none}}@keyframes scaleIn{from{opacity:0;transform:scale(0.9)}to{opacity:1;transform:none}}.slide{width:960px;height:540px;position:relative;overflow:hidden;font-family:'Inter',system-ui,sans-serif;}</style><div class=\\"slide\\"><div data-component-id=\\"bg\\" style=\\"position:absolute;inset:0;background:#0A0F1E;z-index:1\\"></div><div data-component-id=\\"radial\\" style=\\"position:absolute;left:-100px;top:-100px;width:600px;height:600px;background:radial-gradient(ellipse,rgba(59,130,246,0.25) 0%,transparent 60%);z-index:2\\"></div><div data-component-id=\\"accent\\" style=\\"position:absolute;left:0;top:0;width:6px;height:540px;background:linear-gradient(180deg,#3B82F6,#8B5CF6);z-index:3\\"></div><div data-component-id=\\"title\\" style=\\"position:absolute;left:80px;top:160px;width:700px;font-size:68px;font-weight:900;color:#F9FAFB;line-height:1.1;z-index:10;animation:fadeUp 0.7s ease forwards\\">슬라이드 제목</div><div data-component-id=\\"sub\\" style=\\"position:absolute;left:80px;top:290px;width:600px;font-size:26px;color:#9CA3AF;z-index:10;animation:fadeUp 0.7s 0.2s ease both\\">부제목 텍스트</div><div data-component-id=\\"divider\\" style=\\"position:absolute;left:80px;top:345px;width:60px;height:4px;background:#3B82F6;z-index:10;animation:scaleIn 0.5s 0.4s ease both\\"></div></div>"}
+{"html":"<style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');h1,h2,h3,h4,h5,h6,p,ul,ol,li{margin:0;padding:0;list-style:none;}@keyframes fadeUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:none}}@keyframes scaleIn{from{opacity:0;transform:scale(0.9)}to{opacity:1;transform:none}}.slide{width:960px;height:540px;position:relative;overflow:hidden;font-family:'Inter',system-ui,sans-serif;}</style><div class=\\"slide\\"><div data-component-id=\\"bg\\" style=\\"position:absolute;inset:0;background:#0A0F1E;z-index:1\\"></div><div data-component-id=\\"radial\\" style=\\"position:absolute;left:-100px;top:-100px;width:600px;height:600px;background:radial-gradient(ellipse,rgba(59,130,246,0.25) 0%,transparent 60%);z-index:2\\"></div><div data-component-id=\\"accent\\" style=\\"position:absolute;left:0;top:0;width:6px;height:540px;background:linear-gradient(180deg,#3B82F6,#8B5CF6);z-index:3\\"></div><h1 data-component-id=\\"title\\" style=\\"position:absolute;left:80px;top:160px;width:700px;font-size:68px;font-weight:900;color:#F9FAFB;line-height:1.1;margin:0;padding:0;word-break:keep-all;z-index:10;animation:fadeUp 0.7s ease forwards\\">슬라이드 제목</h1><p data-component-id=\\"sub\\" style=\\"position:absolute;left:80px;top:290px;width:600px;font-size:26px;color:#9CA3AF;margin:0;padding:0;word-break:keep-all;z-index:10;animation:fadeUp 0.7s 0.2s ease both\\">부제목 텍스트</p><div data-component-id=\\"divider\\" style=\\"position:absolute;left:80px;top:345px;width:60px;height:4px;background:#3B82F6;z-index:10;animation:scaleIn 0.5s 0.4s ease both\\"></div></div>"}
 
-FEW-SHOT B — STATS slide with glassmorphism cards:
-{"html":"<style>@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}.slide{width:960px;height:540px;position:relative;overflow:hidden;font-family:system-ui,sans-serif;}</style><div class=\\"slide\\"><div data-component-id=\\"bg\\" style=\\"position:absolute;inset:0;background:#0A0F1E;z-index:1\\"></div><div data-component-id=\\"glow\\" style=\\"position:absolute;left:200px;top:-100px;width:560px;height:400px;background:radial-gradient(ellipse,rgba(59,130,246,0.2),transparent 70%);z-index:2\\"></div><div data-component-id=\\"accent\\" style=\\"position:absolute;left:0;top:0;width:6px;height:540px;background:#3B82F6;z-index:3\\"></div><div data-component-id=\\"title\\" style=\\"position:absolute;left:80px;top:50px;font-size:36px;font-weight:700;color:#F9FAFB;z-index:10\\">핵심 수치</div><div data-component-id=\\"card1\\" style=\\"position:absolute;left:80px;top:130px;width:240px;height:150px;backdrop-filter:blur(20px);background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:16px;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;animation:fadeUp 0.6s ease forwards\\"><span style=\\"font-size:52px;font-weight:900;color:#3B82F6\\">1위</span><span style=\\"font-size:14px;color:#9CA3AF;margin-top:4px\\">항목 설명</span></div><div data-component-id=\\"card2\\" style=\\"position:absolute;left:360px;top:130px;width:240px;height:150px;backdrop-filter:blur(20px);background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:16px;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;animation:fadeUp 0.6s 0.15s ease both\\"><span style=\\"font-size:52px;font-weight:900;color:#8B5CF6\\">340만</span><span style=\\"font-size:14px;color:#9CA3AF;margin-top:4px\\">항목 설명</span></div><div data-component-id=\\"card3\\" style=\\"position:absolute;left:640px;top:130px;width:240px;height:150px;backdrop-filter:blur(20px);background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:16px;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;animation:fadeUp 0.6s 0.3s ease both\\"><span style=\\"font-size:52px;font-weight:900;color:#10B981\\">98%</span><span style=\\"font-size:14px;color:#9CA3AF;margin-top:4px\\">항목 설명</span></div></div>"}
-"""
-
-COMPONENT_EDITOR_PROMPT = """\
-You are ComponentEditor for Slidant. You modify a SPECIFIC component element within a slide.
-
-You receive:
-- The target component's current outerHTML (one element with data-component-id)
-- The modification instruction
-
-OUTPUT FORMAT (JSON ONLY):
-{"summary":"한국어 수정 요약","html":"<element data-component-id=\\"...\\" ...>...</element>"}
-
-━━ RULES ━━
-• Output ONLY the single modified element (same data-component-id)
-• Preserve the data-component-id attribute exactly
-• Preserve position/size CSS (left, top, width, height) unless layout change requested
-• Only change what was instructed (color, text, font, style, etc.)
-• Never output the full slide HTML — single element only
-
-OUTPUT ONLY JSON.
+FEW-SHOT B — CONTENT slide with bullet list (body text required):
+{"html":"<style>h1,h2,h3,h4,h5,h6,p,ul,ol,li{margin:0;padding:0;list-style:none;}@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}.slide{width:960px;height:540px;position:relative;overflow:hidden;font-family:'Pretendard',system-ui,sans-serif;}</style><div class=\\"slide\\"><div data-component-id=\\"bg\\" style=\\"position:absolute;inset:0;background:#F8FAFC;z-index:1\\"></div><div data-component-id=\\"accent\\" style=\\"position:absolute;left:0;top:0;width:6px;height:540px;background:#7C3AED;z-index:3\\"></div><h2 data-component-id=\\"title\\" style=\\"position:absolute;left:80px;top:60px;width:800px;font-size:44px;font-weight:700;color:#0F172A;margin:0;padding:0;word-break:keep-all;z-index:10\\">슬라이드 제목</h2><div data-component-id=\\"divider\\" style=\\"position:absolute;left:80px;top:118px;width:60px;height:4px;background:#7C3AED;z-index:4\\"></div><p data-component-id=\\"body-1\\" style=\\"position:absolute;left:80px;top:155px;width:780px;font-size:21px;color:#0F172A;margin:0;padding:0;word-break:keep-all;z-index:10\\">• 첫 번째 항목 내용</p><p data-component-id=\\"body-2\\" style=\\"position:absolute;left:80px;top:205px;width:780px;font-size:21px;color:#0F172A;margin:0;padding:0;word-break:keep-all;z-index:10\\">• 두 번째 항목 내용</p><p data-component-id=\\"body-3\\" style=\\"position:absolute;left:80px;top:255px;width:780px;font-size:21px;color:#0F172A;margin:0;padding:0;word-break:keep-all;z-index:10\\">• 세 번째 항목 내용</p><p data-component-id=\\"body-4\\" style=\\"position:absolute;left:80px;top:305px;width:780px;font-size:21px;color:#0F172A;margin:0;padding:0;word-break:keep-all;z-index:10\\">• 네 번째 항목 내용</p></div>"}
 """
 
 HTML_EDITOR_PROMPT = """\
@@ -440,6 +460,9 @@ data-component-id values are IMMUTABLE identifiers used for version tracking and
   instruction explicitly requests a font change. New text elements MUST use the SAME font as existing ones.
 • NEW TEXT ELEMENTS: use semantic tags — <h1>/<h2>/<h3> for headings, <p> for body/caption/bullets,
   <ul>/<li> for lists. Never put text content in a bare <div>. Keep position:absolute + data-component-id.
+  EVERY new semantic tag MUST include in its inline style: margin:0;padding:0;word-break:keep-all;
+• CSS RESET: if the existing <style> block does NOT already contain the reset rule, ADD it:
+  h1,h2,h3,h4,h5,h6,p,ul,ol,li{margin:0;padding:0;list-style:none;}
 
 ━━ BOUNDARY CONSTRAINTS (MANDATORY) ━━
 After any modification, verify ALL absolute elements:
@@ -667,7 +690,7 @@ COVER: 표지  TOC: 목차  CONTENT: 본문  QUOTE: 인용  CLOSING: 마무리  
 • create op를 추가하면 엉뚱한 슬라이드(슬라이드1)가 생성/파괴됨 — 절대 금지
 
 ━━ SLIDE COUNT RULE (MANDATORY) ━━
-사용자가 "N장" / "N개" 슬라이드를 요청하면 반드시 정확히 N개의 create operation 생성 (최대 20).
+사용자가 "N장" / "N개" 슬라이드를 요청하면 반드시 정확히 N개의 create operation 생성 (최대 50).
 • "10장 PPT" → create op 정확히 10개 (표지·목차 포함)
 • 주제가 단순해 보여도 요청 수를 임의로 줄이지 말 것
 • 불확실하면 요청 수에 맞춰 내용 분배 (슬라이드당 세부 내용 줄이기)

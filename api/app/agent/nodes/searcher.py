@@ -12,31 +12,9 @@ from app.agent.prompts import (
     CONTENT_PLANNER_PROMPT, DESIGN_RESOLVER_PROMPT,
     SEARCH_CACHE_CHECK_PROMPT, SEARCH_MERGER_PROMPT,
 )
+from app.agent.utils import extract_json as _extract_json
 
 logger = logging.getLogger("slidant.agent")
-
-
-def _extract_json(text: str):
-    import re
-    text = text.strip()
-    try:
-        return json.loads(text)
-    except Exception:
-        pass
-    m = re.search(r"```(?:json)?\s*(\{[\s\S]*?\}|\[[\s\S]*?\])\s*```", text)
-    if m:
-        try:
-            return json.loads(m.group(1))
-        except Exception:
-            pass
-    for pattern in (r"(\{[\s\S]*\})", r"(\[[\s\S]*\])"):
-        m = re.search(pattern, text)
-        if m:
-            try:
-                return json.loads(m.group(1))
-            except Exception:
-                continue
-    return None
 
 
 async def _check_cache_sufficiency(ctx: NodeContext, cached_summary: str, queries: list[str], command: str) -> dict:
@@ -86,7 +64,7 @@ def make_web_searcher(ctx: NodeContext):
                 if ctx.on_event:
                     ctx.on_event("step_done", "search")
                     ctx.on_event("node_done", "✅ 캐시로 충분 — 재검색 생략")
-                return state
+                return {}
             queries = check["missing_queries"] or queries
             logger.info("  [web_searcher] cache insufficient — re-searching %d/%d queries",
                         len(queries), len(state.get("search_queries", [])))
@@ -127,7 +105,7 @@ def make_web_searcher(ctx: NodeContext):
         if ctx.on_event:
             ctx.on_event("step_done", "search")
             ctx.on_event("node_done", f"✅ {len(results)}개 검색 완료")
-        return {**state, "search_results": results}
+        return {"search_results": results}
     return web_searcher_node
 
 
@@ -137,7 +115,7 @@ def make_search_merger(ctx: NodeContext):
         results = state.get("search_results", [])
         if not results:
             # 캐시된 summary 있으면 그대로 통과
-            return state
+            return {}
 
         if ctx.on_event:
             ctx.on_event("node_start", "📊 검색 결과 병합 중...")
@@ -172,7 +150,7 @@ def make_search_merger(ctx: NodeContext):
 
         if ctx.on_event:
             ctx.on_event("node_done", "✅ 검색 데이터 병합 완료")
-        return {**state, "search_summary": summary}
+        return {"search_summary": summary}
     return search_merger_node
 
 
@@ -207,7 +185,7 @@ def make_content_planner(ctx: NodeContext):
         if ctx.on_event:
             ctx.on_event("step_done", "content")
             ctx.on_event("node_done", f"✅ {len(slide_specs)}장 콘텐츠 기획 완료")
-        return {**state, "slide_specs": slide_specs}
+        return {"slide_specs": slide_specs}
     return content_planner_node
 
 
@@ -235,5 +213,5 @@ def make_design_resolver_html(ctx: NodeContext):
         if ctx.on_event:
             ctx.on_event("step_done", "design")
             ctx.on_event("node_done", f"✅ {design_tokens.get('palette', 'DARK')} 팔레트 확정")
-        return {**state, "design_tokens": design_tokens}
+        return {"design_tokens": design_tokens}
     return design_resolver_node_html

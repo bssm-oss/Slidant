@@ -6,6 +6,7 @@ import logging
 import re
 
 from app.agent.context import NodeContext
+from app.core.config import settings
 from app.agent.state import AgentState
 
 logger = logging.getLogger("slidant.agent")
@@ -24,7 +25,7 @@ def make_dispatch_slides(_ctx: NodeContext):
             ]
         if not specs:
             specs = [{"title": "슬라이드", "layout": "COVER", "key_points": [], "image_needed": False}]
-        specs = specs[:20]  # LLM 오버생성 방어: 최대 20장
+        specs = specs[:settings.AGENT_MAX_SLIDES]
         return [
             Send("slide_composer", {
                 **state,
@@ -40,7 +41,7 @@ def make_dispatch_slides(_ctx: NodeContext):
 
 def make_increment_retry(_ctx: NodeContext):
     def increment_retry(state: AgentState) -> AgentState:
-        return {**state, "retry_count": state.get("retry_count", 0) + 1}
+        return {"retry_count": state.get("retry_count", 0) + 1}
     return increment_retry
 
 
@@ -63,7 +64,7 @@ def make_intent_router(ctx: NodeContext):
         logger.info("  [intent_router] mode=%s", mode)
         if ctx.on_event:
             ctx.on_event("node_start", f"🔀 {'전체 PPT' if mode == 'full_presentation' else '단일 슬라이드'} 모드")
-        return {**state, "mode": mode}
+        return {"mode": mode}
     return intent_router_node
 
 
@@ -82,7 +83,7 @@ def make_context_reader(_ctx: NodeContext):
                 props = {}
             component_map[cid] = {"id": cid, "type": ctype, "properties": props}
         logger.info("  [context_reader] components=%d", len(component_map))
-        return {**state, "component_map": component_map}
+        return {"component_map": component_map}
     return context_reader_node
 
 

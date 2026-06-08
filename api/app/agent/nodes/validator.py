@@ -58,6 +58,9 @@ def _check_slide_html(html: str, label: str) -> list[str]:
     if not components:
         return [f"{label}: data-component-id 요소 없음"]
 
+    _TEXT_TAGS = ("p", "h1", "h2", "h3", "h4", "h5", "h6", "li")
+    body_text_count = 0  # text elements with top > 190px (body area, 제목 2줄 대비)
+
     for cid, comp in components.items():
         soup = BeautifulSoup(comp["html"], "html.parser")
         el = next((c for c in soup.children if isinstance(c, Tag)), None)
@@ -78,8 +81,31 @@ def _check_slide_html(html: str, label: str) -> list[str]:
         if fs is not None and fs < 14:
             issues.append(f"{label}/{cid}: font-size {fs:.0f}px — 가독성 위해 14px 이상 권장")
 
-        if el.name in ("p", "h1", "h2", "h3", "h4", "h5", "h6", "li") and not el.get_text(strip=True):
-            issues.append(f"{label}/{cid}: 빈 텍스트 태그 (<{el.name}> 내용 없음)")
+        # 가로 구분선 금지: 얇고 넓은 수평 shape → content 영역 bisect 원인
+        if (
+            height is not None and height <= 6
+            and width is not None and width >= 400
+            and top is not None and 60 < top < 460
+        ):
+            issues.append(
+                f"{label}/{cid}: 가로 구분선 금지 "
+                f"(width={width:.0f}px height={height:.0f}px top={top:.0f}px)"
+                " — 이 요소 삭제. 제목 강조는 border-bottom, 구분은 여백으로."
+            )
+
+        if el.name in _TEXT_TAGS:
+            text = el.get_text(strip=True)
+            if not text:
+                issues.append(f"{label}/{cid}: 빈 텍스트 태그 (<{el.name}> 내용 없음)")
+            elif top is not None and top > 190:
+                body_text_count += 1
+
+    # 본문 내용 최소 검사: 4개 이상 컴포넌트가 있는데 body 텍스트가 0이면 retry 유도
+    if len(components) >= 4 and body_text_count == 0:
+        issues.append(
+            f"{label}: 본문 텍스트 없음 (top>140 text elements=0) "
+            "— 제목 아래 body 내용 필수. key_points 항목을 모두 포함할 것."
+        )
 
     return issues
 
@@ -98,7 +124,7 @@ def make_html_validator(_ctx: NodeContext):
 
         if not targets:
             logger.warning("  [html_validator] 결과 없음")
-            return {**state, "validation_errors": []}
+            return {"validation_errors": []}
 
         issues: list[str] = []
         for label, html in targets:
@@ -106,7 +132,7 @@ def make_html_validator(_ctx: NodeContext):
 
         if issues:
             logger.warning("  [html_validator] %d개 정적 검사 이슈: %s", len(issues), issues[:5])
-        return {**state, "validation_errors": issues}
+        return {"validation_errors": issues}
     return html_validator_node
 
 
@@ -122,6 +148,9 @@ def make_should_retry_html(_ctx: NodeContext):
         if not state.get("ops_queue") and not has_output:
             return "done"
         if not has_output and retry < settings.AGENT_MAX_RETRIES:
+            return "retry"
+        # 출력 있어도 검증 오류 있으면 retry (html_editor 경로)
+        if has_output and state.get("validation_errors") and retry < settings.AGENT_MAX_RETRIES:
             return "retry"
         return "done"
     return should_retry_html
@@ -235,7 +264,7 @@ def make_patch_serializer(_ctx: NodeContext):
     def patch_serializer_node(state: AgentState) -> AgentState:
         ops = state.get("component_specs", [])
         logger.info("  [patch_serializer] ops=%d", len(ops))
-        return {**state, "result_patches": ops}
+        return {"result_patches": ops}
     return patch_serializer_node
 
 
@@ -258,7 +287,7 @@ def make_validator(ctx: NodeContext):
                 logger.info("  [validator] slide_scope_locked: /slides/ op %d개 제거", removed)
 
         logger.info("  [validator] valid ops=%d  retry=%d", len(valid), state.get("retry_count", 0))
-        return {**state, "result_patches": valid}
+        return {"result_patches": valid}
     return validator_node
 
 

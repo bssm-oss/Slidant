@@ -80,7 +80,19 @@ def _build_html_graph(ctx: NodeContext):
         "retry": "retry_inc",
         "done":  "ops_dispatcher",
     })
-    graph.add_edge("retry_inc", "ops_dispatcher")
+    def _route_from_retry(state: AgentState) -> str:
+        op_type = state.get("current_op", {}).get("type", "")
+        if op_type in ("edit", "component_edit"):
+            return "html_editor"
+        if op_type == "component_delete":
+            return "component_deleter"
+        return "ops_dispatcher"
+
+    graph.add_conditional_edges("retry_inc", _route_from_retry, {
+        "html_editor": "html_editor",
+        "component_deleter": "component_deleter",
+        "ops_dispatcher": "ops_dispatcher",
+    })
 
     graph.add_conditional_edges("slide_dispatch", dispatch_slides, ["slide_composer"])
     graph.add_edge("slide_composer",  "html_aggregator")

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import time
 from typing import TYPE_CHECKING
 
@@ -29,7 +28,7 @@ from app.agent.state import AgentState  # noqa: F401
 from app.agent.prompts import (  # noqa: F401
     SYSTEM_PROMPTS, _make_cached_system_prompt,
     SLIDE_COMPOSER_PROMPT, HTML_EDITOR_PROMPT,
-    COMPONENT_EDITOR_PROMPT, LAYOUT_COMPOSER_PROMPT,
+    LAYOUT_COMPOSER_PROMPT,
     UNIFIED_PLANNER_PROMPT, PLANNER_PROMPT,
     TITLE_GENERATOR_PROMPT,
 )
@@ -45,14 +44,16 @@ def _make_llm(api_key_plaintext: str, provider: str = "anthropic", json_mode: bo
         if json_mode:
             extra["response_format"] = {"type": "json_object"}
         model_name = settings.OPENROUTER_MODEL.lower()
-        model_kwargs: dict = {"max_completion_tokens": 8192, **extra}
+        model_kwargs: dict = {"max_completion_tokens": settings.AGENT_MAX_TOKENS, **extra}
         if any(m in model_name for m in ("o1", "o3", "/r1", "reasoning")):
             model_kwargs["reasoning"] = {"max_tokens": 1024}
+        elif "qwen3" in model_name:
+            model_kwargs["reasoning"] = {"effort": "none"}  # thinking 모드 비활성화
         return ChatOpenAI(
             base_url=OPENROUTER_BASE_URL,
             api_key=api_key_plaintext,
             model=settings.OPENROUTER_MODEL,
-            max_tokens=8192,
+            max_tokens=settings.AGENT_MAX_TOKENS,
             model_kwargs=model_kwargs,
         )
     return ChatAnthropic(
@@ -63,30 +64,6 @@ def _make_llm(api_key_plaintext: str, provider: str = "anthropic", json_mode: bo
             "extra_headers": {"anthropic-beta": "prompt-caching-2024-07-31"},
         },
     )
-
-
-# ── JSON 추출 ─────────────────────────────────────────────────────────────────
-
-def _extract_json(text: str) -> dict | list | None:
-    text = text.strip()
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-    m = re.search(r"```(?:json)?\s*(\{[\s\S]*?\}|\[[\s\S]*?\])\s*```", text)
-    if m:
-        try:
-            return json.loads(m.group(1))
-        except json.JSONDecodeError:
-            pass
-    for pattern in (r"(\{[\s\S]*\})", r"(\[[\s\S]*\])"):
-        m = re.search(pattern, text)
-        if m:
-            try:
-                return json.loads(m.group(1))
-            except json.JSONDecodeError:
-                continue
-    return None
 
 
 # ── 프레젠테이션 제목 자동 생성 ───────────────────────────────────────────────
