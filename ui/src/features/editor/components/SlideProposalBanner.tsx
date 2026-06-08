@@ -26,6 +26,7 @@ function clearPreview() {
 export default function SlideProposalBanner({ proposal }: Props) {
   const { approveProposal, rejectProposal } = useProposalStore()
   const [approving, setApproving] = useState(false)
+  const [rejecting, setRejecting] = useState(false)
   const [expanded, setExpanded] = useState(false)
 
   const handleApprove = async () => {
@@ -40,7 +41,14 @@ export default function SlideProposalBanner({ proposal }: Props) {
 
   const handleReject = async () => {
     clearPreview()
-    await rejectProposal(proposal.id)
+    setRejecting(true)
+    try {
+      await rejectProposal(proposal.id)
+    } catch {
+      // rejectProposal 내부에서 swallow — 여기서도 조용히 처리
+    } finally {
+      setRejecting(false)
+    }
   }
 
   return (
@@ -74,8 +82,8 @@ export default function SlideProposalBanner({ proposal }: Props) {
         </button>
         <button
           onClick={handleReject}
-          disabled={approving}
-          className="flex items-center justify-center w-8 h-8 rounded-[8px] border border-[var(--border)] text-[var(--text-muted)] hover:bg-red-500/10 hover:text-red-400 hover:border-red-400/30 transition-colors shrink-0"
+          disabled={approving || rejecting}
+          className="flex items-center justify-center w-8 h-8 rounded-[8px] border border-[var(--border)] text-[var(--text-muted)] hover:bg-red-500/10 hover:text-red-400 hover:border-red-400/30 transition-colors shrink-0 disabled:opacity-50"
           title="거절"
         >
           <X size={14} />

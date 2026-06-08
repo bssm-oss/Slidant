@@ -111,15 +111,11 @@ export const useProposalStore = create<ProposalState>((set) => ({
   }),
 
   rejectProposal: async (id) => {
-    try {
-      const { rejectProposal: apiReject } = await import('@/shared/lib/proposalApi')
-      await apiReject(id)
-      set((s) => {
-        const proposals = s.proposals.filter((p) => p.id !== id)
-        return { proposals, conflicts: detectConflicts(proposals) }
-      })
-    } catch (e) {
-      console.error('rejectProposal failed', e)
-    }
+    const { rejectProposal: apiReject } = await import('@/shared/lib/proposalApi')
+    await apiReject(id)
+    set((s) => {
+      const proposals = s.proposals.filter((p) => p.id !== id)
+      return { proposals, conflicts: detectConflicts(proposals) }
+    })
   },
 }))
