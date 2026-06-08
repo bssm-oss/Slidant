@@ -26,7 +26,7 @@ def make_slide_composer(ctx: NodeContext):
         design_tokens = state.get("design_tokens", {})
 
         if ctx.on_event:
-            ctx.on_event("node_start", f"✏️ 슬라이드 {idx+1} 생성 중...")
+            ctx.on_event("node_start", f"슬라이드 {idx+1} 생성 중...")
 
         search_ctx = ""
         if state.get("search_summary"):
@@ -121,7 +121,7 @@ def make_slide_composer(ctx: NodeContext):
 def make_html_editor(ctx: NodeContext):
     async def html_editor_node(state: AgentState) -> AgentState:
         if ctx.on_event:
-            ctx.on_event("node_start", "✏️ 슬라이드 수정 중...")
+            ctx.on_event("node_start", "슬라이드 수정 중...")
 
         existing_html = state.get("slide_context", "")
         if not existing_html:

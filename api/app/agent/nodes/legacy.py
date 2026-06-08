@@ -27,7 +27,7 @@ def _flatten_ops(ops: list) -> list[dict]:
 def make_design_resolver(ctx: NodeContext):
     async def design_resolver_node(state: AgentState) -> AgentState:
         if ctx.on_event:
-            ctx.on_event("node_start", "🎨 디자인 토큰 결정 중...")
+            ctx.on_event("node_start", "디자인 토큰 결정 중...")
         messages = [
             SystemMessage(content=DESIGN_RESOLVER_PROMPT),
             HumanMessage(content=f"Plan:\n{state.get('plan', '')}\nMode: {state.get('mode', 'single_edit')}"),

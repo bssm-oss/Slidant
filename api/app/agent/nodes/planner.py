@@ -19,7 +19,7 @@ logger = logging.getLogger("slidant.agent")
 def make_unified_planner(ctx: NodeContext):
     async def unified_planner_node(state: AgentState) -> AgentState:
         if ctx.on_event:
-            ctx.on_event("node_start", "🧠 계획 수립 중...")
+            ctx.on_event("node_start", "계획 수립 중...")
         history = state.get("conversation_history", "")
         history_section = f"\n\nPrevious conversation:\n{history}" if history else ""
 
@@ -310,7 +310,7 @@ def route_from_dispatcher(state: AgentState) -> str:
 def make_self_reviewer(ctx: NodeContext):
     async def self_reviewer_node(state: AgentState) -> AgentState:
         if ctx.on_event:
-            ctx.on_event("node_start", "🔍 결과 검토 중...")
+            ctx.on_event("node_start", "결과 검토 중...")
 
         # scope_locked: 특정 슬라이드 편집 요청 — 다른 슬라이드 correction 생성 방지
         if ctx.slide_scope_locked:
@@ -402,7 +402,7 @@ def make_legacy_planner(ctx: NodeContext):
     async def planner_node(state: AgentState) -> AgentState:
         logger.info("  [planner] 계획 수립 중...")
         if ctx.on_event:
-            ctx.on_event("node_start", "🧠 계획 수립 중...")
+            ctx.on_event("node_start", "계획 수립 중...")
         history = state.get("conversation_history", "")
         history_section = f"\n\nPrevious conversation (for context):\n{history}" if history else ""
         messages = [

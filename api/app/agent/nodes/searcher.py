@@ -49,7 +49,7 @@ def make_web_searcher(ctx: NodeContext):
 
         from app.core.config import settings
         if ctx.on_event:
-            ctx.on_event("node_start", f"🔍 웹 검색 중 ({len(queries)}개)...")
+            ctx.on_event("node_start", f"웹 검색 중 ({len(queries)}개)...")
         results = []
         tavily_key = getattr(settings, "TAVILY_API_KEY", "")
         if tavily_key:
@@ -178,7 +178,7 @@ def make_content_planner(ctx: NodeContext):
 def make_design_resolver_html(ctx: NodeContext):
     async def design_resolver_node_html(state: AgentState) -> AgentState:
         if ctx.on_event:
-            ctx.on_event("node_start", "🎨 디자인 확정 중...")
+            ctx.on_event("node_start", "디자인 확정 중...")
         messages = [
             SystemMessage(content=DESIGN_RESOLVER_PROMPT),
             HumanMessage(content=f"Plan:\n{state.get('plan', '')}\nMode: {state.get('mode', 'create')}"),
