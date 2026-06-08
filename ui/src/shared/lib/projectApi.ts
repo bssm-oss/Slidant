@@ -63,6 +63,22 @@ export interface SlideHistoryEntry {
   created_at: string
 }
 
+export interface HistoryDiff {
+  added: string[]
+  removed: string[]
+  modified: string[]
+  before_html: string | null
+  after_html: string | null
+}
+
+export async function fetchHistoryDiff(
+  projectId: string,
+  slideId: string,
+  historyId: string,
+): Promise<HistoryDiff> {
+  return api.get(`/projects/${projectId}/slides/${slideId}/history/${historyId}/diff`)
+}
+
 export async function fetchSlideHistory(
   projectId: string, slideId: string, componentId?: string,
 ): Promise<SlideHistoryEntry[]> {
