@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import DashboardLayout from '@/shared/components/layout/DashboardLayout'
-import { Button, Badge, Spinner } from '@/shared/components/ui'
+import { Button, Badge, Card, Spinner } from '@/shared/components/ui'
 import { useToastStore } from '@/shared/components/ui/Toast'
 import { isLoggedIn } from '@/shared/lib/auth'
 import { api } from '@/shared/lib/apiClient'
@@ -71,73 +71,73 @@ export default function SettingsPage() {
   return (
     <DashboardLayout>
       <div className="flex-1 overflow-y-auto">
-        <div className="px-10 py-8 flex flex-col gap-8 max-w-2xl">
+        <div className="px-10 py-8 flex flex-col gap-8 max-w-5xl">
           <div>
             <h1 className="text-xl font-bold text-[var(--text)]">설정</h1>
             <p className="text-sm text-[var(--text-muted)] mt-1">API Key 및 계정 설정</p>
           </div>
 
           {/* API Key 섹션 */}
-          <section className="flex flex-col gap-4">
+          <section className="flex flex-col gap-5">
             <div className="flex items-center gap-2">
               <Key size={16} className="text-[var(--accent)]" />
-              <h2 className="text-base font-bold text-[var(--text)]">Anthropic API Key</h2>
+              <h2 className="text-base font-bold text-[var(--text)]">API Key 관리</h2>
             </div>
 
             {/* 보안 안내 */}
-            <div className="flex items-start gap-3 px-4 py-3 rounded-[var(--radius)] bg-[var(--accent-subtle)] border border-purple-200">
+            <Card className="p-4 flex items-start gap-3 bg-[var(--accent-subtle)] border-purple-200">
               <ShieldCheck size={16} className="text-[var(--accent)] mt-0.5 shrink-0" />
               <div className="text-xs text-[var(--accent-text)] leading-relaxed">
                 <p className="font-semibold mb-0.5">보안 안내</p>
                 <p>API Key는 AES-256으로 암호화 저장됩니다. 요청 처리 중에만 메모리에 존재하며 로그에 기록되지 않습니다.</p>
-                <a
-                  href="https://console.anthropic.com/settings/keys"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1 mt-1.5 text-[var(--accent)] hover:underline w-fit"
-                >
-                  Anthropic 콘솔에서 Key 발급 <ExternalLink size={11} />
-                </a>
               </div>
-            </div>
+            </Card>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
 
             {/* 등록된 Key 목록 */}
-            {loading ? (
-              <div className="flex items-center justify-center h-20"><Spinner /></div>
-            ) : apiKeys.length > 0 ? (
-              <div className="flex flex-col gap-2">
-                {apiKeys.map((k) => (
-                  <div key={k.id} className="flex items-center justify-between px-4 py-3 rounded-[var(--radius)] border border-[var(--border)] bg-white">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-[8px] bg-[var(--mint-subtle)] flex items-center justify-center">
-                        <Key size={14} className="text-[var(--mint)]" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-[var(--text)] capitalize">{k.provider}</span>
-                          <Badge variant="mint">활성</Badge>
+            <Card className="p-5 flex flex-col gap-3">
+              <h3 className="text-sm font-bold text-[var(--text)]">등록된 Key</h3>
+              {loading ? (
+                <div className="flex items-center justify-center h-20"><Spinner /></div>
+              ) : apiKeys.length > 0 ? (
+                <div className="flex flex-col gap-2">
+                  {apiKeys.map((k) => (
+                    <div key={k.id} className="flex items-center justify-between px-4 py-3 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-muted)]">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-[10px] bg-[var(--mint-subtle)] flex items-center justify-center">
+                          <Key size={15} className="text-[var(--mint)]" />
                         </div>
-                        <p className="text-xs text-[var(--text-disabled)] mt-0.5">등록일: {formatDate(k.created_at)}</p>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-[var(--text)] capitalize">{k.provider}</span>
+                            <Badge variant="mint">활성</Badge>
+                          </div>
+                          <p className="text-xs text-[var(--text-disabled)] mt-0.5">등록일: {formatDate(k.created_at)}</p>
+                        </div>
                       </div>
+                      <button
+                        onClick={() => handleDelete(k.id)}
+                        className="w-8 h-8 flex items-center justify-center rounded-[8px] text-[var(--text-disabled)] hover:bg-red-50 hover:text-red-500 transition-colors cursor-pointer"
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </div>
-                    <button
-                      onClick={() => handleDelete(k.id)}
-                      className="w-8 h-8 flex items-center justify-center rounded-[8px] text-[var(--text-disabled)] hover:bg-red-50 hover:text-red-500 transition-colors cursor-pointer"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-10 gap-2 border-2 border-dashed border-[var(--border)] rounded-[var(--radius)]">
+                  <div className="w-10 h-10 rounded-full bg-[var(--bg-muted)] flex items-center justify-center">
+                    <Key size={16} className="text-[var(--text-disabled)]" />
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="flex items-center justify-center py-8 border-2 border-dashed border-[var(--border)] rounded-[var(--radius)]">
-                <p className="text-sm text-[var(--text-muted)]">등록된 API Key가 없습니다</p>
-              </div>
-            )}
+                  <p className="text-sm text-[var(--text-muted)]">등록된 API Key가 없습니다</p>
+                </div>
+              )}
+            </Card>
 
             {/* 새 Key 등록 */}
-            <div className="flex flex-col gap-2">
-              <label className="text-xs font-semibold text-[var(--text-muted)]">API Key 등록</label>
+            <Card className="p-5 flex flex-col gap-3 border-[var(--accent)]/30">
+              <h3 className="text-sm font-bold text-[var(--text)]">API Key 등록</h3>
 
               {/* Provider 선택 */}
               <div className="flex gap-2">
@@ -145,22 +145,37 @@ export default function SettingsPage() {
                   <button
                     key={p}
                     onClick={() => setProvider(p)}
-                    className={`flex-1 py-2 text-\[12px\] leading-none font-semibold rounded-[8px] border transition-all cursor-pointer ${
+                    className={`flex-1 py-2 text-[12px] leading-none font-semibold rounded-[8px] border transition-all cursor-pointer ${
                       provider === p
                         ? 'bg-[var(--accent-subtle)] text-[var(--accent-text)] border-purple-200'
                         : 'bg-white text-[var(--text-muted)] border-[var(--border)] hover:border-[var(--border-strong)]'
                     }`}
                   >
-                    {p === 'openrouter' ? '🆓 OpenRouter' : 'Anthropic'}
+                    {p === 'openrouter' ? 'OpenRouter' : 'Anthropic'}
                   </button>
                 ))}
               </div>
 
-              {provider === 'openrouter' && (
+              {provider === 'openrouter' ? (
                 <div className="px-3 py-2 rounded-[8px] bg-[var(--mint-subtle)] border border-emerald-200 text-xs text-[var(--mint-text)]">
-                  OpenRouter는 무료 모델 제공 (Llama 3.3 70B 등).{' '}
-                  <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="underline font-semibold">
-                    openrouter.ai/keys →
+                  <a
+                    href="https://openrouter.ai/keys"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 font-semibold hover:underline w-fit"
+                  >
+                    OpenRouter에서 Key 발급 <ExternalLink size={11} />
+                  </a>
+                </div>
+              ) : (
+                <div className="px-3 py-2 rounded-[8px] bg-[var(--accent-subtle)] border border-purple-200 text-xs text-[var(--accent-text)]">
+                  <a
+                    href="https://console.anthropic.com/settings/keys"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 font-semibold hover:underline w-fit"
+                  >
+                    Anthropic 콘솔에서 Key 발급 <ExternalLink size={11} />
                   </a>
                 </div>
               )}
@@ -179,6 +194,8 @@ export default function SettingsPage() {
                 </Button>
               </div>
               <p className="text-xs text-[var(--text-disabled)]">기존 {provider} Key가 있으면 자동으로 교체됩니다</p>
+            </Card>
+
             </div>
           </section>
         </div>
