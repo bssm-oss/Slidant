@@ -4,6 +4,7 @@ import { cn } from '@/shared/lib/utils'
 import { RotateCcw, Clock, ChevronRight } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/components/ui/dialog'
 import { fetchSlideHistory, restoreFromHistory, fetchHistoryDiff, type SlideHistoryEntry, type HistoryDiff } from '@/shared/lib/projectApi'
+import { buildSlideSrc } from '@/shared/lib/slideHtml'
 
 function formatDate(iso: string) {
   const d = new Date(iso)
@@ -205,10 +206,10 @@ export default function HistoryPanel({ open, onClose }: Props) {
                       <div className="aspect-video rounded-[6px] overflow-hidden border border-[var(--border)] bg-[#0A0F1E]">
                         {diff.before_html ? (
                           <iframe
-                            srcDoc={diff.before_html}
+                            srcDoc={buildSlideSrc(diff.before_html)}
                             className="w-full h-full pointer-events-none"
                             style={{ transform: 'scale(0.33)', transformOrigin: 'top left', width: '300%', height: '300%' }}
-                            sandbox="allow-same-origin"
+                            sandbox="allow-scripts allow-same-origin"
                           />
                         ) : (
                           <div className="flex items-center justify-center h-full text-[10px] text-[var(--text-disabled)]">없음</div>
@@ -221,10 +222,10 @@ export default function HistoryPanel({ open, onClose }: Props) {
                       <div className="aspect-video rounded-[6px] overflow-hidden border border-[var(--accent)] bg-[#0A0F1E]">
                         {diff.after_html ? (
                           <iframe
-                            srcDoc={diff.after_html}
+                            srcDoc={buildSlideSrc(diff.after_html)}
                             className="w-full h-full pointer-events-none"
                             style={{ transform: 'scale(0.33)', transformOrigin: 'top left', width: '300%', height: '300%' }}
-                            sandbox="allow-same-origin"
+                            sandbox="allow-scripts allow-same-origin"
                           />
                         ) : (
                           <div className="flex items-center justify-center h-full text-[10px] text-[var(--text-disabled)]">없음</div>

@@ -27,7 +27,7 @@ class SlideHistoryRepository(BaseRepository[SlideHistory]):
                 SlideHistory.slide_id == slide_id,
                 SlideHistory.created_at < before_dt,
             )
-            .order_by(SlideHistory.created_at.desc())
+            .order_by(SlideHistory.created_at.desc(), SlideHistory.id.desc())
             .limit(1)
         )
         return result.scalars().first()
