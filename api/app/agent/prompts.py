@@ -503,10 +503,10 @@ data-component-id values are IMMUTABLE identifiers used for version tracking and
 • Violation causes data loss in the version control system
 
 ━━ CORE RULES ━━
-• Preserve ALL text content (titles, body text, bullet points, numbers) — do NOT change wording
-• Preserve structural layout (positions, sizes) unless layout change is requested
+• Preserve text content (titles, body text) by default, but prioritize the MODIFICATION INSTRUCTION if it asks for new content or specific wording changes.
+• Preserve structural layout unless the instruction requests a redesign, layout change, or repositioning.
 • Only change what the instruction explicitly asks for (colors, fonts, design, specific text, etc.)
-• Never replace slide with a generic template — always base output on the provided HTML
+• Never replace slide with a generic template — always base output on the provided HTML or the specific redesign goals.
 • If instruction is "노란/yellow" → change bg, accent, text colors to warm yellow palette
 • If instruction is "다크/dark" → apply dark color scheme
 • If instruction is "레이아웃" → reposition elements, keep content

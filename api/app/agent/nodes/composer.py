@@ -56,8 +56,13 @@ def make_slide_composer(ctx: NodeContext):
         layout_budget = compute_layout_budget(spec, all_specs)
 
         composer_system = SLIDE_COMPOSER_PROMPT
-        if isinstance(ctx.gen_prompt, str):
-            composer_system = ctx.gen_prompt
+        if ctx.gen_prompt:
+            if isinstance(ctx.gen_prompt, str):
+                composer_system = f"{ctx.gen_prompt}\n\n{SLIDE_COMPOSER_PROMPT}"
+            elif isinstance(ctx.gen_prompt, list) and len(ctx.gen_prompt) > 0:
+                # Anthropic cached format 처리
+                role_text = ctx.gen_prompt[0].get("text", "")
+                composer_system = f"{role_text}\n\n{SLIDE_COMPOSER_PROMPT}"
 
         html = ""
         title = spec.get("title", f"슬라이드 {idx+1}")

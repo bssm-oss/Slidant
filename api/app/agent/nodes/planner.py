@@ -63,8 +63,18 @@ def make_unified_planner(ctx: NodeContext):
         history = state.get("conversation_history", "")
         history_section = f"\n\nPrevious conversation:\n{history}" if history else ""
 
+        # 커스텀 에이전트 지침 주입
+        custom_instructions = ""
+        if ctx.gen_prompt:
+            if isinstance(ctx.gen_prompt, str):
+                custom_instructions = f"\n\nCUSTOM ROLE INSTRUCTIONS:\n{ctx.gen_prompt}"
+            elif isinstance(ctx.gen_prompt, list) and len(ctx.gen_prompt) > 0:
+                # Anthropic cached format: first element is usually the role intro
+                role_text = ctx.gen_prompt[0].get("text", "")
+                custom_instructions = f"\n\nCUSTOM ROLE INSTRUCTIONS:\n{role_text}"
+
         messages = [
-            SystemMessage(content=UNIFIED_PLANNER_PROMPT),
+            SystemMessage(content=UNIFIED_PLANNER_PROMPT + custom_instructions),
             HumanMessage(content=f"Command: {state['command']}{history_section}\n\nCurrent slide:\n{state['slide_context']}"),
         ]
         raw = ""
@@ -174,18 +184,28 @@ def make_unified_planner(ctx: NodeContext):
             #   미차단 시 기존 슬라이드가 proposal 없이 즉시 교체/파괴됨)
             if scope_forced_idx is not None:
                 fixed_ops = []
+                # 재디자인/레이아웃 변경 의도가 있는지 확인
+                is_redesign = any(k in state.get("command", "").lower() for k in ["디자인", "레이아웃", "redesign", "layout", "새로"])
                 for op in operations:
                     t = op.get("type")
                     if t == "create":
-                        logger.warning(
-                            "  [unified_planner] @슬라이드%s + create op 위반 감지 → edit 변환 (slide_index=%d)",
-                            scope_matches[0], scope_forced_idx,
-                        )
-                        op = {
-                            "type": "edit",
-                            "slide_index": scope_forced_idx,
-                            "instruction": op.get("spec", {}).get("title") or state.get("command", ""),
-                        }
+                        if is_redesign:
+                            # 재디자인 요청이면 create 유지하되 slide_index 지정
+                            logger.info(
+                                "  [unified_planner] @슬라이드%s + redesign 감지 → create 유지 (slide_index=%d)",
+                                scope_matches[0], scope_forced_idx,
+                            )
+                            op["slide_index"] = scope_forced_idx
+                        else:
+                            logger.warning(
+                                "  [unified_planner] @슬라이드%s + create op 위반 감지 → edit 변환 (slide_index=%d)",
+                                scope_matches[0], scope_forced_idx,
+                            )
+                            op = {
+                                "type": "edit",
+                                "slide_index": scope_forced_idx,
+                                "instruction": op.get("spec", {}).get("title") or state.get("command", ""),
+                            }
                     elif t in ("edit", "component_edit", "component_delete", "delete"):
                         if op.get("slide_index", scope_forced_idx) != scope_forced_idx:
                             logger.info(
