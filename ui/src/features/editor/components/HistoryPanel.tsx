@@ -206,6 +206,7 @@ export default function HistoryPanel({ open, onClose }: Props) {
                       <div className="aspect-video rounded-[6px] overflow-hidden border border-[var(--border)] bg-[#0A0F1E]">
                         {diff.before_html ? (
                           <iframe
+                            key={diff.before_html}
                             srcDoc={buildSlideSrc(diff.before_html)}
                             className="w-full h-full pointer-events-none"
                             style={{ transform: 'scale(0.33)', transformOrigin: 'top left', width: '300%', height: '300%' }}
@@ -222,6 +223,7 @@ export default function HistoryPanel({ open, onClose }: Props) {
                       <div className="aspect-video rounded-[6px] overflow-hidden border border-[var(--accent)] bg-[#0A0F1E]">
                         {diff.after_html ? (
                           <iframe
+                            key={diff.after_html}
                             srcDoc={buildSlideSrc(diff.after_html)}
                             className="w-full h-full pointer-events-none"
                             style={{ transform: 'scale(0.33)', transformOrigin: 'top left', width: '300%', height: '300%' }}

@@ -231,4 +231,4 @@ def merge_component_changes(
         elif cid in old_ids:
             del result[cid]
 
-    return HtmlSlide(html=HtmlSlide._render(old.style, result, old.orphans)).html
+    return HtmlSlide(html=HtmlSlide._render(new.style, result, old.orphans)).html

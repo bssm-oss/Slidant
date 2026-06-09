@@ -132,6 +132,7 @@ function SortableSlideItem({
         {slide.html_content ? (
           <div style={{ width: 200, height: 112.5, overflow: 'hidden', position: 'absolute', top: 0, left: 0 }}>
             <iframe
+              key={slide.html_content}
               srcDoc={buildSlideSrc(slide.html_content, true)}
               style={{
                 width: 960,

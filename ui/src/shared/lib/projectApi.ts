@@ -105,6 +105,15 @@ export async function restoreFromHistory(projectId: string, slideId: string, his
   await api.post<void>(`/projects/${projectId}/slides/${slideId}/history/${historyId}/restore`, {})
 }
 
+export async function restoreSlideHtml(
+  projectId: string,
+  slideId: string,
+  html: string,
+  reason = '사용자 버전 복원',
+): Promise<void> {
+  await api.post<void>(`/projects/${projectId}/slides/${slideId}/restore-html`, { html, reason })
+}
+
 export async function restoreComponentFromHistory(
   projectId: string,
   slideId: string,

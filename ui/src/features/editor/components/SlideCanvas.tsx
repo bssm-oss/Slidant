@@ -127,10 +127,10 @@ function useHtmlSlideEdit(
     const doc = iframe?.contentDocument
     if (!doc) return
 
-    // 기존 이벤트 리스너를 교체하기 위해 body를 clone하지 않고 직접 등록
-    // (srcdoc 변경마다 onLoad 재호출되므로 중복 등록 없음)
+    const els = doc.querySelectorAll<HTMLElement>('[data-component-id]')
+    console.log('[handleIframeLoad] called, components:', els.length, 'url:', doc.URL)
 
-    doc.querySelectorAll<HTMLElement>('[data-component-id]').forEach((el) => {
+    els.forEach((el) => {
       const id = el.getAttribute('data-component-id') ?? ''
 
       // ── 클릭: 컴포넌트 선택 → RightPanel 속성 패널 표시 ──
@@ -205,6 +205,7 @@ function useHtmlSlideEdit(
 
     // 배경 클릭 → 선택 해제
     doc.body.addEventListener('click', () => onComponentSelect(null, null))
+    console.log('[handleIframeLoad] handlers attached')
   }, [iframeRef, projectId, slideId, onHtmlChange, onComponentSelect])
 
   // 파일 선택 → 크롭 모달 오픈 (직접 적용 X)
@@ -339,7 +340,8 @@ function rebuildFullHtml(innerHtml: string): string {
   // innerHTML에서 <head>...</head> <body>...</body> 추출
   const headMatch = innerHtml.match(/<head[^>]*>([\s\S]*?)<\/head>/i)
   const bodyMatch = innerHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i)
-  const head = headMatch ? headMatch[1] : ''
+  const rawHead = headMatch ? headMatch[1] : ''
+  const head = rawHead.replace(/<style[^>]*id="s-safe"[^>]*>[\s\S]*?<\/style>/i, '')
   const body = bodyMatch ? bodyMatch[1] : innerHtml
   return `<!DOCTYPE html><html><head>${head}</head><body>${body}</body></html>`
 }
@@ -992,6 +994,7 @@ export default function SlideCanvas() {
           style={{ width: SLIDE_W * scale, height: SLIDE_H * scale }}
           onClick={(e) => e.stopPropagation()}>
           <iframe
+            key={previewHtml ?? htmlContent}
             ref={iframeRef}
             srcDoc={iframeSrc}
             style={{

@@ -104,6 +104,7 @@ function SlideView({ slide }: { slide: Slide }) {
       {slide.html_content ? (
         <div style={{ width: 960 * scale, height: 540 * scale, overflow: 'hidden', position: 'relative', flexShrink: 0 }}>
           <iframe
+            key={slide.html_content}
             srcDoc={buildSlideSrc(slide.html_content)}
             style={{
               width: 960,

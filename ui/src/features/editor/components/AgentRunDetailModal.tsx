@@ -70,6 +70,7 @@ function SlidePreview({
       >
         {html ? (
           <iframe
+            key={html}
             srcDoc={buildSlideSrc(html)}
             style={{
               width: 960,
@@ -171,6 +172,7 @@ function SlideChangeTile({
           >
             {change.after_html ? (
               <iframe
+                key={change.after_html}
                 srcDoc={buildSlideSrc(change.after_html)}
                 style={{
                   width: 960,

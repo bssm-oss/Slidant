@@ -285,6 +285,22 @@ async def restore_component_from_history_endpoint(
     await restore_component_from_history(uow, slide_id, history_id, body.component_id)
 
 
+class RestoreHtmlBody(BaseModel):
+    html: str
+    reason: str = "사용자 버전 복원"
+
+
+@router.post("/{project_id}/slides/{slide_id}/restore-html", status_code=status.HTTP_204_NO_CONTENT)
+async def restore_html_endpoint(
+    project_id: UUID, slide_id: UUID,
+    body: RestoreHtmlBody,
+    current_user: CurrentUser, uow: UoW,
+):
+    await project_service.get_slide(uow.projects, uow.slides, project_id, current_user.id, slide_id)
+    from app.services.slide_history_service import archive_and_apply
+    await archive_and_apply(uow, slide_id, [], body.reason, html_content=body.html)
+
+
 class ProjectThemeUpdate(BaseModel):
     theme: dict
 

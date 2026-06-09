@@ -175,6 +175,7 @@ export default function SlideThumbnail({ projectId }: Props) {
       {status === 'ready' && htmlContent && (
         <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
           <iframe
+            key={htmlContent}
             srcDoc={buildSlideSrc(htmlContent)}
             style={{
               width: SLIDE_W,
