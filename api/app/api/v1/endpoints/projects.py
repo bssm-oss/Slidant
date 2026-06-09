@@ -296,9 +296,22 @@ async def restore_html_endpoint(
     body: RestoreHtmlBody,
     current_user: CurrentUser, uow: UoW,
 ):
-    await project_service.get_slide(uow.projects, uow.slides, project_id, current_user.id, slide_id)
+    project = await uow.projects.get(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    is_owner = project.owner_id == current_user.id
+    if not is_owner:
+        member = await uow.project_members.get_member(project_id, current_user.id)
+        if not member or member.role not in ("editor", "owner"):
+            raise HTTPException(status_code=403, detail="Not authorized")
+    slide = await uow.slides.get(slide_id)
+    if not slide or slide.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Slide not found")
+
     from app.services.slide_history_service import archive_and_apply
-    await archive_and_apply(uow, slide_id, [], body.reason, html_content=body.html)
+    await archive_and_apply(uow, slide_id, list(slide.content or []), body.reason, html_content=body.html)
+    await uow.commit()
+    await _notify_slide_changed(project_id, slide_id)
 
 
 class ProjectThemeUpdate(BaseModel):
