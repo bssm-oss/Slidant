@@ -135,15 +135,19 @@ function useHtmlSlideEdit(
       return target.closest<HTMLElement>('[data-component-id]')
     }
 
+    let selectedComponentId: string | null = null
+
     const handleClick = (e: MouseEvent) => {
       const el = getComponentEl(e.target)
       if (!el) {
+        selectedComponentId = null
         onComponentSelect(null, null)
         return
       }
       e.stopPropagation()
       if (isViewer) return
-      onComponentSelect(el.getAttribute('data-component-id') ?? '', parseElementStyle(el))
+      selectedComponentId = el.getAttribute('data-component-id') ?? ''
+      onComponentSelect(selectedComponentId, parseElementStyle(el))
     }
 
     const handleDblClick = (e: MouseEvent) => {
@@ -204,8 +208,22 @@ function useHtmlSlideEdit(
       el.addEventListener('keydown', onKeyDown)
     }
 
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return
+      if (target.isContentEditable) return
+      if (e.key !== 'Backspace' || !selectedComponentId || isViewer) return
+
+      e.preventDefault()
+      window.dispatchEvent(new CustomEvent('html-component-delete-request', {
+        detail: { componentId: selectedComponentId },
+      }))
+      selectedComponentId = null
+    }
+
     doc.addEventListener('click', handleClick)
     doc.addEventListener('dblclick', handleDblClick)
+    doc.addEventListener('keydown', handleKeyDown)
 
     els.forEach((el) => {
       // 이미지 컴포넌트 커서
