@@ -173,6 +173,12 @@ export default function PresentationMode({ slides, startIndex, onClose }: Presen
   const [current, setCurrent] = useState(startIndex)
   const [controlsVisible, setControlsVisible] = useState(true)
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  // Mount 시 포커스 강제 (키보드 이벤트 캡처 보장)
+  useEffect(() => {
+    containerRef.current?.focus()
+  }, [])
 
   const resetIdleTimer = useCallback(() => {
     setControlsVisible(true)
@@ -197,12 +203,31 @@ export default function PresentationMode({ slides, startIndex, onClose }: Presen
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { onClose(); return }
-      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); goNext() }
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); goPrev() }
+      // Escape는 항상 동작 (onClose 호출)
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onClose()
+        return
+      }
+
+      // 입력 필드에 포커스가 있는 경우 네비게이션 방지 (발표 모드에서는 드물지만 방어 코드)
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+
+      // 다음 슬라이드: 오른쪽, 아래, 스페이스, 엔터, PageDown
+      if (['ArrowRight', 'ArrowDown', ' ', 'Enter', 'PageDown'].includes(e.key)) {
+        e.preventDefault()
+        goNext()
+      }
+      // 이전 슬라이드: 왼쪽, 위, PageUp, Backspace
+      else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace'].includes(e.key)) {
+        e.preventDefault()
+        goPrev()
+      }
     }
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
+
+    // capture: true를 사용하여 다른 요소(버튼, iframe 등)가 이벤트를 가로채기 전에 먼저 처리
+    window.addEventListener('keydown', handleKey, true)
+    return () => window.removeEventListener('keydown', handleKey, true)
   }, [goNext, goPrev, onClose])
 
   const slide = slides[current]
@@ -215,11 +240,15 @@ export default function PresentationMode({ slides, startIndex, onClose }: Presen
 
   return (
     <div
+      ref={containerRef}
+      tabIndex={0} // 키보드 이벤트를 받을 수 있도록 설정
       onMouseMove={resetIdleTimer}
+      onMouseDown={() => containerRef.current?.focus()} // 클릭 시 포커스 회수
       style={{
         position: 'fixed', inset: 0, zIndex: 9999,
         background: '#000',
         cursor: controlsVisible ? 'default' : 'none',
+        outline: 'none', // 포커스 링 제거
       }}
     >
       {/* Slide fills entire viewport */}
