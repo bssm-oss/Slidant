@@ -130,83 +130,91 @@ function useHtmlSlideEdit(
     const els = doc.querySelectorAll<HTMLElement>('[data-component-id]')
     console.log('[handleIframeLoad] called, components:', els.length, 'url:', doc.URL)
 
-    els.forEach((el) => {
+    const getComponentEl = (target: EventTarget | null) => {
+      if (!(target instanceof doc.defaultView!.Element)) return null
+      return target.closest<HTMLElement>('[data-component-id]')
+    }
+
+    const handleClick = (e: MouseEvent) => {
+      const el = getComponentEl(e.target)
+      if (!el) {
+        onComponentSelect(null, null)
+        return
+      }
+      e.stopPropagation()
+      if (isViewer) return
+      onComponentSelect(el.getAttribute('data-component-id') ?? '', parseElementStyle(el))
+    }
+
+    const handleDblClick = (e: MouseEvent) => {
+      const el = getComponentEl(e.target)
+      if (!el) return
+      e.stopPropagation()
       const id = el.getAttribute('data-component-id') ?? ''
+      const isTextEl = isTextElement(el)
+      if (!isTextEl || isViewer) return
 
-      // ── 클릭: 컴포넌트 선택 → RightPanel 속성 패널 표시 ──
-      el.addEventListener('click', (e) => {
-        e.stopPropagation()
-        if (isViewer) return
-        const style = parseElementStyle(el)
-        onComponentSelect(id, style)
-      })
+      const originalHtml = el.innerHTML
 
-      // ── 더블클릭: 텍스트 요소 인라인 편집 ──
-      el.addEventListener('dblclick', (e) => {
-        e.stopPropagation()
-        const isTextEl = isTextElement(el)
-        if (!isTextEl || isViewer) return
+      window.dispatchEvent(new CustomEvent('html-text-editing', { detail: true }))
+      el.contentEditable = 'true'
+      el.focus()
 
-        const originalHtml = el.innerHTML
+      // 커서 끝으로
+      const range = doc.createRange()
+      const sel = iframe!.contentWindow!.getSelection()
+      range.selectNodeContents(el)
+      range.collapse(false)
+      sel?.removeAllRanges()
+      sel?.addRange(range)
 
-        window.dispatchEvent(new CustomEvent('html-text-editing', { detail: true }))
-        el.contentEditable = 'true'
-        el.focus()
+      const onBlur = async () => {
+        el.removeEventListener('blur', onBlur)
+        el.removeEventListener('keydown', onKeyDown)
+        el.contentEditable = 'false'
+        window.dispatchEvent(new CustomEvent('html-text-editing', { detail: false }))
+        const newHtml = doc.documentElement.innerHTML
+        const fullHtml = rebuildFullHtml(newHtml)
+        onHtmlChange(fullHtml)
+        try {
+          const textId = el.getAttribute('data-component-id') ?? ''
+          await api.patch(`/projects/${projectId}/slides/${slideId}`, { html_content: fullHtml, reason: `사용자: ${textId} 텍스트 수정` })
+          crdtStore.setSlideHtml(slideId, fullHtml)
+        } catch (err) {
+          console.error('html slide text update failed', err)
+        }
+      }
 
-        // 커서 끝으로
-        const range = doc.createRange()
-        const sel = iframe!.contentWindow!.getSelection()
-        range.selectNodeContents(el)
-        range.collapse(false)
-        sel?.removeAllRanges()
-        sel?.addRange(range)
-
-        const onBlur = async () => {
+      const onKeyDown = (ke: KeyboardEvent) => {
+        if (ke.key === 'Enter' && !ke.shiftKey) {
+          ke.preventDefault()
+          ;(el as HTMLElement).blur()
+        }
+        if (ke.key === 'Escape') {
           el.removeEventListener('blur', onBlur)
           el.removeEventListener('keydown', onKeyDown)
+          el.innerHTML = originalHtml
           el.contentEditable = 'false'
           window.dispatchEvent(new CustomEvent('html-text-editing', { detail: false }))
-          const newHtml = doc.documentElement.innerHTML
-          const fullHtml = rebuildFullHtml(newHtml)
-          onHtmlChange(fullHtml)
-          try {
-            const textId = el.getAttribute('data-component-id') ?? ''
-            await api.patch(`/projects/${projectId}/slides/${slideId}`, { html_content: fullHtml, reason: `사용자: ${textId} 텍스트 수정` })
-            crdtStore.setSlideHtml(slideId, fullHtml)
-          } catch (err) {
-            console.error('html slide text update failed', err)
-          }
+          onComponentSelect(id, parseElementStyle(el))
         }
+      }
 
-        const onKeyDown = (ke: KeyboardEvent) => {
-          if (ke.key === 'Enter' && !ke.shiftKey) {
-            ke.preventDefault()
-            ;(el as HTMLElement).blur()
-          }
-          if (ke.key === 'Escape') {
-            el.removeEventListener('blur', onBlur)
-            el.removeEventListener('keydown', onKeyDown)
-            el.innerHTML = originalHtml
-            el.contentEditable = 'false'
-            window.dispatchEvent(new CustomEvent('html-text-editing', { detail: false }))
-            onComponentSelect(id, parseElementStyle(el))
-          }
-        }
+      el.addEventListener('blur', onBlur)
+      el.addEventListener('keydown', onKeyDown)
+    }
 
-        el.addEventListener('blur', onBlur)
-        el.addEventListener('keydown', onKeyDown)
-      })
+    doc.addEventListener('click', handleClick)
+    doc.addEventListener('dblclick', handleDblClick)
 
+    els.forEach((el) => {
       // 이미지 컴포넌트 커서
       if (isImagePlaceholder(el)) {
         el.style.cursor = 'pointer'
       }
     })
-
-    // 배경 클릭 → 선택 해제
-    doc.body.addEventListener('click', () => onComponentSelect(null, null))
     console.log('[handleIframeLoad] handlers attached')
-  }, [iframeRef, projectId, slideId, onHtmlChange, onComponentSelect])
+  }, [iframeRef, projectId, slideId, onHtmlChange, onComponentSelect, isViewer])
 
   // 파일 선택 → 크롭 모달 오픈 (직접 적용 X)
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {

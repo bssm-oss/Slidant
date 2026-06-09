@@ -561,7 +561,7 @@ export default function ComponentInspector({ style }: Props) {
           disabled={isBackground}
           onClick={() => !isBackground && window.dispatchEvent(new CustomEvent('html-component-delete-request', { detail: { componentId: id } }))}
           className={cn('w-6 h-6 rounded-[5px] flex items-center justify-center transition-colors', isBackground ? 'opacity-30 cursor-not-allowed' : 'text-[var(--text-muted)] hover:bg-red-50 hover:text-red-500')}
-          title={isBackground ? '배경 컴포넌트는 삭제할 수 없습니다' : '컴포넌트 삭제 (Delete)'}
+          title={isBackground ? '배경 컴포넌트는 삭제할 수 없습니다' : '컴포넌트 삭제 (Backspace)'}
         >
           <Trash2 size={12} />
         </button>

@@ -14,7 +14,6 @@ import RightPanel from '@/features/editor/components/RightPanel'
 import PresentationMode from '@/features/editor/components/PresentationMode'
 import ShareModal from '@/features/editor/components/ShareModal'
 import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-react'
-import { fetchSlideHistory, restoreFromHistory } from '@/shared/lib/projectApi'
 
 export default function EditPage() {
   const { id } = useParams<{ id: string }>()
@@ -69,17 +68,14 @@ export default function EditPage() {
       const target = e.target as HTMLElement
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return
 
-      const { selectedComponentId, presentation, currentSlideIndex, deleteSlide, deleteComponent, setCurrentSlide } =
+      const { selectedComponentId, presentation, currentSlideIndex, deleteComponent, setCurrentSlide } =
         useSlideStore.getState()
       const slideCount = presentation?.slides.length ?? 0
+      const currentSlide = presentation?.slides[currentSlideIndex]
 
-      if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (e.key === 'Backspace' && selectedComponentId && !currentSlide?.html_content) {
         e.preventDefault()
-        if (selectedComponentId) {
-          deleteComponent()
-        } else {
-          deleteSlide()
-        }
+        deleteComponent()
       }
 
       if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
@@ -113,43 +109,8 @@ export default function EditPage() {
   const [isRightResizing, setIsRightResizing] = useState(false)
   const [presenting, setPresenting] = useState(false)
   const [showShareModal, setShowShareModal] = useState(false)
-  // historyOffset: 0 = 현재, 1 = 1단계 전, ... (undo 할수록 증가)
-  const [historyOffset, setHistoryOffset] = useState(0)
 
   const handlePresent = () => setPresenting(true)
-
-  const handleUndo = async () => {
-    const slide = presentation?.slides[currentSlideIndex]
-    if (!id || !slide) return
-    try {
-      const histories = await fetchSlideHistory(id, slide.id)
-      const target = histories[historyOffset]
-      if (!target) return
-      await restoreFromHistory(id, slide.id, target.id)
-      setHistoryOffset((o) => o + 1)
-      await useSlideStore.getState().loadPresentation(id)
-    } catch {
-      // silent fail — history might be empty
-    }
-  }
-
-  const handleRedo = async () => {
-    if (historyOffset <= 0) return
-    const slide = presentation?.slides[currentSlideIndex]
-    if (!id || !slide) return
-    try {
-      const histories = await fetchSlideHistory(id, slide.id)
-      const newOffset = historyOffset - 2
-      const target = newOffset >= 0 ? histories[newOffset] : undefined
-      if (target) {
-        await restoreFromHistory(id, slide.id, target.id)
-      }
-      setHistoryOffset((o) => Math.max(0, o - 1))
-      await useSlideStore.getState().loadPresentation(id)
-    } catch {
-      // silent fail
-    }
-  }
 
   const handleShare = () => setShowShareModal(true)
 
@@ -201,10 +162,6 @@ ${exportSlides.map(s => s.html_content ? `<div class="slide-page">${s.html_conte
           onPresent={handlePresent}
           onExport={handleExport}
           onShare={handleShare}
-          onUndo={handleUndo}
-          onRedo={handleRedo}
-          canUndo={true}
-          canRedo={historyOffset > 0}
         />
         <div className="flex flex-1 overflow-hidden relative">
           {/* 좌측 슬라이드 패널 */}

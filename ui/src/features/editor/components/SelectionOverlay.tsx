@@ -77,6 +77,11 @@ export default function SelectionOverlay({ style, scale, iframeRef, onDelete }: 
     dragRef.current = { handle, startMX: e.clientX, startMY: e.clientY, startLeft: left, startTop: top, startW: w, startH: h }
   }, [iframeRef])
 
+  const restorePointerState = useCallback(() => {
+    if (iframeRef.current) iframeRef.current.style.pointerEvents = ''
+    document.body.style.userSelect = ''
+  }, [iframeRef])
+
   // Global drag + resize handlers
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
@@ -117,8 +122,7 @@ export default function SelectionOverlay({ style, scale, iframeRef, onDelete }: 
       if (!dragRef.current) return
       dragRef.current = null
       // Restore iframe pointer events and text selection
-      if (iframeRef.current) iframeRef.current.style.pointerEvents = ''
-      document.body.style.userSelect = ''
+      restorePointerState()
       const { left, top, w, h } = liveRef.current
       const id = styleRef.current.componentId
       // Batch dispatch — each call updates DOM and debounces save; last debounce wins
@@ -130,8 +134,19 @@ export default function SelectionOverlay({ style, scale, iframeRef, onDelete }: 
 
     document.addEventListener('pointermove', onMove)
     document.addEventListener('pointerup', onUp)
-    return () => { document.removeEventListener('pointermove', onMove); document.removeEventListener('pointerup', onUp) }
-  }, [scale, getIframeEl, iframeRef])
+    document.addEventListener('pointercancel', onUp)
+    window.addEventListener('blur', onUp)
+    return () => {
+      document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerup', onUp)
+      document.removeEventListener('pointercancel', onUp)
+      window.removeEventListener('blur', onUp)
+      if (dragRef.current) {
+        dragRef.current = null
+        restorePointerState()
+      }
+    }
+  }, [scale, getIframeEl, restorePointerState])
 
   // Keyboard shortcuts (only active when focus is in outer window, not inside iframe)
   useEffect(() => {
@@ -144,7 +159,6 @@ export default function SelectionOverlay({ style, scale, iframeRef, onDelete }: 
       if (isBackgroundRef.current) return
       const step = e.shiftKey ? 10 : 1
       switch (e.key) {
-        case 'Delete':
         case 'Backspace':
           e.preventDefault()
           onDelete()

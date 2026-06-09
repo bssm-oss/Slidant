@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Download, Palette, Play, Share2, Undo2, Redo2 } from 'lucide-react'
+import { Download, Palette, Play, Share2 } from 'lucide-react'
 import { useEditorStore } from '../store/editorStore'
 import { useAgentStore } from '../store/agentStore'
 import ThemePanel from '@/features/presentation/components/ThemePanel'
@@ -18,13 +18,9 @@ interface EditorTopbarProps {
   onPresent?: () => void
   onExport?: () => void
   onShare?: () => void
-  onUndo?: () => void
-  onRedo?: () => void
-  canUndo?: boolean
-  canRedo?: boolean
 }
 
-export default function EditorTopbar({ onPresent, onExport, onShare, onUndo, onRedo, canUndo, canRedo }: EditorTopbarProps) {
+export default function EditorTopbar({ onPresent, onExport, onShare }: EditorTopbarProps) {
   const { presentation, overallStatus, saveTitle, isTitleEditing, setTitleEditing } = useEditorStore()
   const { presenceUsers } = useAgentStore()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -89,7 +85,7 @@ export default function EditorTopbar({ onPresent, onExport, onShare, onUndo, onR
         </div>
       </div>
 
-      {/* Right: Presence + Undo/Redo + Export + Present + Theme */}
+      {/* Right: Presence + Export + Present + Theme */}
       <div className="flex items-center gap-1 shrink-0">
         {/* 접속 중인 사용자 아바타 */}
         {presenceUsers.length > 0 && (
@@ -110,26 +106,6 @@ export default function EditorTopbar({ onPresent, onExport, onShare, onUndo, onR
                 </div>
               </div>
             ))}
-          </div>
-        )}
-        {(onUndo || onRedo) && (
-          <div className="flex items-center gap-0.5 mr-1">
-            <button
-              onClick={onUndo}
-              disabled={!canUndo}
-              className="p-1.5 rounded hover:bg-[var(--bg-muted)] text-[var(--text-disabled)] hover:text-[var(--text)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              title="실행 취소"
-            >
-              <Undo2 size={15} />
-            </button>
-            <button
-              onClick={onRedo}
-              disabled={!canRedo}
-              className="p-1.5 rounded hover:bg-[var(--bg-muted)] text-[var(--text-disabled)] hover:text-[var(--text)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              title="다시 실행"
-            >
-              <Redo2 size={15} />
-            </button>
           </div>
         )}
         {onExport && (
