@@ -329,6 +329,15 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         return
       }
 
+      // 프로젝트 정보(제목 등) 업데이트 알림
+      if (type === 'project_updated') {
+        const { title } = msg as { title: string }
+        if (title) {
+          useSlideStore.getState().updateTitle(title)
+        }
+        return
+      }
+
       // 다른 커넥션에서 proposal 승인/거절 처리됨 — 로컬 pending 목록에서 제거
       if (type === 'proposal_resolved') {
         const proposalId = msg.proposal_id as string

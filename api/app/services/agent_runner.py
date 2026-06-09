@@ -88,13 +88,31 @@ async def generate_presentation_title(command: str, encrypted_api_key: str, prov
                 raw += "".join(b.get("text", "") for b in raw_c if isinstance(b, dict) and b.get("type") == "text")
             else:
                 raw += str(raw_c) if raw_c else ""
+    # ...
     except Exception as e:
         logger.warning("title_generation failed: %s", e)
         return None
 
+    # <thinking> 또는 <thought> 태그가 있으면 제거 (OpenRouter reasoning 등 대응)
+    raw = re.sub(r"<thinking>[\s\S]*?</thinking>", "", raw, flags=re.IGNORECASE)
+    raw = re.sub(r"<thought>[\s\S]*?</thought>", "", raw, flags=re.IGNORECASE)
+    raw = re.sub(r"<status>[\s\S]*?</status>", "", raw, flags=re.IGNORECASE)
+    # <thought> 태그가 닫히지 않은 경우를 위해 남은 태그 제거
+    raw = re.sub(r"<[^>]+>", "", raw)
+
     title = raw.strip().strip('"').strip("'").strip()
-    if 2 <= len(title) <= 30:
+
+    # 가끔 "제목: 김치찌개" 식으로 오는 경우 "제목: " 제거
+    title = re.sub(r"^(제목|title|Presentation Title)\s*[:：]\s*", "", title, flags=re.IGNORECASE)
+    title = title.strip().strip('"').strip("'").strip()
+
+    logger.info("   [title_gen] raw=%r -> extracted=%r", raw[:50], title)
+
+    # 2자 이상 40자 이하 허용
+    if 2 <= len(title) <= 40:
         return title
+    
+    logger.warning("   [title_gen] title length invalid: %d", len(title))
     return None
 
 
@@ -216,9 +234,9 @@ async def run_agent(
     html_mode: bool = False,
     cached_search_summary: str = "",
     slide_html_content: str = "",
-) -> tuple[list[dict], str, str, str, list, bool, dict | None]:
+) -> tuple[list[dict], str, str, str, list, bool, dict | None, str, dict]:
     """
-    Returns: (patch_ops, slide_context, summary, html_output, html_slides, delete_slide)
+    Returns: (patch_ops, slide_context, summary, html_output, html_slides, delete_slide, cache_update, agent_mode, design_tokens)
     """
     from app.core.config import settings
     from app.agent.context import NodeContext
@@ -260,7 +278,7 @@ CRITICAL — SCOPE LOCKED TO CURRENT SLIDE:
     if getattr(settings, "MOCK_AGENT", False):
         logger.info("mock_mode  returning mock patches")
         patches = _mock_patches(role, command, components)
-        return patches, slide_context, "[MOCK] 테스트 응답", "", [], False, None, "create"
+        return patches, slide_context, "[MOCK] 테스트 응답", "", [], False, None, "create", {}
 
     api_key = decrypt_api_key(encrypted_api_key)
     llm = _make_llm(api_key, provider, json_mode=False)
@@ -321,6 +339,7 @@ CRITICAL — SCOPE LOCKED TO CURRENT SLIDE:
         html_slides  = result.get("html_slides", [])
         delete_slide = result.get("delete_slide", False)
         agent_mode   = result.get("mode", "create")
+        design_tokens = result.get("design_tokens", {})
         # 새로 검색한 경우에만 cache_update 반환 (캐시 재사용 시 search_results 비어있음)
         new_search_results = result.get("search_results", [])
         new_search_summary = result.get("search_summary", "")
@@ -336,7 +355,7 @@ CRITICAL — SCOPE LOCKED TO CURRENT SLIDE:
             if msgs:
                 last = msgs[-1]
                 logger.warning("llm_empty_patches  content=%r", str(getattr(last, "content", last))[:400])
-        return patches, slide_context, summary, html_output, html_slides, delete_slide, cache_update, agent_mode
+        return patches, slide_context, summary, html_output, html_slides, delete_slide, cache_update, agent_mode, design_tokens
     except Exception as e:
         ms = (time.perf_counter() - t0) * 1000
         err_str = str(e)

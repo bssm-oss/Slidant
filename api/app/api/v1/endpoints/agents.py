@@ -144,13 +144,30 @@ async def _update_presentation_title(
     candidate = await generate_presentation_title(command, encrypted_api_key, provider)
     if not candidate:
         return
+
+    DEFAULT_TITLES = (
+        "제목 없는 프레젠테이션", "Untitled", "Untitled Presentation",
+        "제목 없음", "새 프레젠테이션", "슬라이드",
+    )
     try:
         async with UnitOfWork() as uow:
             project = await uow.projects.get(project_id)
-            if project and (not project.title or project.title in ("제목 없는 프레젠테이션", "Untitled")):
+            if project and (
+                not project.title or 
+                project.title.strip() in DEFAULT_TITLES or
+                not project.title.strip()
+            ):
                 project.title = candidate
                 await uow.commit()
-                logger.info("   프레젠테이션 제목 자동 설정: %r", candidate)
+                logger.info("   프레젠테이션 제목 자동 설정: %r (기존: %r)", candidate, project.title)
+                
+                # 실시간 동기화를 위해 브로드캐스트
+                from app.api.v1.endpoints.ws import manager as ws_manager
+                await ws_manager.broadcast_json(str(project_id), {
+                    "type": "project_updated",
+                    "project_id": str(project_id),
+                    "title": candidate
+                })
     except Exception as e:
         logger.warning("title_update failed: %s", e)
 
@@ -338,7 +355,7 @@ async def _run_agent_background_inner(
                 cached_search_summary=(project.search_summary or "") if project else "",
                 slide_html_content=(slide.html_content or "") if slide else "",
             )
-            patches, _, llm_summary, html_output, html_slides, delete_slide, search_cache, agent_mode = await run_agent(**run_kwargs)
+            patches, _, llm_summary, html_output, html_slides, delete_slide, search_cache, agent_mode, design_tokens = await run_agent(**run_kwargs)
 
             # 새 검색 결과 있으면 프로젝트에 캐시 저장
             if search_cache:
@@ -347,6 +364,31 @@ async def _run_agent_background_inner(
                     search_cache["summary"],
                     search_cache["queries"],
                 )
+
+            # 전체 프레젠테이션 교체 판단
+            is_edit_cmd = (agent_mode == "edit") or slide_scope_locked
+            _creation_keywords = ("만들어", "생성", "제작", "PPT", "ppt", "프레젠테이션", "작성")
+            _n_slides_creation = (
+                _re.search(r'\d+\s*장', body.command)
+                and any(k in body.command for k in _creation_keywords)
+                and not is_edit_cmd
+            )
+            is_full_replace = (
+                bool(html_slides)
+                and not is_edit_cmd
+                and (len(html_slides) >= 2 or _n_slides_creation)
+            )
+
+            # 새 테마가 있고, 전체 교체(신규 생성)이거나 명시적 테마 변경 의도가 있는 경우 프로젝트 테마 업데이트
+            if design_tokens and project and (is_full_replace or any(k in body.command for k in ("테마", "색상", "디자인", "palette", "theme"))):
+                project.theme = design_tokens
+                logger.info("   프로젝트 테마 업데이트: %s", design_tokens.get("palette", "CUSTOM"))
+                await ws_manager.broadcast_json(str(project.id), {
+                    "type": "project_updated",
+                    "project_id": str(project.id),
+                    "theme": design_tokens
+                })
+
             elapsed = (_time.perf_counter() - t0) * 1000
 
             logger.info("   ← LLM 완료  %.0fms  patches=%d  html=%d  html_slides=%d  delete=%s",
@@ -382,23 +424,6 @@ async def _run_agent_background_inner(
                     return
                 # delete+create 혼합: 삭제 완료, 아래에서 html_slides 전량 신규 생성 진행
 
-            # 전체 프레젠테이션 교체 판단 (Proposal 생성과 충돌 방지 위해 먼저 계산):
-            # - delete+create 혼합: 명시적 전체 교체 의도
-            # - create-only(2장+, not edit): 새 PPT 생성 의도 → 기존도 정리
-            # - N장 생성 의도 + html_slides 1개 이상: 일부 composer 실패해도 전체 교체
-            # agent_mode: planner가 결정한 "edit" | "create" — 키워드 heuristic보다 정확
-            is_edit_cmd = (agent_mode == "edit") or slide_scope_locked
-            _creation_keywords = ("만들어", "생성", "제작", "PPT", "ppt", "프레젠테이션", "작성")
-            _n_slides_creation = (
-                _re.search(r'\d+\s*장', body.command)
-                and any(k in body.command for k in _creation_keywords)
-                and not is_edit_cmd
-            )
-            is_full_replace = (
-                bool(html_slides)
-                and not is_edit_cmd
-                and (len(html_slides) >= 2 or _n_slides_creation)
-            )
 
             # HTML 모드: html_output → Proposal 저장 (사용자 승인 후 적용)
             # is_full_replace면 현재 슬라이드 자체가 삭제되므로 Proposal 생성 스킵
@@ -591,7 +616,16 @@ async def _run_agent_background_inner(
             )
             uow.chat_messages.add(agent_msg)
 
-            needs_title_update = project and (not project.title or project.title in ("제목 없는 프레젠테이션", "Untitled"))
+            # 제목 자동 생성 조건: 현재 제목이 없거나 기본 제목인 경우
+            DEFAULT_TITLES = (
+                "제목 없는 프레젠테이션", "Untitled", "Untitled Presentation",
+                "제목 없음", "새 프레젠테이션", "슬라이드",
+            )
+            needs_title_update = project and (
+                not project.title or 
+                project.title.strip() in DEFAULT_TITLES or
+                not project.title.strip()
+            )
 
             broadcast_payload: dict = {
                 "type": "agent_done",

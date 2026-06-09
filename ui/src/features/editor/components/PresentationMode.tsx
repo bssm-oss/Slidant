@@ -175,10 +175,37 @@ export default function PresentationMode({ slides, startIndex, onClose }: Presen
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Mount 시 포커스 강제 (키보드 이벤트 캡처 보장)
-  useEffect(() => {
-    containerRef.current?.focus()
+  const goNext = useCallback(() => {
+    setCurrent((i) => Math.min(i + 1, slides.length - 1))
+  }, [slides.length])
+
+  const goPrev = useCallback(() => {
+    setCurrent((i) => Math.max(i - 1, 0))
   }, [])
+
+  // 포커스 강제 로직
+  useEffect(() => {
+    const focus = () => containerRef.current?.focus({ preventScroll: true })
+    focus()
+    window.addEventListener('focus', focus)
+    
+    // iframe이 포커스를 가져가는 것을 방지하기 위해 주기적으로 포커스 확인 및 회수
+    const interval = setInterval(() => {
+      if (document.activeElement?.tagName === 'IFRAME') {
+        focus()
+      }
+    }, 500)
+
+    return () => {
+      window.removeEventListener('focus', focus)
+      clearInterval(interval)
+    }
+  }, [])
+
+  // 슬라이드 변경 시마다 포커스 재확인
+  useEffect(() => {
+    containerRef.current?.focus({ preventScroll: true })
+  }, [current])
 
   const resetIdleTimer = useCallback(() => {
     setControlsVisible(true)
@@ -193,41 +220,36 @@ export default function PresentationMode({ slides, startIndex, onClose }: Presen
     }
   }, [resetIdleTimer])
 
-  const goNext = useCallback(() => {
-    setCurrent((i) => Math.min(i + 1, slides.length - 1))
-  }, [slides.length])
-
-  const goPrev = useCallback(() => {
-    setCurrent((i) => Math.max(i - 1, 0))
-  }, [])
-
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      // Escape는 항상 동작 (onClose 호출)
+      // Escape
       if (e.key === 'Escape') {
         e.preventDefault()
         onClose()
         return
       }
 
-      // 입력 필드에 포커스가 있는 경우 네비게이션 방지 (발표 모드에서는 드물지만 방어 코드)
+      // 입력 폼 방어
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
 
-      // 다음 슬라이드: 오른쪽, 아래, 스페이스, 엔터, PageDown
-      if (['ArrowRight', 'ArrowDown', ' ', 'Enter', 'PageDown'].includes(e.key)) {
+      const key = e.key
+      // 다음: 오, 아래, 스페이스, 엔터, PageDown
+      if (['ArrowRight', 'ArrowDown', ' ', 'Enter', 'PageDown'].includes(key)) {
         e.preventDefault()
+        e.stopPropagation()
         goNext()
       }
-      // 이전 슬라이드: 왼쪽, 위, PageUp, Backspace
-      else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace'].includes(e.key)) {
+      // 이전: 왼, 위, PageUp, Backspace
+      else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace'].includes(key)) {
         e.preventDefault()
+        e.stopPropagation()
         goPrev()
       }
     }
 
-    // capture: true를 사용하여 다른 요소(버튼, iframe 등)가 이벤트를 가로채기 전에 먼저 처리
-    window.addEventListener('keydown', handleKey, true)
-    return () => window.removeEventListener('keydown', handleKey, true)
+    // document 레벨에서 capture phase로 모든 키 입력을 최우선으로 가로챔
+    document.addEventListener('keydown', handleKey, true)
+    return () => document.removeEventListener('keydown', handleKey, true)
   }, [goNext, goPrev, onClose])
 
   const slide = slides[current]
@@ -241,19 +263,28 @@ export default function PresentationMode({ slides, startIndex, onClose }: Presen
   return (
     <div
       ref={containerRef}
-      tabIndex={0} // 키보드 이벤트를 받을 수 있도록 설정
+      tabIndex={0}
+      autoFocus
       onMouseMove={resetIdleTimer}
-      onMouseDown={() => containerRef.current?.focus()} // 클릭 시 포커스 회수
+      onMouseDown={() => containerRef.current?.focus()}
       style={{
         position: 'fixed', inset: 0, zIndex: 9999,
         background: '#000',
         cursor: controlsVisible ? 'default' : 'none',
-        outline: 'none', // 포커스 링 제거
+        outline: 'none',
       }}
     >
       {/* Slide fills entire viewport */}
       <div style={{ position: 'absolute', inset: 0 }}>
         {slide && <SlideView slide={slide} />}
+        {/* iframe 포커스 뺏기 방지용 투명 오버레이 */}
+        <div 
+          onClick={goNext}
+          style={{ 
+            position: 'absolute', inset: 0, zIndex: 10,
+            cursor: controlsVisible ? 'default' : 'none'
+          }} 
+        />
       </div>
 
       {/* Controls overlay — fades out on idle */}
@@ -261,6 +292,7 @@ export default function PresentationMode({ slides, startIndex, onClose }: Presen
         {/* Close button */}
         <button
           onClick={onClose}
+          tabIndex={-1} // 포커스 뺏기 방지
           style={{
             ...controlsStyle,
             position: 'absolute', top: 16, right: 16,
@@ -280,7 +312,8 @@ export default function PresentationMode({ slides, startIndex, onClose }: Presen
         {/* Prev arrow */}
         {current > 0 && (
           <button
-            onClick={goPrev}
+            onClick={(e) => { e.stopPropagation(); goPrev() }}
+            tabIndex={-1}
             style={{
               ...controlsStyle,
               position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)',
@@ -301,7 +334,8 @@ export default function PresentationMode({ slides, startIndex, onClose }: Presen
         {/* Next arrow */}
         {current < slides.length - 1 && (
           <button
-            onClick={goNext}
+            onClick={(e) => { e.stopPropagation(); goNext() }}
+            tabIndex={-1}
             style={{
               ...controlsStyle,
               position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)',
@@ -329,7 +363,8 @@ export default function PresentationMode({ slides, startIndex, onClose }: Presen
           {slides.map((_, i) => (
             <button
               key={i}
-              onClick={() => setCurrent(i)}
+              onClick={(e) => { e.stopPropagation(); setCurrent(i) }}
+              tabIndex={-1}
               style={{
                 width: i === current ? 20 : 8,
                 height: 8,

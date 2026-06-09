@@ -321,8 +321,8 @@ CHART.JS RULES:
 • When slide needs chart → [DATA] layout; table → [TABLE] layout
 
 WEB FONTS (import in <style>):
-  • @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
-  • Then: font-family:'Inter',system-ui,sans-serif;
+  • @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Montserrat:wght@700&family=Noto+Sans+KR:wght@400;700&family=Black+Han+Sans&family=Syne:wght@700&display=swap');
+  • Then: font-family:'Inter',system-ui,sans-serif; (or chosen font)
 
 LAYOUT PATTERNS (go beyond rectangles):
   • Hero split: 55% left text + 45% right image with clip-path diagonal edge
@@ -729,14 +729,38 @@ WARM  : bg#1C0F0A accent#F59E0B text#FEF3C7 text2#D97706 — food/culture/warm
 LIGHT : bg#F8FAFC accent#7C3AED text#0F172A text2#475569 — clean/business
 NATURE: bg#0D1F1A accent#34D399 text#ECFDF5 text2#6EE7B7 — environment/health
 SLATE : bg#1E293B accent#F1F5F9 text#F8FAFC text2#94A3B8 — minimal/corporate
+VIVID : bg#0F172A accent#F43F5E text#FFFFFF text2#FDA4AF — creative/bold
+OCEAN : bg#082F49 accent#0EA5E9 text#F0F9FF text2#7DD3FC — travel/resort
+GOLD  : bg#18181B accent#EAB308 text#FAFAF9 text2#D4D4D8 — luxury/premium
+SOFT  : bg#FAF5FF accent#D946EF text#4A044E text2#701A75 — lifestyle/beauty
+ROSE  : bg#FFF1F2 accent#E11D48 text#4C0519 text2#881337 — fashion/soft
+MIDNIGHT: bg#020617 accent#6366F1 text#F8FAFC text2#CBD5E1 — deep tech/night
+FOREST: bg#052e16 accent#22c55e text#f0fdf4 text2#86efac — sustainable/growth
+ROBOTIC: bg#0f172a accent#38bdf8 text#f8fafc text2#94a3b8 — AI/future/cyber
+CANDY: bg#fdf2f8 accent#ec4899 text#500724 text2#9d174d — kids/pop/cute
+EARTH: bg#451a03 accent#f97316 text#fff7ed text2#fdba74 — history/construction
 
 ━━ FONT (한 PPT 내 통일 — design_tokens.font) ━━
-테마에 font 지정 시 그대로 사용. 미지정 시 주제/톤에 맞춰 하나만 선택:
-  한국어 포함 / 기본: Pretendard | Noto Sans KR
-  비즈니스/클린: Inter | Playfair Display
-  테크/개발: JetBrains Mono | Source Code Pro
-  크리에이티브: Syne | Space Grotesk
-모든 슬라이드가 같은 font 값을 design_tokens에 가져야 함 — 슬라이드마다 바뀌면 안 됨.
+주제에 가장 어울리는 폰트 하나를 선택:
+  기본/가독성: Pretendard | Noto Sans KR
+  테크/모던: Inter | Syne | Space Grotesk
+  비즈니스/신뢰: Montserrat | Playfair Display
+  창의적/예술: Calistoga | Bungee
+  전문가/코드: JetBrains Mono | Source Code Pro
+  강렬한 제목용: Black Han Sans | Gmarket Sans
+모든 슬라이드가 같은 font 값을 design_tokens에 가져야 함.
+
+━━ THEME SELECTION RULE ━━
+- 명령의 '주제'와 '톤'에 가장 잘 어울리는 palette와 font를 조합하여 design_tokens 생성.
+- 예: "부산 여행" → OCEAN palette + Gmarket Sans (시원하고 역동적)
+- 예: "AI 트렌드" → ROBOTIC palette + Inter (미래지향적)
+- 예: "명품 브랜드 전략" → GOLD palette + Montserrat (고급스러움)
+- 예: "김치찌개 레시피" → WARM palette + Noto Sans KR (따뜻함)
+- 예: "친환경 에너지" → NATURE palette + Pretendard (깨끗함)
+- 예: "법률 상담" → SLATE palette + Noto Sans KR (신뢰감)
+- 예: "디저트 카페" → CANDY palette + Syne (귀엽고 트렌디)
+- 예: "부동산 투자" → EARTH palette + Black Han Sans (견고함)
+- 예: "코딩 강의" → DARK palette + JetBrains Mono (전문적)
 
 ━━ LAYOUT TYPES & SELECTION RULES ━━
 COVER:      표지 슬라이드 — 첫 번째 슬라이드 전용
@@ -864,8 +888,9 @@ SEARCH_CACHE_CHECK_PROMPT = (
 
 TITLE_GENERATOR_PROMPT = (
     "Generate a short, natural presentation title in Korean (4-20 characters) "
-    "based on the user's request below. Output ONLY the title text — "
-    "no quotes, no markdown, no explanation, no trailing punctuation."
+    "based on the user's request below. "
+    "Output ONLY the title text in Korean. "
+    "NEVER include quotes, markdown, explanations, or 'Title:' prefix."
 )
 
 SEARCH_MERGER_PROMPT = (
