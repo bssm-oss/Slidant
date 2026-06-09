@@ -9,6 +9,34 @@ from app.core.logging import LoggingMiddleware, setup_logging
 from app.middleware.sanitize import SanitizeMiddleware
 
 
+async def _seed_system_agents() -> None:
+    from sqlalchemy import select
+    from app.db.base import AsyncSessionLocal
+    from app.models.agent import AgentDefinition
+
+    defaults = [
+        {"name": "ContentAgent", "role": "content"},
+    ]
+    async with AsyncSessionLocal() as session:
+        for d in defaults:
+            exists = await session.execute(
+                select(AgentDefinition).where(
+                    AgentDefinition.is_system == True,
+                    AgentDefinition.role == d["role"],
+                )
+            )
+            if exists.scalar_one_or_none():
+                continue
+            session.add(AgentDefinition(
+                name=d["name"],
+                role=d["role"],
+                is_system=True,
+                user_id=None,
+                project_id=None,
+            ))
+        await session.commit()
+
+
 async def _seed_dev_user() -> None:
     from sqlalchemy import select
     from app.db.base import AsyncSessionLocal
@@ -30,6 +58,7 @@ setup_logging(is_production=settings.is_production)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await _seed_dev_user()
+    await _seed_system_agents()
     yield
 
 
