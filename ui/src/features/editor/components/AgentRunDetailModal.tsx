@@ -58,7 +58,7 @@ function SlidePreview({
       <span className="text-[9px] text-[var(--text-disabled)] text-center uppercase tracking-wide">{label}</span>
       <div
         ref={containerRef}
-        onClick={html ? onClick : undefined}
+        onClick={html && onClick ? onClick : undefined}
         className={cn(
           'w-full overflow-hidden rounded-[4px] border bg-[#0A0F1E] transition-all',
           html && onClick ? 'cursor-pointer' : '',
