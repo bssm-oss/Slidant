@@ -103,6 +103,18 @@ function SlideChangeTile({
   const [selected, setSelected] = useState<'before' | 'after' | null>(null)
   const [restoring, setRestoring] = useState(false)
   const pushToast = useToastStore((s) => s.push)
+  const afterContainerRef = useRef<HTMLDivElement>(null)
+  const [afterScale, setAfterScale] = useState(0.3)
+
+  useEffect(() => {
+    const el = afterContainerRef.current
+    if (!el) return
+    const obs = new ResizeObserver(([entry]) => {
+      setAfterScale(entry.contentRect.width / 960)
+    })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
 
   const handleSelect = (target: 'before' | 'after') => {
     setSelected((prev) => (prev === target ? null : target))
@@ -118,7 +130,8 @@ function SlideChangeTile({
       pushToast('롤백 완료', 'success')
       setSelected(null)
       onRestored(change.slide_id)
-    } catch {
+    } catch (e) {
+      console.error('restore failed', e)
       pushToast('롤백에 실패했습니다', 'error')
     } finally {
       setRestoring(false)
@@ -154,14 +167,7 @@ function SlideChangeTile({
             )}
             style={{ aspectRatio: '16/9' }}
             onClick={() => { if (change.after_html) handleSelect('after') }}
-            ref={(el) => {
-              if (!el) return
-              const obs = new ResizeObserver(([entry]) => {
-                const iframe = el.querySelector('iframe') as HTMLIFrameElement | null
-                if (iframe) iframe.style.transform = `scale(${entry.contentRect.width / 960})`
-              })
-              obs.observe(el)
-            }}
+            ref={afterContainerRef}
           >
             {change.after_html ? (
               <iframe
@@ -170,7 +176,7 @@ function SlideChangeTile({
                   width: 960,
                   height: 540,
                   transformOrigin: 'top left',
-                  transform: `scale(0.3)`,
+                  transform: `scale(${afterScale})`,
                   display: 'block',
                   pointerEvents: 'none',
                   border: 'none',
@@ -192,7 +198,8 @@ function SlideChangeTile({
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => setSelected(null)}
-              className="px-2 py-1 rounded-[6px] text-[11px] text-[var(--text-muted)] hover:bg-white transition-colors"
+              disabled={restoring}
+              className="px-2 py-1 rounded-[6px] text-[11px] text-[var(--text-muted)] hover:bg-white disabled:opacity-50 transition-colors"
             >
               취소
             </button>
