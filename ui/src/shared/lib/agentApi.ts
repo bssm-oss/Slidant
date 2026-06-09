@@ -63,6 +63,8 @@ export interface AgentRunHistoryItem {
   affected_slide_id: string | null
   started_at: string | null
   finished_at: string | null
+  user_id: string | null
+  user_email: string | null
 }
 
 export const fetchAgentRuns = (projectId: string) =>

@@ -33,6 +33,7 @@ class AgentRun(SQLModel, table=True):
     result_summary: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
     agent_name: str | None = Field(default=None, max_length=100)
     affected_slide_id: UUID | None = Field(default=None, foreign_key="slides.id")
+    user_id: UUID | None = Field(default=None, foreign_key="users.id")
 
 
 class LlmLog(SQLModel, table=True):

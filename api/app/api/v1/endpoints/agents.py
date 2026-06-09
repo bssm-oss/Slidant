@@ -60,13 +60,15 @@ async def run_agent_endpoint(
         uow.agent_definitions, body.agent_definition_id, body.agent_role
     )
     agent_run = await agent_service.create_agent_run(
-        uow.agent_runs,
+        uow.agent_definitions,
         body.project_id,
         agent_def.id,
         task_description=body.command,
         agent_name=agent_def.name,
         affected_slide_id=body.slide_id,
+        user_id=current_user.id,
     )
+
 
     # 사용자 채팅 메시지 즉시 저장
     user_msg = ChatMessage(
@@ -749,7 +751,7 @@ async def save_steps_message(
 
 @router.get("/logs/{project_id}", response_model=list[dict])
 async def get_agent_logs(project_id: UUID, current_user: CurrentUser, uow: UoW):
-    runs = await uow.agent_runs.list_by_project(project_id)
+    runs_with_user = await uow.agent_runs.list_by_project(project_id)
     return [
         {
             "id": str(r.id),
@@ -760,8 +762,10 @@ async def get_agent_logs(project_id: UUID, current_user: CurrentUser, uow: UoW):
             "affected_slide_id": str(r.affected_slide_id) if r.affected_slide_id else None,
             "started_at": r.started_at.isoformat() if r.started_at else None,
             "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+            "user_id": str(r.user_id) if r.user_id else None,
+            "user_email": email,
         }
-        for r in runs
+        for r, email in runs_with_user
     ]
 
 

@@ -219,6 +219,7 @@ async def ws_endpoint(
                         "role": agent_def.role if agent_def else "content",
                         "command": "",
                         "resumed": True,
+                        "user_id": str(run.user_id) if run.user_id else None,
                     })
     except Exception as e:
         logger.warning("ws_resume_check failed: %s", e)

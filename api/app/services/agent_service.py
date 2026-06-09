@@ -65,6 +65,7 @@ async def create_agent_run(
     task_description: str | None = None,
     agent_name: str | None = None,
     affected_slide_id: UUID | None = None,
+    user_id: UUID | None = None,
 ) -> AgentRun:
     agent_run = AgentRun(
         project_id=project_id,
@@ -74,6 +75,7 @@ async def create_agent_run(
         task_description=task_description,
         agent_name=agent_name,
         affected_slide_id=affected_slide_id,
+        user_id=user_id,
     )
     agent_run_repo.add(agent_run)
     await agent_run_repo.session.flush()

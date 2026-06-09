@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import { History, CheckCircle2, XCircle, Loader2, Ban } from 'lucide-react'
+import { History, CheckCircle2, XCircle, Loader2, Ban, User } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import { fetchAgentRuns, type AgentRunHistoryItem } from '@/shared/lib/agentApi'
+import { useAgentStore } from '../store/agentStore'
+import { useSessionStore } from '../store/sessionStore'
 
 function formatDate(iso: string) {
   const d = new Date(iso)
@@ -42,6 +44,16 @@ interface ContentProps {
 export function AgentHistoryContent({ projectId, active, onItemClick }: ContentProps) {
   const [runs, setRuns] = useState<AgentRunHistoryItem[]>([])
   const [loading, setLoading] = useState(false)
+  const presenceUsers = useAgentStore((s) => s.presenceUsers)
+  const currentUserId = useSessionStore((s) => s.currentUserId)
+
+  const getUserLabel = (run: AgentRunHistoryItem) => {
+    if (run.user_id === currentUserId) return '나'
+    const presence = presenceUsers.find((u) => u.userId === run.user_id)
+    if (presence) return presence.name
+    if (run.user_email) return run.user_email.split('@')[0]
+    return '다른 유저'
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -100,13 +112,18 @@ export function AgentHistoryContent({ projectId, active, onItemClick }: ContentP
                   </p>
                 )}
                 {run.started_at && (
-                  <p className="text-[11px] text-[var(--text-disabled)] mt-0.5">
-                    {formatDate(run.started_at)}
+                  <p className="text-[11px] text-[var(--text-disabled)] mt-0.5 flex items-center gap-1.5">
+                    <span>{formatDate(run.started_at)}</span>
                     {run.finished_at && run.started_at && (
-                      <span className="ml-1.5">
+                      <span>
                         · {Math.round((new Date(run.finished_at).getTime() - new Date(run.started_at).getTime()) / 1000)}s
                       </span>
                     )}
+                    <span>·</span>
+                    <span className="flex items-center gap-0.5">
+                      <User size={10} />
+                      {getUserLabel(run)}
+                    </span>
                   </p>
                 )}
               </div>

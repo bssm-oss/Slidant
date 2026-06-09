@@ -59,14 +59,16 @@ class AgentRunRepository(BaseRepository[AgentRun]):
         )
         return list(result.scalars().all())
 
-    async def list_by_project(self, project_id: UUID, limit: int = 50) -> list[AgentRun]:
+    async def list_by_project(self, project_id: UUID, limit: int = 50) -> list[tuple[AgentRun, str | None]]:
+        from app.models.user import User
         result = await self.session.execute(
-            select(AgentRun)
+            select(AgentRun, User.email)
+            .outerjoin(User, AgentRun.user_id == User.id)
             .where(AgentRun.project_id == project_id)
             .order_by(AgentRun.started_at.desc())
             .limit(limit)
         )
-        return list(result.scalars().all())
+        return list(result.all())
 
 
 class LlmLogRepository(BaseRepository[LlmLog]):
