@@ -3,8 +3,6 @@ import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { AppShell } from '@/shared/components/layout'
 import { Button, Input } from '@/shared/components/ui'
 import AuthCard from '@/features/auth/components/AuthCard'
-import GoogleButton from '@/features/auth/components/GoogleButton'
-import Divider from '@/features/auth/components/Divider'
 import { login } from '@/shared/lib/auth'
 import { useToastStore } from '@/shared/components/ui/Toast'
 
@@ -12,8 +10,8 @@ export default function LoginPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const toast = useToastStore((s) => s.push)
-  const [email, setEmail] = useState('dev@slidant.com')
-  const [password, setPassword] = useState('pass1234')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
 
   const redirectTo = searchParams.get('redirect') || '/drive'
@@ -59,27 +57,6 @@ export default function LoginPage() {
               {loading ? '로그인 중...' : '로그인'}
             </Button>
           </form>
-          <Divider label="개발용" />
-          <Button
-            variant="secondary"
-            className="w-full"
-            disabled={loading}
-            onClick={async () => {
-              setLoading(true)
-              try {
-                await login({ email: 'dev@slidant.com', password: 'pass1234' })
-                navigate(redirectTo)
-              } catch (err: any) {
-                toast(err.message ?? '로그인 실패', 'error')
-              } finally {
-                setLoading(false)
-              }
-            }}
-          >
-            ⚡ 어드민으로 바로 로그인
-          </Button>
-          <Divider />
-          <GoogleButton label="Google로 계속" onClick={() => toast('Google 로그인 준비 중', 'info')} />
           <p className="text-xs text-center text-[var(--text-muted)]">
             계정이 없으신가요?{' '}
             <Link to="/signup" className="text-[var(--accent)] hover:text-[var(--accent-hover)] font-semibold transition-colors">회원가입</Link>
