@@ -15,6 +15,7 @@ export default function ThemePanel({ onClose: _onClose }: { onClose: () => void 
   const { presentation, loadPresentation } = useSlideStore()
   const [saving, setSaving] = useState(false)
   const current = presentation?.theme
+  const activePalette = current?.palette ?? 'DARK'
 
   const applyTheme = async (theme: PresentationTheme) => {
     if (!presentation) return
@@ -43,7 +44,7 @@ export default function ThemePanel({ onClose: _onClose }: { onClose: () => void 
             disabled={saving}
             className="flex items-center gap-3 px-3 py-2.5 rounded-[8px] border transition-all hover:scale-[1.01] disabled:opacity-50"
             style={{
-              borderColor: current?.palette === name ? theme.accent : '#e5e7eb',
+              borderColor: activePalette === name ? theme.accent : '#e5e7eb',
               background: theme.bg,
             }}
           >
@@ -53,7 +54,7 @@ export default function ThemePanel({ onClose: _onClose }: { onClose: () => void 
               <div className="w-4 h-4 rounded-full" style={{ background: theme.text }} />
             </div>
             <span className="text-[12px] font-medium" style={{ color: theme.text }}>{name}</span>
-            {current?.palette === name && (
+            {activePalette === name && (
               <span className="ml-auto text-[10px]" style={{ color: theme.accent }}>&#10003; 적용 중</span>
             )}
           </button>

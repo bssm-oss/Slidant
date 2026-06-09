@@ -168,7 +168,7 @@ function SortableSlideItem({
                 style={{ background: u.color }}
                 className="w-4 h-4 rounded-full flex items-center justify-center text-white text-[8px] font-bold shadow-sm"
               >
-                {u.name[0]?.toUpperCase()}
+                {u.name?.[0]?.toUpperCase()}
               </div>
             ))}
           </div>

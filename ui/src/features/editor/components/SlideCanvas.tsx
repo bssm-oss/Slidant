@@ -147,6 +147,8 @@ function useHtmlSlideEdit(
         const isTextEl = isTextElement(el)
         if (!isTextEl || isViewer) return
 
+        const originalHtml = el.innerHTML
+
         window.dispatchEvent(new CustomEvent('html-text-editing', { detail: true }))
         el.contentEditable = 'true'
         el.focus()
@@ -184,9 +186,10 @@ function useHtmlSlideEdit(
           if (ke.key === 'Escape') {
             el.removeEventListener('blur', onBlur)
             el.removeEventListener('keydown', onKeyDown)
+            el.innerHTML = originalHtml
             el.contentEditable = 'false'
             window.dispatchEvent(new CustomEvent('html-text-editing', { detail: false }))
-            onComponentSelect(null, null)
+            onComponentSelect(id, parseElementStyle(el))
           }
         }
 

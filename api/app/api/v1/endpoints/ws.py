@@ -98,7 +98,8 @@ class ConnectionManager:
         await self._safe_send_json(ws, msg)
 
     def update_presence(self, project_id: str, user_id: str, data: dict) -> None:
-        self._presence[project_id][user_id] = {"userId": user_id, **data}
+        existing = self._presence[project_id].get(user_id, {})
+        self._presence[project_id][user_id] = {**existing, **data}
 
     def peer_count(self, project_id: str) -> int:
         return len(self._connections.get(project_id, set()))
