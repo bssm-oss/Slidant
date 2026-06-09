@@ -269,6 +269,7 @@ async def _run_agent_background_inner(
                 _fire({
                     "type": "agent_token",
                     "agent_run_id": str(agent_run_id),
+                    "user_id": str(user_id),
                     "token": token,
                     "accumulated": "".join(token_buf),
                 })
@@ -281,6 +282,7 @@ async def _run_agent_background_inner(
                 _fire({
                     "type": "agent_node_event",
                     "agent_run_id": str(agent_run_id),
+                    "user_id": str(user_id),
                     "event_type": event_type,
                     "message": message,
                 })
@@ -739,7 +741,7 @@ async def save_steps_message(
         extra_data={"steps": body.steps},
     )
     if body.created_at:
-        msg.created_at = body.created_at
+        msg.created_at = body.created_at.replace(tzinfo=None)
     uow.chat_messages.add(msg)
     await uow.commit()
     return {"id": str(msg.id)}
@@ -776,32 +778,11 @@ async def get_run_slide_changes(
     if not run or run.project_id != project_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
 
-    if not run.started_at or not run.finished_at:
-        return []
-
     slides = await uow.slides.list_by_project(project_id)
     slide_map = {s.id: s for s in slides}
-    slide_ids = [s.id for s in slides]
 
-    end_dt = run.finished_at + timedelta(seconds=5)
-    entries = await uow.slide_history.list_by_slides_in_timerange(slide_ids, run.started_at, end_dt)
-
-    by_slide: dict = defaultdict(list)
-    for e in entries:
-        by_slide[e.slide_id].append(e)
-
-    results = []
-    for slide_id, slide_entries in by_slide.items():
-        slide_entries.sort(key=lambda e: e.created_at)
-        first_entry = slide_entries[0]
-        last_entry = slide_entries[-1]
+    def _make_result(slide_id, before_html, after_html):
         slide = slide_map.get(slide_id)
-
-        before_html = first_entry.html_content
-
-        next_entry = await uow.slide_history.get_next_entry(slide_id, last_entry.created_at)
-        after_html = next_entry.html_content if next_entry else (slide.html_content if slide else None)
-
         old_map = _parse_html_components(before_html or "")
         new_map = _parse_html_components(after_html or "")
         all_ids = set(old_map) | set(new_map)
@@ -815,17 +796,55 @@ async def get_run_slide_changes(
                 removed.append(comp_id)
             elif old != new:
                 modified.append(comp_id)
-
-        results.append({
+        return {
             "slide_id": str(slide_id),
             "slide_order": slide.order if slide else 0,
             "slide_title": slide.title if slide else "",
-            "before_html": before_html,
+            "before_html": before_html or None,
             "after_html": after_html,
             "added": sorted(added),
             "removed": sorted(removed),
             "modified": sorted(modified),
-        })
+        }
+
+    # 1) 에이전트가 제안(Proposal)을 남긴 경우 — 승인 여부/타이밍 무관
+    proposals = await uow.proposals.list_by_run(run_id)
+    html_proposals = [p for p in proposals if p.html_content]
+    proposal_slide_ids: set = set()
+    results = []
+
+    if html_proposals:
+        by_slide: dict = defaultdict(list)
+        for p in html_proposals:
+            by_slide[p.slide_id].append(p)
+        for slide_id, slide_proposals in by_slide.items():
+            first_p = slide_proposals[0]
+            last_p = slide_proposals[-1]
+            results.append(_make_result(
+                slide_id,
+                first_p.base_html_content or "",
+                last_p.html_content,
+            ))
+            proposal_slide_ids.add(slide_id)
+
+    # 2) Proposal 없는 슬라이드(신규 생성 등) — 시간 범위 기반 SlideHistory 조회
+    if run.started_at and run.finished_at:
+        slide_ids = [s.id for s in slides if s.id not in proposal_slide_ids]
+        if slide_ids:
+            end_dt = run.finished_at + timedelta(seconds=5)
+            entries = await uow.slide_history.list_by_slides_in_timerange(slide_ids, run.started_at, end_dt)
+            by_slide_hist: dict = defaultdict(list)
+            for e in entries:
+                by_slide_hist[e.slide_id].append(e)
+            for slide_id, slide_entries in by_slide_hist.items():
+                slide_entries.sort(key=lambda e: e.created_at)
+                first_entry = slide_entries[0]
+                last_entry = slide_entries[-1]
+                before_html = first_entry.html_content
+                next_entry = await uow.slide_history.get_next_entry(slide_id, last_entry.created_at)
+                slide = slide_map.get(slide_id)
+                after_html = next_entry.html_content if next_entry else (slide.html_content if slide else None)
+                results.append(_make_result(slide_id, before_html, after_html))
 
     results.sort(key=lambda r: r["slide_order"])
     return results
