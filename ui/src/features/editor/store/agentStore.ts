@@ -87,6 +87,7 @@ interface AgentState {
   pendingSlideCount: number
   agentStartTime: number | null
   estimatedSeconds: number | null
+  peerRunners: Record<string, { agentName: string; steps: AgentStep[]; runId: string; sessionId: string | null }>
 
   loadAgents: (projectId?: string) => Promise<void>
   loadChatHistory: (projectId: string, opts?: { skipStepHistory?: boolean }) => Promise<void>
@@ -120,6 +121,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   pendingSlideCount: 0,
   agentStartTime: null,
   estimatedSeconds: null,
+  peerRunners: {},
 
   loadAgents: async (projectId) => {
     try {
@@ -207,6 +209,10 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     const unsubscribe = wsClient.onMessage((msg) => {
       const type = msg.type as string
       const isReplayed = !!(msg.replayed)  // Redis에서 replay된 이벤트
+      const eventUserId = msg.user_id as string | undefined
+      const { currentUserId } = useSessionStore.getState()
+      // 이벤트 발신 유저 == 현재 유저 여부 (user_id 없으면 하위 호환으로 통과)
+      const isMyEvent = !eventUserId || !currentUserId || eventUserId === currentUserId
 
       if (type === 'user_joined') {
         const userId = msg.userId as string
@@ -253,11 +259,35 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       if (type === 'agent_done' || type === 'agent_error') {
         const doneUserId = msg.user_id as string | undefined
         if (doneUserId) {
-          set((s) => ({
-            presenceUsers: s.presenceUsers.map((u) =>
-              u.userId === doneUserId ? { ...u, isAgentRunning: false } : u
-            ),
-          }))
+          const finalStatus = type === 'agent_done' ? 'done' : 'failed'
+          set((s) => {
+            const peer = !isMyEvent ? s.peerRunners[doneUserId] : undefined
+            return {
+              presenceUsers: s.presenceUsers.map((u) =>
+                u.userId === doneUserId ? { ...u, isAgentRunning: false } : u
+              ),
+              ...(peer ? {
+                peerRunners: {
+                  ...s.peerRunners,
+                  [doneUserId]: {
+                    ...peer,
+                    steps: peer.steps.map((st) =>
+                      st.status === 'done' || st.status === 'failed' ? st : { ...st, status: finalStatus as AgentStep['status'] }
+                    ),
+                  },
+                },
+              } : {}),
+            }
+          })
+          if (!isMyEvent) {
+            const uid = doneUserId
+            setTimeout(() => {
+              set((s) => {
+                const { [uid]: _, ...rest } = s.peerRunners
+                return { peerRunners: rest }
+              })
+            }, 3000)
+          }
         }
         // agent_done/error 기존 처리 계속 진행 (return 안 함)
       }
@@ -358,6 +388,20 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         const isResumed = !!(msg.resumed)
         const runningUserId = msg.user_id as string | undefined
         const runSessionId = (msg.session_id as string | undefined) ?? null
+
+        // presenceUsers는 모든 유저가 업데이트 (협업 인식)
+        if (runningUserId) {
+          set((s) => ({
+            presenceUsers: s.presenceUsers.map((u) => u.userId === runningUserId ? { ...u, isAgentRunning: true } : u),
+            ...(!isMyEvent ? {
+              peerRunners: { ...s.peerRunners, [runningUserId]: { agentName, steps: [], runId: (msg.agent_run_id as string) ?? '', sessionId: runSessionId } },
+            } : {}),
+          }))
+        }
+
+        // 다른 유저의 에이전트 시작 — 패널 상태 건드리지 않음
+        if (!isMyEvent) return
+
         set((s) => {
           const runningAgent = s.agents.find((a) => a.name === agentName)
           const newRunningIds = new Set(s.runningAgentIds)
@@ -380,9 +424,6 @@ export const useAgentStore = create<AgentState>((set, get) => ({
                   }
                 : a,
             ),
-            presenceUsers: runningUserId
-              ? s.presenceUsers.map((u) => u.userId === runningUserId ? { ...u, isAgentRunning: true } : u)
-              : s.presenceUsers,
           }
         })
         // 재연결 후 replay 완료되면 첫 번째 pending step을 active로 승격
@@ -434,6 +475,48 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       }
 
       if (type === 'agent_node_event') {
+        if (!isMyEvent) {
+          if (eventUserId) {
+            const peerEventType = msg.event_type as string
+            const peerMessage = msg.message as string
+            if (peerEventType === 'steps_init') {
+              try {
+                const raw = JSON.parse(peerMessage) as { id: string; label: string; type?: string }[]
+                const steps: AgentStep[] = raw.map((s, i) => ({
+                  ...s,
+                  type: s.type as AgentStep['type'],
+                  status: (i === 0 ? 'active' : 'pending') as AgentStep['status'],
+                }))
+                set((s) => ({
+                  peerRunners: { ...s.peerRunners, [eventUserId]: { ...(s.peerRunners[eventUserId] ?? { agentName: '', runId: '' }), steps } },
+                }))
+              } catch {}
+            } else if (peerEventType === 'step_done' || peerEventType === 'step_failed') {
+              const nextStatus = peerEventType === 'step_done' ? 'done' : 'failed'
+              set((s) => {
+                const peer = s.peerRunners[eventUserId]
+                if (!peer) return s
+                const idx = peer.steps.findIndex((st) => st.id === peerMessage)
+                if (idx === -1) return s
+                return {
+                  peerRunners: {
+                    ...s.peerRunners,
+                    [eventUserId]: {
+                      ...peer,
+                      steps: peer.steps.map((st, i) => {
+                        if (i === idx) return { ...st, status: nextStatus as AgentStep['status'] }
+                        if (i === idx + 1 && st.status === 'pending') return { ...st, status: 'active' as AgentStep['status'] }
+                        return st
+                      }),
+                    },
+                  },
+                }
+              })
+            }
+          }
+          return
+        }
+
         const eventType = msg.event_type as string
         const message = msg.message as string
 
@@ -501,6 +584,9 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       }
 
       if (type === 'agent_token') {
+        // 다른 유저의 토큰 스트리밍 무시
+        if (!isMyEvent) return
+
         const accumulated = (msg.accumulated as string) ?? ''
         const streamOps = extractCompleteOps(accumulated)
 
@@ -665,6 +751,13 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       }
 
       if (type === 'agent_done') {
+        // 다른 유저의 완료: 슬라이드만 갱신 (패널/채팅/제안 건드리지 않음)
+        if (!isMyEvent) {
+          const pptOther = useSlideStore.getState().presentation
+          if (pptOther) useSlideStore.getState().loadPresentation(pptOther.id)
+          return
+        }
+
         const { agents } = get()
         const doneAgentName = (msg.agent_name as string) ?? ''
         const doneAgent = agents.find((a) => a.name === doneAgentName || a.status === 'running')

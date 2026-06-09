@@ -79,7 +79,7 @@ function StepNode({ step, showLine, lineGreen }: { step: AgentStep; showLine: bo
           <TypeIcon
             size={12}
             className={cn(
-              'shrink-0 transition-colors duration-300',
+              'shrink-0 mt-[3px] transition-colors duration-300',
               isDone && 'text-[var(--text-muted)]',
               isFailed && 'text-red-400',
               isActive && 'text-[var(--accent)]',
@@ -385,7 +385,7 @@ function highlightMentions(text: string): React.ReactNode {
 export default function RightPanel({ onWidthChange, onResizingChange }: { onWidthChange?: (w: number) => void; onResizingChange?: (resizing: boolean) => void }) {
   const { agents, chatMessages, runningAgentIds, sendMessage, selectChatAgent,
           selectedAgentDefinitionId, loadChatHistory } = useEditorStore()
-  const { agentSteps, agentStartTime, estimatedSeconds, cancelAgent, agents: allAgents, lastRunAgentName, stepHistory } = useAgentStore()
+  const { agentSteps, agentStartTime, estimatedSeconds, cancelAgent, agents: allAgents, lastRunAgentName, stepHistory, peerRunners, presenceUsers } = useAgentStore()
   const { currentSessionId, currentUserId, sessions } = useSessionStore()
   const [elapsed, setElapsed] = useState(0)
   const { presentation } = useSlideStore()
@@ -634,7 +634,7 @@ export default function RightPanel({ onWidthChange, onResizingChange }: { onWidt
 
       {/* Chat messages */}
       <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2.5 min-h-0">
-        {msgs.length === 0 && agentSteps.length === 0 && stepHistory.length === 0 ? (
+        {msgs.length === 0 && agentSteps.length === 0 && stepHistory.length === 0 && (!isCurrentSessionMine ? Object.values(peerRunners).filter((p) => p.sessionId === currentSessionId).length === 0 : true) ? (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-center">
             <div className="w-10 h-10 rounded-full bg-[var(--accent-subtle)] flex items-center justify-center">
               <span className="text-[var(--accent)] text-[16px]">✦</span>
@@ -666,8 +666,8 @@ export default function RightPanel({ onWidthChange, onResizingChange }: { onWidt
                   )
               )
             })()}
-            {/* 실행 중 live 파이프라인 진행 */}
-            {agentSteps.length > 0 && (
+            {/* 실행 중 live 파이프라인 진행 — 내 세션에서 시작한 run만 표시 */}
+            {agentSteps.length > 0 && isCurrentSessionMine && (
               <div className="flex flex-col items-start">
                 <span className="text-[10px] text-[var(--text-disabled)] px-1 mb-0.5">
                   {allAgents.find((a) => a.status === 'running')?.name ?? lastRunAgentName ?? 'Agent'}
@@ -676,6 +676,23 @@ export default function RightPanel({ onWidthChange, onResizingChange }: { onWidt
                   <StepsChecklist steps={agentSteps} />
                 </div>
               </div>
+            )}
+            {!isCurrentSessionMine && Object.entries(peerRunners).filter(([, peer]) => peer.sessionId === currentSessionId).map(([userId, peer]) =>
+              peer.steps.length > 0 ? (
+                <div key={userId} className="flex flex-col items-start">
+                  <span className="text-[10px] text-[var(--text-disabled)] px-1 mb-0.5">
+                    {peer.agentName || 'Agent'}
+                    {presenceUsers.find((u) => u.userId === userId) && (
+                      <span className="ml-1.5 text-[var(--accent)]">
+                        ({presenceUsers.find((u) => u.userId === userId)!.name})
+                      </span>
+                    )}
+                  </span>
+                  <div className="max-w-[92%] px-3 py-2.5 rounded-[12px] rounded-bl-[4px] bg-[var(--bg-muted)] text-[var(--text)] text-[13px]">
+                    <StepsChecklist steps={peer.steps} />
+                  </div>
+                </div>
+              ) : null
             )}
           </>
         )}
