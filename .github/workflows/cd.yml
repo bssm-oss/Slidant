@@ -35,7 +35,9 @@ jobs:
           EOF
 
       - name: Free disk space
-        run: docker system prune -f
+        run: |
+          docker builder prune -f
+          docker image prune -f
 
       - name: Pull & rebuild
         run: |
