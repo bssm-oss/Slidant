@@ -34,10 +34,14 @@ jobs:
           LANGCHAIN_TRACING_V2=${{ secrets.LANGCHAIN_TRACING_V2 }}
           EOF
 
+      - name: Free disk space
+        run: docker system prune -f
+
       - name: Pull & rebuild
         run: |
           docker compose pull --ignore-pull-failures || true
-          docker compose build --no-cache
+          docker compose build playwright
+          docker compose build --no-cache api ui
           docker compose up -d --remove-orphans
 
       - name: Wait for healthy
