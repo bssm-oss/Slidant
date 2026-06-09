@@ -118,7 +118,7 @@ export default function EditorTopbar({ onPresent, onExport, onShare }: EditorTop
             내보내기
           </button>
         )}
-        {onShare && (
+        {onShare && presentation?.myRole === 'owner' && (
           <button
             onClick={onShare}
             className="flex items-center gap-1.5 px-3 h-8 rounded-[8px] border border-[var(--border)] text-[12px] font-medium text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-muted)] transition-colors"
@@ -138,20 +138,22 @@ export default function EditorTopbar({ onPresent, onExport, onShare }: EditorTop
             발표
           </button>
         )}
-        <div className="relative">
-          <button
-            onClick={() => setShowTheme((v) => !v)}
-            className="w-8 h-8 flex items-center justify-center rounded-[8px] text-[var(--text-muted)] hover:text-[var(--accent-text)] hover:bg-[var(--accent-subtle)] transition-colors"
-            title="디자인 테마"
-          >
-            <Palette size={16} />
-          </button>
-          {showTheme && (
-            <div className="absolute top-full right-0 mt-1 z-50 w-64 bg-white rounded-[12px] border border-[var(--border)] shadow-xl">
-              <ThemePanel onClose={() => setShowTheme(false)} />
-            </div>
-          )}
-        </div>
+        {presentation?.myRole === 'owner' && (
+          <div className="relative">
+            <button
+              onClick={() => setShowTheme((v) => !v)}
+              className="w-8 h-8 flex items-center justify-center rounded-[8px] text-[var(--text-muted)] hover:text-[var(--accent-text)] hover:bg-[var(--accent-subtle)] transition-colors"
+              title="디자인 테마"
+            >
+              <Palette size={16} />
+            </button>
+            {showTheme && (
+              <div className="absolute top-full right-0 mt-1 z-50 w-64 bg-white rounded-[12px] border border-[var(--border)] shadow-xl">
+                <ThemePanel onClose={() => setShowTheme(false)} />
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
