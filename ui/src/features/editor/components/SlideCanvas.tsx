@@ -5,6 +5,7 @@ import { useProposalStore } from '../store/proposalStore'
 import { cn } from '@/shared/lib/utils'
 import { api } from '@/shared/lib/apiClient'
 import type { SlideComponent } from '@/shared/types'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 import ConflictResolver from './ConflictResolver'
 import SlideProposalBanner from './SlideProposalBanner'
 import CropModal from './CropModal'
@@ -639,17 +640,17 @@ export default function SlideCanvas() {
   const isViewer = presentation?.myRole === 'viewer'
   const { conflicts, proposals } = useProposalStore()
   const conflictedIds = new Set(conflicts.map((c) => c.componentId))
-  // 현재 슬라이드의 가장 최근 pending proposal (html_content 있는 것)
-  const pendingProposal = proposals
-    .filter((p) => p.status === 'pending' && p.slide_id === currentSlide?.id && !!p.html_content)
-    .at(-1) ?? null
+  // 현재 슬라이드의 모든 pending proposals (html_content 있는 것)
+  const pendingProposals = useMemo(
+    () => proposals.filter((p) => p.status === 'pending' && p.slide_id === currentSlide?.id && !!p.html_content),
+    [proposals, currentSlide?.id]
+  )
   // 현재 슬라이드의 모든 pending proposals (인디케이터용)
   const pendingProposalKey = useMemo(
-    () => proposals
-      .filter((p) => p.status === 'pending' && p.slide_id === currentSlide?.id && !!p.html_content)
+    () => pendingProposals
       .map((p) => `${p.id}:${p.html_content!.length}`)
       .join(','),
-    [proposals, currentSlide?.id]
+    [pendingProposals]
   )
   const containerRef = useRef<HTMLDivElement>(null)
   const [scale, setScale] = useState(0.75)
@@ -664,6 +665,7 @@ export default function SlideCanvas() {
   const [previewHtml, setPreviewHtml] = useState<string | null>(null)
   const [iframeLoadKey, setIframeLoadKey] = useState(0)
   const [proposalIndicators, setProposalIndicators] = useState<Array<{ id: string; type: 'change' | 'delete'; x: number; y: number; w: number; h: number }>>([])
+  const [isProposalsExpanded, setIsProposalsExpanded] = useState(false)
 
   // inspector edit 중 html_content 변경으로 인한 iframe reload 차단 플래그
   const ignoreHtmlSyncRef = useRef(false)
@@ -986,6 +988,38 @@ export default function SlideCanvas() {
     x: comp.position.x, y: comp.position.y, w: comp.size.w, h: comp.size.h,
   }
 
+  const getHtmlComponentFromPoint = useCallback((e: React.MouseEvent) => {
+    const iframe = iframeRef.current
+    const doc = iframe?.contentDocument
+    if (!iframe || !doc?.defaultView) return null
+
+    const frameRect = iframe.getBoundingClientRect()
+    const x = (e.clientX - frameRect.left) / scale
+    const y = (e.clientY - frameRect.top) / scale
+    const hit = doc.elementFromPoint(x, y)
+    if (!(hit instanceof doc.defaultView.Element)) return null
+    return hit.closest<HTMLElement>('[data-component-id]')
+  }, [scale])
+
+  const handleHtmlSurfaceClick = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const el = getHtmlComponentFromPoint(e)
+    if (!el || isViewer) {
+      handleComponentSelect(null, null)
+      return
+    }
+    handleComponentSelect(el.getAttribute('data-component-id') ?? '', parseElementStyle(el))
+  }, [getHtmlComponentFromPoint, handleComponentSelect, isViewer])
+
+  const handleHtmlSurfaceDoubleClick = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const el = getHtmlComponentFromPoint(e)
+    if (!el || isViewer) return
+    el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }))
+  }, [getHtmlComponentFromPoint, isViewer])
+
   // HTML 모드 렌더링 (html_content 있으면 iframe 사용)
   if (currentSlide?.html_content) {
     // previewHtml: proposal hover 중 전체 슬라이드 미리보기
@@ -1035,6 +1069,18 @@ export default function SlideCanvas() {
             title="slide"
             onLoad={() => handleIframeLoad()}
           />
+          {!previewHtml && (
+            <div
+              className="absolute inset-0"
+              style={{
+                zIndex: 15,
+                cursor: isViewer ? 'default' : 'pointer',
+                pointerEvents: isTextEditing ? 'none' : 'auto',
+              }}
+              onClick={handleHtmlSurfaceClick}
+              onDoubleClick={handleHtmlSurfaceDoubleClick}
+            />
+          )}
           {/* 제안 인디케이터 오버레이 */}
           {proposalIndicators.map(({ id, type, x, y, w, h }) => {
             const isDragging = selectedHtmlStyle?.componentId === id
@@ -1081,8 +1127,44 @@ export default function SlideCanvas() {
           )}
         </div>
         {/* Proposal 전체 적용 배너 */}
-        {pendingProposal && !isViewer && (
-          <SlideProposalBanner proposal={pendingProposal} />
+        {pendingProposals.length > 0 && !isViewer && (
+          <div
+            className={cn("absolute left-1/2 -translate-x-1/2 z-30 flex w-[min(620px,calc(100%-48px))] flex-col gap-2 overflow-y-auto pointer-events-auto transition-all top-[88%]", isProposalsExpanded ? "max-h-[11%]" : "max-h-[100px]")}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {isProposalsExpanded ? (
+              <>
+                <SlideProposalBanner proposal={pendingProposals[0]} />
+                {pendingProposals.length > 1 && (
+                  <>
+                    <button
+                      onClick={() => setIsProposalsExpanded(false)}
+                      className="flex items-center justify-center gap-1.5 py-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"
+                    >
+                      <ChevronUp size={12} /* expanded */ />
+                      접기
+                    </button>
+                    {pendingProposals.slice(1).map((proposal) => (
+                      <SlideProposalBanner key={proposal.id} proposal={proposal} />
+                    ))}
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <SlideProposalBanner proposal={pendingProposals[0]} />
+                {pendingProposals.length > 1 && (
+                  <button
+                    onClick={() => setIsProposalsExpanded(true)}
+                    className="flex items-center justify-center gap-1.5 py-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"
+                  >
+                    <ChevronDown size={12} /* collapsed */ />
+                    {pendingProposals.length - 1}개의 제안 더 보기
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         )}
         {/* 우측 속성 패널과 상태 공유 */}
         <HtmlStyleBroadcaster style={selectedHtmlStyle} />
@@ -1168,9 +1250,49 @@ export default function SlideCanvas() {
         onClose={() => setConflictTarget(null)}
       />
     )}
-    </>
-  )
-}
+    
+        {/* Proposal 전체 적용 배너 (JSON 모드) */}
+        {pendingProposals.length > 0 && !isViewer && (
+          <div
+            className={cn("absolute left-1/2 -translate-x-1/2 z-30 flex w-[min(620px,calc(100%-48px))] flex-col gap-2 overflow-y-auto pointer-events-auto transition-all top-[88%]", isProposalsExpanded ? "max-h-[11%]" : "max-h-[100px]")}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {isProposalsExpanded ? (
+              <>
+                <SlideProposalBanner proposal={pendingProposals[0]} />
+                {pendingProposals.length > 1 && (
+                  <>
+                    <button
+                      onClick={() => setIsProposalsExpanded(false)}
+                      className="flex items-center justify-center gap-1.5 py-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"
+                    >
+                      <ChevronUp size={12} /* expanded */ />
+                      접기
+                    </button>
+                    {pendingProposals.slice(1).map((proposal) => (
+                      <SlideProposalBanner key={proposal.id} proposal={proposal} />
+                    ))}
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <SlideProposalBanner proposal={pendingProposals[0]} />
+                {pendingProposals.length > 1 && (
+                  <button
+                    onClick={() => setIsProposalsExpanded(true)}
+                    className="flex items-center justify-center gap-1.5 py-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"
+                  >
+                    <ChevronDown size={12} /* collapsed */ />
+                    {pendingProposals.length - 1}개의 제안 더 보기
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        )}</>
+    )
+  }
 
 // ── HTML 스타일 브로드캐스터 ──────────────────────────────────────────────────
 // RightPanel과 상태 공유를 위해 전역 이벤트 방식으로 선택된 HTML 요소 스타일 전파
