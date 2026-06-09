@@ -65,5 +65,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Free disk space
+        run: docker system prune -f
+
       - name: Build images (no push)
         run: docker compose build
