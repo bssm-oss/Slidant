@@ -1,7 +1,7 @@
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useRef, useState } from 'react'
 import { X, ChevronLeft, ChevronRight } from 'lucide-react'
 import type { Slide, SlideComponent } from '@/shared/types'
-import { type CSSProperties, useRef, useState } from 'react'
+import { type CSSProperties } from 'react'
 import { buildSlideSrc } from '@/shared/lib/slideHtml'
 
 // ---- minimal JSON renderer (same logic as SlideCanvas) ----
@@ -85,7 +85,8 @@ function SlideView({ slide }: { slide: Slide }) {
       const { clientWidth, clientHeight } = el
       const scaleX = clientWidth / 960
       const scaleY = clientHeight / 540
-      setScale(Math.min(scaleX, scaleY))
+      // cover: fill entire container, no black bars
+      setScale(Math.max(scaleX, scaleY))
     }
     calc()
     const obs = new ResizeObserver(calc)
@@ -98,7 +99,7 @@ function SlideView({ slide }: { slide: Slide }) {
   return (
     <div
       ref={containerRef}
-      style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
     >
       {slide.html_content ? (
         <div style={{ width: 960 * scale, height: 540 * scale, overflow: 'hidden', position: 'relative', flexShrink: 0 }}>
@@ -169,6 +170,21 @@ interface PresentationModeProps {
 
 export default function PresentationMode({ slides, startIndex, onClose }: PresentationModeProps) {
   const [current, setCurrent] = useState(startIndex)
+  const [controlsVisible, setControlsVisible] = useState(true)
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const resetIdleTimer = useCallback(() => {
+    setControlsVisible(true)
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
+    idleTimerRef.current = setTimeout(() => setControlsVisible(false), 3000)
+  }, [])
+
+  useEffect(() => {
+    resetIdleTimer()
+    return () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
+    }
+  }, [resetIdleTimer])
 
   const goNext = useCallback(() => {
     setCurrent((i) => Math.min(i + 1, slides.length - 1))
@@ -190,29 +206,39 @@ export default function PresentationMode({ slides, startIndex, onClose }: Presen
 
   const slide = slides[current]
 
+  const controlsStyle: CSSProperties = {
+    opacity: controlsVisible ? 1 : 0,
+    transition: controlsVisible ? 'opacity 0.2s ease' : 'opacity 0.4s ease',
+    pointerEvents: controlsVisible ? 'auto' : 'none',
+  }
+
   return (
     <div
+      onMouseMove={resetIdleTimer}
       style={{
         position: 'fixed', inset: 0, zIndex: 9999,
         background: '#000',
-        display: 'flex', flexDirection: 'column',
+        cursor: controlsVisible ? 'default' : 'none',
       }}
     >
-      {/* Main slide area */}
-      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+      {/* Slide fills entire viewport */}
+      <div style={{ position: 'absolute', inset: 0 }}>
         {slide && <SlideView slide={slide} />}
+      </div>
 
+      {/* Controls overlay — fades out on idle */}
+      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
         {/* Close button */}
         <button
           onClick={onClose}
           style={{
+            ...controlsStyle,
             position: 'absolute', top: 16, right: 16,
             width: 36, height: 36,
             background: 'rgba(255,255,255,0.12)',
             border: 'none', borderRadius: 8,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             cursor: 'pointer', color: '#fff',
-            transition: 'background 0.15s',
           }}
           onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.24)' }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.12)' }}
@@ -226,13 +252,13 @@ export default function PresentationMode({ slides, startIndex, onClose }: Presen
           <button
             onClick={goPrev}
             style={{
+              ...controlsStyle,
               position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)',
               width: 40, height: 40,
               background: 'rgba(255,255,255,0.12)',
               border: 'none', borderRadius: 8,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer', color: '#fff',
-              transition: 'background 0.15s',
             }}
             onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.24)' }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.12)' }}
@@ -247,13 +273,13 @@ export default function PresentationMode({ slides, startIndex, onClose }: Presen
           <button
             onClick={goNext}
             style={{
+              ...controlsStyle,
               position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)',
               width: 40, height: 40,
               background: 'rgba(255,255,255,0.12)',
               border: 'none', borderRadius: 8,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer', color: '#fff',
-              transition: 'background 0.15s',
             }}
             onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.24)' }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.12)' }}
@@ -262,33 +288,35 @@ export default function PresentationMode({ slides, startIndex, onClose }: Presen
             <ChevronRight size={22} />
           </button>
         )}
-      </div>
 
-      {/* Bottom bar */}
-      <div style={{
-        height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        gap: 8,
-      }}>
-        {slides.map((_, i) => (
-          <button
-            key={i}
-            onClick={() => setCurrent(i)}
-            style={{
-              width: i === current ? 20 : 8,
-              height: 8,
-              borderRadius: 4,
-              border: 'none',
-              background: i === current ? '#fff' : 'rgba(255,255,255,0.3)',
-              cursor: 'pointer',
-              padding: 0,
-              transition: 'all 0.2s',
-            }}
-            title={`슬라이드 ${i + 1}`}
-          />
-        ))}
-        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginLeft: 8 }}>
-          {current + 1} / {slides.length}
-        </span>
+        {/* Bottom bar */}
+        <div style={{
+          ...controlsStyle,
+          position: 'absolute', bottom: 0, left: 0, right: 0,
+          height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          gap: 8,
+        }}>
+          {slides.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setCurrent(i)}
+              style={{
+                width: i === current ? 20 : 8,
+                height: 8,
+                borderRadius: 4,
+                border: 'none',
+                background: i === current ? '#fff' : 'rgba(255,255,255,0.3)',
+                cursor: 'pointer',
+                padding: 0,
+                transition: 'all 0.2s',
+              }}
+              title={`슬라이드 ${i + 1}`}
+            />
+          ))}
+          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginLeft: 8 }}>
+            {current + 1} / {slides.length}
+          </span>
+        </div>
       </div>
     </div>
   )
