@@ -6,19 +6,18 @@ from langgraph.graph import END, START, StateGraph
 from app.agent.context import NodeContext
 from app.agent.state import AgentState
 from app.agent.nodes.planner import (
-    make_unified_planner, make_ops_dispatcher, make_self_reviewer,
-    make_legacy_planner, route_from_dispatcher, route_from_reviewer,
+    make_unified_planner, make_ops_dispatcher,
+    make_legacy_planner, route_from_dispatcher,
 )
 from app.agent.nodes.composer import make_slide_composer, make_html_editor
 from app.agent.nodes.component import make_component_deleter, make_slide_deleter
 from app.agent.nodes.searcher import make_web_searcher, make_search_merger
 from app.agent.nodes.validator import (
-    make_html_aggregator, make_html_validator, make_should_retry_html,
+    make_html_aggregator, make_html_validator,
     make_formatter, make_patch_serializer, make_validator,
-    make_visual_validator,
 )
 from app.agent.nodes.routing import (
-    make_dispatch_slides, make_increment_retry, make_route_after_planner_v2,
+    make_dispatch_slides, make_route_after_planner_v2,
     make_intent_router, make_context_reader,
 )
 from app.agent.nodes.legacy import make_design_resolver, make_layout_composer
@@ -48,14 +47,10 @@ def _build_html_graph(ctx: NodeContext):
     graph.add_node("slide_deleter",     make_slide_deleter(ctx))
     graph.add_node("html_aggregator",   make_html_aggregator(ctx))
     graph.add_node("html_validator",    make_html_validator(ctx))
-    graph.add_node("visual_validator",  make_visual_validator(ctx))
-    graph.add_node("self_reviewer",     make_self_reviewer(ctx))
     graph.add_node("formatter",         make_formatter(ctx))
-    graph.add_node("retry_inc",         make_increment_retry(ctx))
 
     route_after_planner_v2 = make_route_after_planner_v2(ctx)
     dispatch_slides        = make_dispatch_slides(ctx)
-    should_retry_html      = make_should_retry_html(ctx)
 
     # 엣지
     graph.add_edge(START, "unified_planner")
@@ -73,42 +68,17 @@ def _build_html_graph(ctx: NodeContext):
         "component_edit":   "html_editor",   # html_mode: 컴포넌트 ID 추측 없이 전체 HTML 수정
         "component_delete": "component_deleter",
         "delete":           "slide_deleter",
-        "review":           "self_reviewer",
+        "review":           "formatter",
     })
 
     graph.add_edge("html_editor",       "html_validator")
     graph.add_edge("component_deleter", "html_validator")
-    graph.add_edge("html_validator",    "visual_validator")
-    graph.add_conditional_edges("visual_validator", should_retry_html, {
-        "retry": "retry_inc",
-        "done":  "ops_dispatcher",
-    })
-    def _route_from_retry(state: AgentState) -> str:
-        op_type = state.get("current_op", {}).get("type", "")
-        if op_type in ("edit", "component_edit"):
-            return "html_editor"
-        if op_type == "component_delete":
-            return "component_deleter"
-        if op_type == "create":
-            return "slide_dispatch"
-        return "ops_dispatcher"
-
-    graph.add_conditional_edges("retry_inc", _route_from_retry, {
-        "html_editor": "html_editor",
-        "component_deleter": "component_deleter",
-        "slide_dispatch": "slide_dispatch",
-        "ops_dispatcher": "ops_dispatcher",
-    })
+    graph.add_edge("html_validator",    "ops_dispatcher")
 
     graph.add_conditional_edges("slide_dispatch", dispatch_slides, ["slide_composer"])
     graph.add_edge("slide_composer",  "html_aggregator")
-    graph.add_edge("html_aggregator", "visual_validator")
+    graph.add_edge("html_aggregator", "ops_dispatcher")
     graph.add_edge("slide_deleter",   "ops_dispatcher")
-
-    graph.add_conditional_edges("self_reviewer", route_from_reviewer, {
-        "done":     "formatter",
-        "dispatch": "ops_dispatcher",
-    })
     graph.add_edge("formatter", END)
     return graph.compile()
 
