@@ -32,6 +32,29 @@ def _comp_label(comp_id: str) -> str:
     return _COMP_KO.get(base, comp_id)
 
 
+# 본문 레이아웃 순환 — CONTENT 연속 최대 2회 방지
+_BODY_LAYOUT_CYCLE = [
+    "CARD_GRID", "DATA",     "TIMELINE",
+    "CONTENT",   "COMPARISON","FLOW",
+    "ICON_LIST",  "DATA",    "CONTENT",
+    "STATS",     "CARD_GRID", "CONTENT",
+]
+
+
+def _default_layout_sequence(n: int) -> list[str]:
+    """N장 PPT용 기본 레이아웃 배분 — CONTENT 연속 방지."""
+    if n <= 1:
+        return ["COVER"]
+    if n == 2:
+        return ["COVER", "CLOSING"]
+    if n == 3:
+        return ["COVER", "CONTENT", "CLOSING"]
+    # 고정: COVER, TOC, ..., CLOSING
+    middle = n - 3
+    body = [_BODY_LAYOUT_CYCLE[i % len(_BODY_LAYOUT_CYCLE)] for i in range(middle)]
+    return ["COVER", "TOC"] + body + ["CLOSING"]
+
+
 def make_unified_planner(ctx: NodeContext):
     async def unified_planner_node(state: AgentState) -> AgentState:
         if ctx.on_event:
@@ -130,7 +153,7 @@ def make_unified_planner(ctx: NodeContext):
                 n = min(int(_count_m.group(1)), settings.AGENT_MAX_SLIDES)
                 n_creates = sum(1 for op in operations if op.get("type") == "create")
                 if n_creates < max(n // 2, 1):
-                    _layouts = (["COVER", "TOC"] + ["CONTENT"] * (n - 3) + ["CLOSING"]) if n >= 3 else ["COVER"] * n
+                    _layouts = _default_layout_sequence(n)
                     operations = [
                         {
                             "type": "create",
@@ -194,7 +217,7 @@ def make_unified_planner(ctx: NodeContext):
                 n = min(int(_count_m.group(1)), settings.AGENT_MAX_SLIDES)
                 _orig_count = len(slide_specs)
                 if _orig_count < max(n // 2, 1):
-                    _layouts = (["COVER", "TOC"] + ["CONTENT"] * (n - 3) + ["CLOSING"]) if n >= 3 else ["COVER"] * n
+                    _layouts = _default_layout_sequence(n)
                     slide_specs = list(slide_specs) + [
                         {
                             "title": f"슬라이드 {i + 1}",
@@ -249,10 +272,10 @@ def make_unified_planner(ctx: NodeContext):
                         slide_counter += 1
                         continue
                     elif t == "edit":
-                        instr = (op.get("instruction") or "")[:22]
+                        instr = (op.get("instruction") or "")[:36]
                         label = f"슬라이드 {idx+1} — {instr}" if instr else f"슬라이드 {idx+1} 수정"
                     elif t == "component_edit":
-                        instr = (op.get("instruction") or "")[:22]
+                        instr = (op.get("instruction") or "")[:36]
                         comp = _comp_label(op.get("component_id", ""))
                         label = f"슬라이드 {idx+1} — {instr}" if instr else (f"슬라이드 {idx+1} {comp} 수정" if comp else f"슬라이드 {idx+1} 수정")
                     elif t == "component_delete":

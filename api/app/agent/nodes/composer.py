@@ -166,10 +166,19 @@ async def _compose_batch(ctx: NodeContext, state: AgentState, batch_specs: list)
     if ctx.on_event:
         ctx.on_event("node_start", f"{batch_label} 생성 중...")
 
+    # layout_budget is pre-computed per spec; strip from JSON to avoid bloat
+    specs_for_json = [{"index": bs["index"], "spec": bs["spec"]} for bs in batch_specs]
+    layout_budgets = "\n".join(
+        f"[슬라이드 {bs['index']+1}] {bs.get('layout_budget', '')}"
+        for bs in batch_specs
+        if bs.get("layout_budget")
+    )
+
     human_text = (
-        f"Batch specs (generate ALL):\n{json.dumps(batch_specs, ensure_ascii=False)}\n\n"
+        f"Batch specs (generate ALL):\n{json.dumps(specs_for_json, ensure_ascii=False)}\n\n"
         f"Design tokens: {json.dumps(design_tokens, ensure_ascii=False)}\n\n"
         f"{toc_ctx}{search_ctx}"
+        + (f"\n\n## PIXEL BUDGETS (per slide):\n{layout_budgets}\n" if layout_budgets else "")
     )
 
     llm = ctx.llm_batch or ctx.llm

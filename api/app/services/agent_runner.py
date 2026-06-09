@@ -36,7 +36,7 @@ from app.agent.prompts import (  # noqa: F401
 
 # ── LLM 팩토리 ────────────────────────────────────────────────────────────────
 
-def _make_llm(api_key_plaintext: str, provider: str = "anthropic", json_mode: bool = False, model: str | None = None, max_tokens: int | None = None, reasoning_cap: int | None = None):
+def _make_llm(api_key_plaintext: str, provider: str = "anthropic", json_mode: bool = False, model: str | None = None, max_tokens: int | None = None, reasoning_cap: int | None = None, no_reasoning: bool = False):
     from app.core.config import settings
 
     if provider == "openrouter":
@@ -46,7 +46,7 @@ def _make_llm(api_key_plaintext: str, provider: str = "anthropic", json_mode: bo
         resolved_model = model or settings.OPENROUTER_MODEL
         _tokens = max_tokens or settings.AGENT_MAX_TOKENS
         model_kwargs: dict = {"max_completion_tokens": _tokens, **extra}
-        _is_thinking = any(m in resolved_model.lower() for m in ("o1", "o3", "/r1", "reasoning", "v4-flash", "v4-pro", "deepseek-v4"))
+        _is_thinking = (not no_reasoning) and any(m in resolved_model.lower() for m in ("o1", "o3", "/r1", "reasoning", "v4-flash", "v4-pro", "deepseek-v4"))
         if _is_thinking:
             model_kwargs["reasoning"] = {"max_tokens": reasoning_cap if reasoning_cap is not None else 1024}
         return ChatOpenAI(
@@ -265,7 +265,7 @@ CRITICAL — SCOPE LOCKED TO CURRENT SLIDE:
     api_key = decrypt_api_key(encrypted_api_key)
     llm = _make_llm(api_key, provider, json_mode=False)
     llm_plain = _make_llm(api_key, provider, json_mode=False, model=settings.OPENROUTER_PLAN_MODEL if provider == "openrouter" else None, reasoning_cap=256)
-    llm_batch = _make_llm(api_key, provider, json_mode=False, max_tokens=settings.AGENT_BATCH_MAX_TOKENS)
+    llm_batch = _make_llm(api_key, provider, json_mode=False, max_tokens=settings.AGENT_BATCH_MAX_TOKENS, no_reasoning=True)
 
     resolved_prompt = system_prompt
     if isinstance(system_prompt, str):

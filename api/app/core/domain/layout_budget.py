@@ -31,8 +31,16 @@ def compute_layout_budget(spec: dict, all_specs: list | None = None) -> str:
         _content_budget(lines, n_items)
     elif layout == "SPLIT":
         _split_budget(lines, n_items)
+    elif layout == "CARD_GRID":
+        _card_grid_budget(lines, n_items)
+    elif layout == "TIMELINE":
+        _timeline_budget(lines, n_items)
+    elif layout in ("COMPARISON", "ICON_LIST"):
+        _comparison_budget(lines, n_items, layout)
+    elif layout == "FLOW":
+        lines.append("FLOW: SVG area left=60 top=150 width=840 height=320. Max 5 nodes.")
     # 카드 행 레이아웃 힌트 (레이아웃 무관, 항목 수 있으면 항상 추가)
-    if n_items >= 2 and layout not in ("TABLE", "TOC", "COVER", "CLOSING"):
+    if n_items >= 2 and layout not in ("TABLE", "TOC", "COVER", "CLOSING", "CARD_GRID", "TIMELINE", "COMPARISON", "ICON_LIST", "FLOW"):
         _row_card_budget(lines, n_items)
 
     lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
@@ -195,6 +203,56 @@ def _split_budget(lines: list, n_items: int) -> None:
     if n_items > 0:
         font = max(16, 20 - max(0, n_items - 3))
         lines.append(f"  Right side bullet font: {font}px (based on {n_items} items)")
+
+
+def _card_grid_budget(lines: list, n_items: int) -> None:
+    n_cards = min(max(n_items, 3), 4)
+    card_w = 260 if n_cards == 3 else 200
+    gap = (840 - n_cards * card_w) // (n_cards + 1)
+    lines += [
+        f"CARD_GRID — {n_cards} cards:",
+        f"  card_width:{card_w}px  card_height:260px  top:160px",
+        f"  gap:{gap}px between cards",
+    ] + [
+        f"  card {i+1}: left={60 + i * (card_w + gap)}px"
+        for i in range(n_cards)
+    ] + [
+        "  card style: backdrop-filter:blur(12px); background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:16px",
+        "  card inner: SVG icon(top:20,left:20,24×24) h3(top:58,left:16,fs:18,fw:700) p(top:98,left:16,fs:15,color:text2)",
+        f"  rightmost card right edge: {60 + n_cards * (card_w + gap) - gap}px ≤ 900 ✓",
+    ]
+
+
+def _timeline_budget(lines: list, n_items: int) -> None:
+    n = min(max(n_items, 2), 5)
+    step_gap = 300 // max(n - 1, 1)
+    lines += [
+        f"TIMELINE — {n} steps (vertical):",
+        "  center line: left=478 top=160 width=4 height=320 opacity:0.25",
+        f"  step_gap:{step_gap}px",
+        "  dot: 28×28px border-radius:14px bg:accent z-index:10",
+    ] + [
+        f"  step {i+1}: dot top={160+i*step_gap}px | "
+        + ("label RIGHT: left=520 top=" if i % 2 == 0 else "label LEFT: left=60 w=380 top=")
+        + f"{155+i*step_gap}px w=380"
+        for i in range(n)
+    ] + [
+        f"  last step bottom: {160 + (n-1)*step_gap + 30}px ≤ 500 ✓",
+    ]
+
+
+def _comparison_budget(lines: list, n_items: int, layout: str) -> None:
+    per_col = (n_items + 1) // 2 if n_items > 0 else 3
+    item_h = min(58, 260 // max(per_col, 1))
+    lines += [
+        f"{layout} — 2 columns ({per_col} items each):",
+        "  left card:  left=60  top=130 width=390 height=330 glass border-radius:16px border-top:3px solid accent",
+        "  right card: left=510 top=130 width=390 height=330 glass border-radius:16px border-top:3px solid #EF4444",
+        "  col heading: top=148(left)/526(right), fs:20, fw:700",
+        f"  items start: top=200, item_height≈{item_h}px, gap:10px",
+        "  left col icons: green check SVG | right col icons: amber warning SVG",
+        f"  last item bottom: {200 + per_col * item_h}px ≤ 450 ✓",
+    ]
 
 
 def _row_card_budget(lines: list, n_items: int) -> None:

@@ -29,10 +29,15 @@ def make_dispatch_slides(_ctx: NodeContext):
         specs = specs[:settings.AGENT_MAX_SLIDES]
         batch_size = settings.AGENT_BATCH_SIZE
 
+        from app.core.domain.layout_budget import compute_layout_budget
+
         sends = []
         for i in range(0, len(specs), batch_size):
             batch = specs[i:i + batch_size]
-            batch_specs = [{"index": i + j, "spec": s} for j, s in enumerate(batch)]
+            batch_specs = [
+                {"index": i + j, "spec": s, "layout_budget": compute_layout_budget(s, specs)}
+                for j, s in enumerate(batch)
+            ]
             sends.append(Send("slide_composer", {
                 **state,
                 "slide_index": i,

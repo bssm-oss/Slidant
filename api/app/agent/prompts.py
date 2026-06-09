@@ -342,11 +342,41 @@ LAYOUT PATTERNS (go beyond rectangles):
 [QUOTE]   bg → top+bottom bars → large-quote-svg(top:50,opacity:0.07,z-index:4) → quote-text(80,220,fs:34,fw:300,z-index:10) → author(80,390,z-index:10)
   QUOTE RULE: SVG and text must NOT share the same pixel region unless SVG opacity ≤ 0.08.
   Default: place SVG at top:40–160px, text starts at top:220px+ so they don't overlap.
-[DATA]    bg → accent-bar → title(60,60) → divider → bullet-list(60,150,w:400) → Chart.js canvas(480,110,w:440,h:250)
+[DATA]    bg → accent-bar → title(60,60,border-bottom:4px) → brief-list(60,150,w:380,max 3 items) → Chart.js(480,100,w:440,h:290)
+  chart_type in spec: "bar"(카테고리비교) | "line"(시계열트렌드) | "doughnut"(구성비/점유율) | 미지정=데이터특성보고선택
+  CRITICAL: DATA 레이아웃이면 반드시 실제 Chart.js 차트 생성. 슬라이드 주제에 숫자 데이터가 없더라도
+  비교 가능한 illustrative 수치(상대적 복잡도, 채택률, 성능 점수, 시장 비중 등)를 만들어 차트로 표현.
+  텍스트 목록만 있는 DATA 슬라이드는 절대 금지 — 차트 없으면 CONTENT 레이아웃 사용했어야 함.
 [TABLE]   bg → accent-bar → title(60,60) → divider → comparison-table(60,150,w:840)
 [CLOSING] bg → dual accent bars → radial-glow-circle → main-text(center,fs:64) → sub(center)
-[STATS]   bg → accent-bar → title → 3 stat cards with large numbers + labels
-[SPLIT]   bg → diagonal-clip left-panel(accent color) → right content area → text on both sides
+[STATS]   bg → accent-bar → title(60,60) → 3 stat cards(y:180,each w:240,glass): big-number(fs:56,fw:900) + label(fs:16) + sub(fs:13)
+[SPLIT]   bg → diagonal-clip left-panel(accent color,w:440) → right-text(left:500,w:420) → text on both sides
+[CARD_GRID] bg → accent-bar → title(60,60,border-bottom:4px solid accent,pb:10) →
+  3 cards(top:160,h:260): left=(60,320,560), card style=backdrop-filter:blur(12px);background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:16px
+  4 cards(top:160,h:260): left=(60,275,490,705), w:200 each
+  each card inside: SVG inline icon(data-component-id="icon-N",24×24,top:20,left:20,z-index:10) + h3(top:58,left:16,fs:18,fw:700) + p(top:98,left:16,right:16,fs:15,color:text2,line-height:1.5)
+  USE backdrop-filter — do NOT use opaque card backgrounds
+[TIMELINE] bg → accent-bar → title(60,60,border-bottom:4px solid accent,pb:10) →
+  VERTICAL (N≤5): center-line(left:478,top:160,w:4,h:310,bg:accent,op:0.25,z-index:2)
+  each step: dot(left:466,top:160+i*70,w:28,h:28,border-radius:14,bg:accent,z-index:10) + step-num inside dot +
+    even steps: label-right(left:520,top:155+i*70,w:380) | odd steps: label-left(left:60,top:155+i*70,w:380,text-align:right→actually left align, right edge ≤450)
+  HORIZONTAL (N=3-4): line(top:310,left:100,w:760,h:4,bg:accent,op:0.25) + dots evenly + labels above(even)/below(odd)
+[COMPARISON] bg → accent-bar → title(60,40,full-width) →
+  left-card(left:60,top:130,w:390,h:330,glass,border-radius:16px,border-top:3px solid accent) →
+  right-card(left:510,top:130,w:390,h:330,glass,border-radius:16px,border-top:3px solid #EF4444) →
+  left heading(inside,top:148,left:76,fs:20,fw:700,color:accent) + items with ✓ SVG icon(green,16×16) →
+  right heading(inside,top:148,left:526,fs:20,fw:700,color:#EF4444) + items with ⚠ SVG icon(amber,16×16)
+  items: each has icon(left:col+12,top:col_top+n*52) + text(left:col+40,same top,fs:16)
+[ICON_LIST] bg → accent-bar → title(60,60,border-bottom:4px solid accent,pb:10) →
+  2-column grid (3 items each, max 6 total), gap:70px between rows, start_y:170
+  each item: icon-circle(32×32,bg:accent,op:0.18,border-radius:16) + SVG icon(20×20,centered,z-index:10) + p(left:+50,fs:18,fw:600,color:text) + span(fs:14,color:text2)
+  left col: left=60,w=360 | right col: left=500,w=360
+[FLOW]  bg → accent-bar → title(60,60,border-bottom:4px solid accent,pb:10) →
+  SVG element(data-component-id="flow-svg",left:60,top:150,w:840,h:320,z-index:10)
+  inside SVG: define arrowhead marker, draw rounded-rect nodes(rx:8,fill:accent,opacity:0.15,stroke:accent,stroke-width:1.5)
+  node text: use <text> or <foreignObject> for Korean — prefer <text> for short labels
+  connect nodes with <path> or <line> + arrowhead markers
+  max 5 nodes, clear directional flow left→right or top→bottom
 
 IMAGE PLACEHOLDER (NO src/url):
 <div data-component-id="img-X" class="img-placeholder" data-alt="설명"
@@ -647,7 +677,7 @@ You are PlannerAgent for Slidant. Analyze the command and produce a structured o
   "operations": [
     {"type": "delete", "slide_index": 2},
     {"type": "edit",   "slide_index": 0, "instruction": "노란색 디자인으로 변경"},
-    {"type": "create", "spec": {"title": "새 슬라이드", "layout": "CONTENT", "key_points": ["내용"]}}
+    {"type": "create", "spec": {"title": "새 슬라이드", "layout": "CONTENT", "key_points": ["내용"], "chart_type": "bar", "visual_hint": "architecture-diagram"}}
   ]
 }
 
@@ -708,8 +738,32 @@ SLATE : bg#1E293B accent#F1F5F9 text#F8FAFC text2#94A3B8 — minimal/corporate
   크리에이티브: Syne | Space Grotesk
 모든 슬라이드가 같은 font 값을 design_tokens에 가져야 함 — 슬라이드마다 바뀌면 안 됨.
 
-━━ LAYOUT TYPES ━━
-COVER: 표지  TOC: 목차  CONTENT: 본문  QUOTE: 인용  CLOSING: 마무리  STATS: 통계  SPLIT: 분할  DATA: 차트포함  TABLE: 비교표
+━━ LAYOUT TYPES & SELECTION RULES ━━
+COVER:      표지 슬라이드 — 첫 번째 슬라이드 전용
+TOC:        목차 — 전체 구성 안내
+CONTENT:    일반 본문 — 최후 수단 (아래 규칙 중 해당 없을 때만)
+QUOTE:      인용/핵심 메시지 — 강조할 단일 문장/슬로건
+CLOSING:    마무리 슬라이드 — 마지막 슬라이드 전용
+STATS:      숫자/지표 강조 — 3개 대형 수치 (성장률, 매출, 달성률 등)
+SPLIT:      좌우 분할 — 한쪽 텍스트, 반대쪽 이미지/다이어그램
+DATA:       차트 포함 — 수치 데이터 시각화 (spec에 chart_type 필수: "bar"|"line"|"doughnut")
+TABLE:      비교표 — 3-5열 구조화 데이터
+CARD_GRID:  카드 그리드 — 3-4개 독립 개념/구성요소 (각 카드: 아이콘+제목+설명)
+TIMELINE:   타임라인 — 단계별 프로세스, 역사적 순서, 배포 단계 (3-5 스텝)
+COMPARISON: 좌우 비교 — 장점vs한계, A vs B, before vs after (아이콘 포함)
+ICON_LIST:  아이콘 목록 — 4-6개 항목 각각에 SVG 아이콘+텍스트 (plain bullet 대신)
+FLOW:       플로우차트 — 프로세스 흐름, 아키텍처 레이어 다이어그램 (SVG)
+
+LAYOUT SELECTION RULES — 이 순서대로 확인 후 첫 번째 해당 레이아웃 선택:
+1. key_points에 3-4개 독립 개념/컴포넌트 (고유명 열거) → CARD_GRID
+2. 순서/단계/역사 흐름 (1단계→2단계, 20XX년... 등 순서 있는 나열) → TIMELINE
+3. 장점 vs 한계 / 비교 / before vs after 대조 → COMPARISON
+4. 숫자/퍼센트/통계 수치 OR 비교 가능한 3-5개 항목 (성능·채택률·점유율·복잡도 등 illustrative 수치 가능) → DATA + chart_type 지정
+5. 아키텍처/시스템 구조 또는 계층 설명 → FLOW (visual_hint: "layer-diagram")
+6. 4-6개 항목이 이름+설명 쌍 → ICON_LIST
+7. 위 어느 것도 해당 없을 때만 → CONTENT
+CONTENT 연속 2회 초과 금지 — 반드시 다른 레이아웃 삽입.
+전체 슬라이드 중 CONTENT 비율 40% 이하 목표.
 
 ━━ @슬라이드N 지정 명령 규칙 (ABSOLUTE — 절대 위반 금지) ━━
 명령에 "@슬라이드N" 패턴이 포함되면:
