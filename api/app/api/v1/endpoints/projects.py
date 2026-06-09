@@ -118,7 +118,9 @@ async def get_project(project_id: UUID, current_user: CurrentUser, uow: UoW):
 
 @router.patch("/{project_id}", response_model=ProjectResponse)
 async def update_project(project_id: UUID, body: ProjectUpdate, current_user: CurrentUser, uow: UoW):
-    return await project_service.update_project_title(uow.projects, project_id, current_user.id, body.title)
+    project = await project_service.update_project_title(uow.projects, project_id, current_user.id, body.title)
+    await uow.commit()
+    return project
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -327,8 +329,7 @@ async def update_project_theme(
         raise HTTPException(status_code=404, detail="Project not found")
     project.theme = body.theme
     project.updated_at = dt.utcnow()
-    await uow.session.flush()
-    await uow.session.refresh(project)
+    await uow.commit()
     count_result = await uow.session.execute(
         select(func.count(Slide.id)).where(Slide.project_id == project_id)
     )
