@@ -29,7 +29,8 @@ const STEP_TYPE_ICON: Record<string, React.ElementType> = {
 // ── Truncated Label ──────────────────────────────────────────────────────────
 function TruncatedLabel({ label, className, fallbackLabel }: { label: string; className?: string; fallbackLabel?: string }) {
   const [expanded, setExpanded] = useState(false)
-  const isLong = label.length > 40 || /\n/.test(label)
+  // 폭이 좁은 사이드바 특성상 25자 이상이면 대부분 한 줄을 넘어감
+  const isLong = label.length > 25 || /\n/.test(label)
 
   return (
     <span
@@ -39,14 +40,14 @@ function TruncatedLabel({ label, className, fallbackLabel }: { label: string; cl
         setExpanded(!expanded)
       }}
       className={cn(
+        'block min-w-0', // line-clamp를 위해 block/inline-block 필요
         className,
-        isLong && 'cursor-pointer hover:opacity-80 transition-opacity',
-        !expanded && 'line-clamp-1',
+        isLong && 'cursor-pointer hover:bg-black/5 rounded px-0.5 -mx-0.5 transition-colors',
+        !expanded && isLong && 'line-clamp-1',
       )}
       title={isLong && !expanded ? '클릭하여 전체 보기' : undefined}
     >
       {label || fallbackLabel}
-      {!expanded && isLong && <span className="text-[10px] opacity-50 ml-1">...</span>}
     </span>
   )
 }
