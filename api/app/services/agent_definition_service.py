@@ -71,6 +71,7 @@ async def delete_agent(
     if agent.is_system:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot delete system agent")
     await agent_def_repo.delete(agent)
+    await agent_def_repo.session.flush()
 
 
 async def clone_to_project(
