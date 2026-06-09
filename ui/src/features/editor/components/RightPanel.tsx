@@ -26,6 +26,31 @@ const STEP_TYPE_ICON: Record<string, React.ElementType> = {
   delete: Trash2,
 }
 
+// ── Truncated Label ──────────────────────────────────────────────────────────
+function TruncatedLabel({ label, className, fallbackLabel }: { label: string; className?: string; fallbackLabel?: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const isLong = label.length > 40 || /\n/.test(label)
+
+  return (
+    <span
+      onClick={(e) => {
+        if (!isLong) return
+        e.stopPropagation()
+        setExpanded(!expanded)
+      }}
+      className={cn(
+        className,
+        isLong && 'cursor-pointer hover:opacity-80 transition-opacity',
+        !expanded && 'line-clamp-1',
+      )}
+      title={isLong && !expanded ? '클릭하여 전체 보기' : undefined}
+    >
+      {label || fallbackLabel}
+      {!expanded && isLong && <span className="text-[10px] opacity-50 ml-1">...</span>}
+    </span>
+  )
+}
+
 // ── 단일 노드 아이템 ──────────────────────────────────────────────────────────
 function StepNode({ step, showLine, lineGreen }: { step: AgentStep; showLine: boolean; lineGreen: boolean }) {
   const isDone = step.status === 'done'
@@ -67,7 +92,7 @@ function StepNode({ step, showLine, lineGreen }: { step: AgentStep; showLine: bo
         )}
       </div>
       <div className={cn(
-        'pb-3 pt-0.5 text-[12px] leading-[18px] transition-all duration-300 break-words min-w-0 flex items-start gap-1.5',
+        'pb-3 pt-0.5 text-[12px] leading-[18px] transition-all duration-300 min-w-0 flex items-start gap-1.5',
         isDone && 'text-[var(--text-muted)]',
         isFailed && 'text-red-500 font-medium',
         isActive && 'text-[var(--text)] font-semibold',
@@ -88,8 +113,8 @@ function StepNode({ step, showLine, lineGreen }: { step: AgentStep; showLine: bo
             )}
           />
         )}
-        {step.label}
-        {isFailed && <span className="ml-1 text-[10px] text-red-400">(생성 실패)</span>}
+        <TruncatedLabel label={step.label} className="flex-1" />
+        {isFailed && <span className="ml-1 text-[10px] text-red-400 shrink-0">(생성 실패)</span>}
       </div>
     </div>
   )
@@ -182,16 +207,17 @@ function StepsChecklist({ steps, cancelled }: { steps: AgentStep[]; cancelled?: 
                       )}
                       {isActive && <div className="w-[5px] h-[5px] rounded-full bg-white animate-pulse" />}
                     </div>
-                    <span className={cn(
-                      'text-[11px] truncate min-w-0 flex-1 transition-colors duration-300',
-                      isDone && 'text-[var(--text-muted)]',
-                      isFailed && 'text-red-500 font-medium',
-                      isActive && 'text-[var(--text)] font-semibold',
-                      !isDone && !isFailed && !isActive && 'text-[var(--text-disabled)]',
-                    )}>
-                      {step.label}
-                      {isFailed && <span className="ml-1 text-[10px] text-red-400">(실패)</span>}
-                    </span>
+                    <TruncatedLabel
+                      label={step.label}
+                      className={cn(
+                        'text-[11px] min-w-0 flex-1 transition-colors duration-300',
+                        isDone && 'text-[var(--text-muted)]',
+                        isFailed && 'text-red-500 font-medium',
+                        isActive && 'text-[var(--text)] font-semibold',
+                        !isDone && !isFailed && !isActive && 'text-[var(--text-disabled)]',
+                      )}
+                    />
+                    {isFailed && <span className="ml-1 text-[10px] text-red-400 shrink-0">(실패)</span>}
                   </div>
                 )
               })}
