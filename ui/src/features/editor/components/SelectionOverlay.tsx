@@ -65,17 +65,21 @@ export default function SelectionOverlay({ style, scale, iframeRef, onDelete }: 
       `[data-component-id="${styleRef.current.componentId}"]`
     ), [iframeRef])
 
-  const startDrag = useCallback((e: React.MouseEvent, handle: HandleId | 'move') => {
+  const startDrag = useCallback((e: React.PointerEvent, handle: HandleId | 'move') => {
     if (isBackgroundRef.current) { e.preventDefault(); e.stopPropagation(); return }
     e.preventDefault()
     e.stopPropagation()
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    // Block iframe from consuming pointer events during drag
+    if (iframeRef.current) iframeRef.current.style.pointerEvents = 'none'
+    document.body.style.userSelect = 'none'
     const { left, top, w, h } = liveRef.current
     dragRef.current = { handle, startMX: e.clientX, startMY: e.clientY, startLeft: left, startTop: top, startW: w, startH: h }
-  }, [])
+  }, [iframeRef])
 
   // Global drag + resize handlers
   useEffect(() => {
-    const onMove = (e: MouseEvent) => {
+    const onMove = (e: PointerEvent) => {
       const d = dragRef.current
       if (!d) return
       const dx = (e.clientX - d.startMX) / scale
@@ -112,6 +116,9 @@ export default function SelectionOverlay({ style, scale, iframeRef, onDelete }: 
     const onUp = () => {
       if (!dragRef.current) return
       dragRef.current = null
+      // Restore iframe pointer events and text selection
+      if (iframeRef.current) iframeRef.current.style.pointerEvents = ''
+      document.body.style.userSelect = ''
       const { left, top, w, h } = liveRef.current
       const id = styleRef.current.componentId
       // Batch dispatch — each call updates DOM and debounces save; last debounce wins
@@ -121,10 +128,10 @@ export default function SelectionOverlay({ style, scale, iframeRef, onDelete }: 
       dispatchStyleUpdate(id, 'height', Math.round(h))
     }
 
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
-    return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp) }
-  }, [scale, getIframeEl])
+    document.addEventListener('pointermove', onMove)
+    document.addEventListener('pointerup', onUp)
+    return () => { document.removeEventListener('pointermove', onMove); document.removeEventListener('pointerup', onUp) }
+  }, [scale, getIframeEl, iframeRef])
 
   // Keyboard shortcuts (only active when focus is in outer window, not inside iframe)
   useEffect(() => {
@@ -199,7 +206,7 @@ export default function SelectionOverlay({ style, scale, iframeRef, onDelete }: 
         pointerEvents: 'auto',
         boxSizing: 'border-box',
       }}
-      onMouseDown={(e) => startDrag(e, 'move')}
+      onPointerDown={(e) => startDrag(e, 'move')}
       onDoubleClick={handleDoubleClick}
       onClick={(e) => e.stopPropagation()}
     >
@@ -218,7 +225,7 @@ export default function SelectionOverlay({ style, scale, iframeRef, onDelete }: 
             pointerEvents: 'auto',
             ...h.pos,
           }}
-          onMouseDown={(e) => { e.stopPropagation(); startDrag(e, h.id) }}
+          onPointerDown={(e) => { e.stopPropagation(); startDrag(e, h.id) }}
         />
       ))}
     </div>
