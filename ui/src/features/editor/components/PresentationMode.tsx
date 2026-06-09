@@ -183,6 +183,26 @@ export default function PresentationMode({ slides, startIndex, onClose }: Presen
     setCurrent((i) => Math.max(i - 1, 0))
   }, [])
 
+  // 풀스크린
+  useEffect(() => {
+    const el = containerRef.current
+    if (el && document.fullscreenEnabled) {
+      el.requestFullscreen().catch(() => {})
+    }
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement) {
+        onClose()
+      }
+    }
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange)
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {})
+      }
+    }
+  }, [onClose])
+
   // 포커스 강제 로직
   useEffect(() => {
     const focus = () => containerRef.current?.focus({ preventScroll: true })
@@ -225,7 +245,11 @@ export default function PresentationMode({ slides, startIndex, onClose }: Presen
       // Escape
       if (e.key === 'Escape') {
         e.preventDefault()
-        onClose()
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch(() => {})
+        } else {
+          onClose()
+        }
         return
       }
 
