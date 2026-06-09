@@ -6,8 +6,7 @@ services:
       POSTGRES_DB: slidant
       POSTGRES_USER: slidant
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-slidant}
-    ports:
-      - "5432:5432"
+    network_mode: host
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
@@ -20,8 +19,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: slidant-redis
-    ports:
-      - "6379:6379"
+    network_mode: host
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -35,19 +33,17 @@ services:
     env_file:
       - ./api/.env
     environment:
-      DATABASE_URL: postgresql+asyncpg://slidant:${POSTGRES_PASSWORD:-slidant}@db:5432/slidant
-      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql+asyncpg://slidant:${POSTGRES_PASSWORD:-slidant}@localhost:5432/slidant
+      REDIS_URL: redis://localhost:6379
       SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
       FERNET_KEY: ${FERNET_KEY:-nXW4KWszBYNONjbVjcQ76Phn27XWsbVdxfxjoRyhNqY=}
       MOCK_AGENT: ${MOCK_AGENT:-false}
       TAVILY_API_KEY: ${TAVILY_API_KEY:-}
-      # LANGSMITH_* 및 LANGCHAIN_* 는 env_file(./api/.env)에서 자동 주입
       APP_ENV: production
       CORS_ORIGINS: http://localhost,http://localhost:80,http://localhost:3000,http://localhost:3002,http://localhost:5173,${EXTRA_CORS_ORIGINS:-}
-      PLAYWRIGHT_SERVICE_URL: http://playwright:3001
+      PLAYWRIGHT_SERVICE_URL: http://localhost:3001
       VISUAL_VALIDATION_ENABLED: "true"
-    ports:
-      - "8000:8000"
+    network_mode: host
     depends_on:
       db:
         condition: service_healthy
@@ -62,6 +58,7 @@ services:
   playwright:
     build: ./playwright
     container_name: slidant-playwright
+    network_mode: host
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
@@ -76,8 +73,7 @@ services:
       args:
         VITE_API_URL: /api/v1
     container_name: slidant-ui
-    ports:
-      - "${UI_PORT:-80}:80"
+    network_mode: host
     depends_on:
       - api
     restart: unless-stopped

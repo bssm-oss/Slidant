@@ -25,8 +25,8 @@ jobs:
         run: |
           # api/.env 생성 (GitHub Secrets → 파일)
           cat > api/.env <<EOF
-          DATABASE_URL=postgresql+asyncpg://slidant:${{ secrets.POSTGRES_PASSWORD }}@db:5432/slidant
-          REDIS_URL=redis://redis:6379
+          DATABASE_URL=postgresql+asyncpg://slidant:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/slidant
+          REDIS_URL=redis://localhost:6379
           SECRET_KEY=${{ secrets.SECRET_KEY }}
           FERNET_KEY=${{ secrets.FERNET_KEY }}
           TAVILY_API_KEY=${{ secrets.TAVILY_API_KEY }}
