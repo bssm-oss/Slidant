@@ -144,10 +144,15 @@ async def create_slide(project_id: UUID, body: SlideCreate, current_user: Curren
 async def update_slide_html(project_id: UUID, slide_id: UUID, body: dict, current_user: CurrentUser, uow: UoW):
     """html_content 직접 업데이트 (인라인 편집, 이미지 업로드)"""
     from app.services import slide_history_service
+    from fastapi import HTTPException
     project = await uow.projects.get(project_id)
-    if not project or project.owner_id != current_user.id:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail="Not authorized")
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    is_owner = project.owner_id == current_user.id
+    if not is_owner:
+        member = await uow.project_members.get_member(project_id, current_user.id)
+        if not member or member.role not in ("editor", "owner"):
+            raise HTTPException(status_code=403, detail="Not authorized")
     slide = await uow.slides.get(slide_id)
     if not slide:
         from fastapi import HTTPException

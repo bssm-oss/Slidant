@@ -40,7 +40,7 @@ class ApproveBody(BaseModel):
     partial: bool = False
 
 
-async def _get_proposal_and_verify_ownership(
+async def _get_proposal_and_verify_edit_permission(
     proposal_id: UUID, current_user: CurrentUser, uow: UoW
 ):
     proposal = await uow.proposals.get(proposal_id)
@@ -52,8 +52,14 @@ async def _get_proposal_and_verify_ownership(
         raise HTTPException(status_code=404, detail='Slide not found')
 
     project = await uow.projects.get(slide.project_id)
-    if not project or project.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail='Not authorized')
+    if not project:
+        raise HTTPException(status_code=404, detail='Project not found')
+
+    is_owner = project.owner_id == current_user.id
+    if not is_owner:
+        member = await uow.project_members.get_member(project.id, current_user.id)
+        if not member or member.role not in ('owner', 'editor'):
+            raise HTTPException(status_code=403, detail='Not authorized')
 
     return proposal, slide
 
@@ -77,7 +83,7 @@ async def list_proposals_by_slide(
 
 @router.post('/{proposal_id}/approve', status_code=status.HTTP_204_NO_CONTENT)
 async def approve_proposal(proposal_id: UUID, body: ApproveBody, current_user: CurrentUser, uow: UoW):
-    proposal, slide = await _get_proposal_and_verify_ownership(proposal_id, current_user, uow)
+    proposal, slide = await _get_proposal_and_verify_edit_permission(proposal_id, current_user, uow)
 
     if proposal.status != 'pending':
         raise HTTPException(status_code=400, detail='Proposal already processed')
@@ -132,7 +138,7 @@ async def approve_proposal(proposal_id: UUID, body: ApproveBody, current_user: C
 
 @router.post('/{proposal_id}/reject', status_code=status.HTTP_204_NO_CONTENT)
 async def reject_proposal(proposal_id: UUID, current_user: CurrentUser, uow: UoW):
-    proposal, slide = await _get_proposal_and_verify_ownership(proposal_id, current_user, uow)
+    proposal, slide = await _get_proposal_and_verify_edit_permission(proposal_id, current_user, uow)
 
     if proposal.status != 'pending':
         raise HTTPException(status_code=400, detail='Proposal already processed')
