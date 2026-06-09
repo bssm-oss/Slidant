@@ -43,7 +43,8 @@ jobs:
         run: |
           docker compose pull --ignore-pull-failures || true
           docker compose build playwright
-          docker compose build --no-cache api ui
+          docker compose build --no-cache api
+          docker compose build --no-cache ui
           docker compose up -d --remove-orphans
 
       - name: Wait for healthy
