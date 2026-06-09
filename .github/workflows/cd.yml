@@ -5,25 +5,57 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# main 동시 배포 방지 — 이전 배포가 끝날 때까지 대기
 concurrency:
   group: deploy-production
   cancel-in-progress: false
 
 jobs:
+  build:
+    name: Build & Push images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push playwright
+        run: |
+          docker build -t ghcr.io/bssm-oss/slidant-playwright:latest ./playwright
+          docker push ghcr.io/bssm-oss/slidant-playwright:latest
+
+      - name: Build & push api
+        run: |
+          docker build -t ghcr.io/bssm-oss/slidant-api:latest ./api
+          docker push ghcr.io/bssm-oss/slidant-api:latest
+
+      - name: Build & push ui
+        run: |
+          docker build -t ghcr.io/bssm-oss/slidant-ui:latest ./ui
+          docker push ghcr.io/bssm-oss/slidant-ui:latest
+
   deploy:
     name: Deploy to Proxmox LXC
     runs-on: self-hosted
+    needs: build
     environment: production
+    permissions:
+      contents: read
+      packages: read
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           clean: true
 
       - name: Create env files
         run: |
-          # api/.env 생성 (GitHub Secrets → 파일)
           cat > api/.env <<EOF
           DATABASE_URL=postgresql+asyncpg://slidant:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/slidant
           REDIS_URL=redis://localhost:6379
@@ -34,22 +66,17 @@ jobs:
           LANGCHAIN_TRACING_V2=${{ secrets.LANGCHAIN_TRACING_V2 }}
           EOF
 
-      - name: Free disk space
-        run: |
-          docker builder prune -f
-          docker image prune -f
+      - name: Login to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-      - name: Pull & rebuild
+      - name: Pull & deploy
         run: |
-          docker compose pull --ignore-pull-failures || true
-          docker compose build playwright
-          docker compose build --no-cache api
-          docker compose build --no-cache ui
+          docker image prune -f
+          docker compose pull
           docker compose up -d --remove-orphans
 
       - name: Wait for healthy
         run: |
-          echo "Waiting for API..."
           for i in $(seq 1 30); do
             if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
               echo "API healthy"
@@ -63,18 +90,8 @@ jobs:
             sleep 3
           done
 
-      - name: Clean old images
-        run: docker image prune -f
-
-      - name: Notify success
-        if: success()
-        run: |
-          echo "Deployed commit ${{ github.sha }} at $(date)"
-
       - name: Rollback on failure
         if: failure()
         run: |
           echo "Deploy failed — rolling back"
-          git stash
           docker compose up -d --remove-orphans
-          echo "Rollback done"

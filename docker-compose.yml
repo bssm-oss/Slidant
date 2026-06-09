@@ -28,6 +28,7 @@ services:
     restart: unless-stopped
 
   api:
+    image: ghcr.io/bssm-oss/slidant-api:latest
     build: ./api
     container_name: slidant-api
     env_file:
@@ -56,6 +57,7 @@ services:
     restart: unless-stopped
 
   playwright:
+    image: ghcr.io/bssm-oss/slidant-playwright:latest
     build: ./playwright
     container_name: slidant-playwright
     network_mode: host
@@ -68,6 +70,7 @@ services:
       start_period: 15s
 
   ui:
+    image: ghcr.io/bssm-oss/slidant-ui:latest
     build:
       context: ./ui
       args:
