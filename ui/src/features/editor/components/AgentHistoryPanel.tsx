@@ -48,7 +48,8 @@ export function AgentHistoryContent({ projectId, active, onItemClick }: ContentP
   const currentUserId = useSessionStore((s) => s.currentUserId)
 
   const getUserLabel = (run: AgentRunHistoryItem) => {
-    if (run.user_id === currentUserId) return '나'
+    if (!run.user_id) return null // 기존 기록(Migration 이전)은 유저 정보가 없음
+    if (currentUserId && run.user_id === currentUserId) return '나'
     const presence = presenceUsers.find((u) => u.userId === run.user_id)
     if (presence) return presence.name
     if (run.user_email) return run.user_email.split('@')[0]
@@ -119,11 +120,15 @@ export function AgentHistoryContent({ projectId, active, onItemClick }: ContentP
                         · {Math.round((new Date(run.finished_at).getTime() - new Date(run.started_at).getTime()) / 1000)}s
                       </span>
                     )}
-                    <span>·</span>
-                    <span className="flex items-center gap-0.5">
-                      <User size={10} />
-                      {getUserLabel(run)}
-                    </span>
+                    {getUserLabel(run) && (
+                      <>
+                        <span>·</span>
+                        <span className="flex items-center gap-0.5">
+                          <User size={10} />
+                          {getUserLabel(run)}
+                        </span>
+                      </>
+                    )}
                   </p>
                 )}
               </div>

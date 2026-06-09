@@ -60,7 +60,7 @@ async def run_agent_endpoint(
         uow.agent_definitions, body.agent_definition_id, body.agent_role
     )
     agent_run = await agent_service.create_agent_run(
-        uow.agent_definitions,
+        uow.agent_runs,
         body.project_id,
         agent_def.id,
         task_description=body.command,
