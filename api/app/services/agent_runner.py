@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from typing import TYPE_CHECKING
 
@@ -74,6 +75,7 @@ async def generate_presentation_title(command: str, encrypted_api_key: str, prov
     from langchain_core.messages import HumanMessage, SystemMessage
 
     try:
+        from app.core.config import settings
         api_key = decrypt_api_key(encrypted_api_key)
         plan_model = settings.OPENROUTER_PLAN_MODEL if provider == "openrouter" else None
         llm = _make_llm(api_key, provider, json_mode=False, model=plan_model)
