@@ -31,4 +31,9 @@ build/
 # LangGraph 런타임 체크포인트 캐시
 .langgraph_api/
 
+# Agent Tools
+.claude/
+.omo/
+.superpowers/
+
 pptagent/**
