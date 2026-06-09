@@ -29,23 +29,43 @@ const STEP_TYPE_ICON: Record<string, React.ElementType> = {
 // ── Truncated Label ──────────────────────────────────────────────────────────
 function TruncatedLabel({ label, className, fallbackLabel }: { label: string; className?: string; fallbackLabel?: string }) {
   const [expanded, setExpanded] = useState(false)
-  // 폭이 좁은 사이드바 특성상 25자 이상이면 대부분 한 줄을 넘어감
-  const isLong = label.length > 25 || /\n/.test(label)
+  const [isTruncated, setIsTruncated] = useState(false)
+  const ref = useRef<HTMLSpanElement>(null)
+
+  // 실제 텍스트가 컨테이너를 넘치는지 체크
+  useEffect(() => {
+    const check = () => {
+      if (ref.current) {
+        // 현재 한 줄 모드일 때, 실제 내용(scrollWidth)이 보이는 너비(clientWidth)보다 크면 잘린 것
+        const truncated = ref.current.scrollWidth > ref.current.clientWidth
+        setIsTruncated(truncated)
+      }
+    }
+    check()
+    // 창 크기 조절 시에도 체크
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [label, expanded])
+
+  // 수동 체크 조건 (긴 글자수나 줄바꿈 포함 시)
+  const hasExpandableContent = isTruncated || expanded || label.length > 25 || /\n/.test(label)
 
   return (
     <span
+      ref={ref}
       onClick={(e) => {
-        if (!isLong) return
+        if (!hasExpandableContent) return
         e.stopPropagation()
         setExpanded(!expanded)
       }}
       className={cn(
-        'block min-w-0', // line-clamp를 위해 block/inline-block 필요
+        'block min-w-0',
         className,
-        isLong && 'cursor-pointer hover:bg-black/5 rounded px-0.5 -mx-0.5 transition-colors',
-        !expanded && isLong && 'line-clamp-1',
+        hasExpandableContent && 'cursor-pointer hover:bg-black/5 rounded px-0.5 -mx-0.5 transition-colors',
+        !expanded && 'line-clamp-1',
+        expanded && 'whitespace-pre-wrap',
       )}
-      title={isLong && !expanded ? '클릭하여 전체 보기' : undefined}
+      title={hasExpandableContent && !expanded ? '클릭하여 전체 보기' : undefined}
     >
       {label || fallbackLabel}
     </span>
