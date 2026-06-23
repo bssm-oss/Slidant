@@ -116,13 +116,18 @@ export default function EditPage() {
 
   const handleExport = () => {
     const exportSlides = presentation?.slides ?? []
+    const getBodyContent = (html: string) => {
+      const m = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i)
+      return m ? m[1] : html
+    }
     const printHtml = `<!DOCTYPE html><html><head>
 <style>
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   @page { size: 960px 540px; margin: 0; }
   body { margin: 0; padding: 0; }
-  .slide-page { width: 960px; height: 540px; overflow: hidden; page-break-after: always; }
+  .slide-page { width: 960px; height: 540px; overflow: hidden; page-break-after: always; position: relative; }
 </style></head><body>
-${exportSlides.map(s => s.html_content ? `<div class="slide-page">${s.html_content}</div>` : '').filter(Boolean).join('')}
+${exportSlides.map(s => s.html_content ? `<div class="slide-page">${getBodyContent(s.html_content)}</div>` : '').filter(Boolean).join('')}
 </body></html>`
     const win = window.open('', '_blank')
     if (!win) return
