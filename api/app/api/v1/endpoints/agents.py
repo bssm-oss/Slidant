@@ -196,6 +196,17 @@ async def _run_agent_background(
         )
     except Exception as e:
         logger.error("bg_fatal  agent_run=%s  %s", agent_run_id, str(e), exc_info=True)
+        # 내부 error handler가 실패해도 DB status를 "running"에서 꺼냄
+        # (그렇지 않으면 Redis TTL 만료 후 재연결 시 가짜 agent_started 전송 → 영구 "처리 중...")
+        try:
+            from app.db.uow import UnitOfWork as _FatalUoW
+            async with _FatalUoW() as fatal_uow:
+                fatal_run = await fatal_uow.agent_runs.get(agent_run_id)
+                if fatal_run and fatal_run.status == "running":
+                    fatal_run.status = "error"
+                    await fatal_uow.commit()
+        except Exception as _fe:
+            logger.warning("bg_fatal_finalize_failed  agent_run=%s  %s", agent_run_id, _fe)
         await _broadcast(str(body.project_id), {
             "type": "agent_error",
             "agent_run_id": str(agent_run_id),

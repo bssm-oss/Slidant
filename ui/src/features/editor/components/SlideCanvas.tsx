@@ -268,6 +268,8 @@ function useHtmlSlideEdit(
     const imgTag = el.tagName === 'IMG' ? el as HTMLImageElement : el.querySelector<HTMLImageElement>('img')
     if (imgTag) {
       imgTag.src = dataUrl
+      imgTag.style.opacity = '1'
+      imgTag.style.pointerEvents = 'auto'
       imgTag.classList.remove('img-placeholder')
       // 플레이스홀더 형제 요소(SVG, 텍스트) 숨김
       Array.from(el.children).forEach((child) => {
@@ -292,6 +294,7 @@ function useHtmlSlideEdit(
     try {
       const targetId = pendingCrop?.targetId ?? ''
       await api.patch(`/projects/${projectId}/slides/${slideId}`, { html_content: fullHtml, reason: `사용자: ${targetId} 이미지 변경` })
+        .then(() => { crdtStore.setSlideHtml(slideId, fullHtml) })
     } catch (err) {
       console.error('html slide image update failed', err)
     }
@@ -330,9 +333,9 @@ function useHtmlSlideEdit(
 
 function isTextElement(el: HTMLElement): boolean {
   const tag = el.tagName.toLowerCase()
-  if (['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'div', 'li', 'td', 'th'].includes(tag)) return true
-  // div인데 이미지 없고 텍스트만 있으면 텍스트 요소로 간주
-  if (tag === 'div' && !el.querySelector('img') && el.textContent?.trim()) return true
+  if (['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'li', 'td', 'th'].includes(tag)) return true
+  // div는 img·svg 없고 텍스트만 있을 때만 텍스트 요소로 간주
+  if (tag === 'div' && !el.querySelector('img') && !el.querySelector('svg') && el.textContent?.trim()) return true
   return false
 }
 

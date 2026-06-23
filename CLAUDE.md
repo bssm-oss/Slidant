@@ -67,7 +67,7 @@ html_slides 있음  → 새 슬라이드 생성 (html_content 포함)
 ### AI Agent 시스템
 - 역할별 Agent: `ContentAgent` | `DesignAgent` | `LayoutAgent`
 - 사용자 정의 Agent 생성 지원
-- 다중 Agent 동시 작업 → 충돌 감지 → ConflictResolver 모달
+- 다중 Agent 독립 작업 → 각자 Proposal 제출 → 사용자가 순차 검토·적용
 
 ### 버전 관리
 - `slide_history`: 슬라이드 전체 스냅샷 (JSON content 기준, 롤백용)
@@ -111,4 +111,12 @@ html_slides 있음  → 새 슬라이드 생성 (html_content 포함)
 | 미리캔버스 | 사람 중심 편집 | AI 기능 유료, Agent 협업 없음 |
 | Snapdeck | 텍스트 프롬프트 → 완성 슬라이드, 버전 관리 | 세부 스타일 제어 부족, 다중 Agent 협업 없음 |
 
-**차별점**: Agent 간 협업 + HTML 직접 저장/렌더링 + CSS 전체 표현력 + 충돌 시각화
+## 핵심 차별점
+
+| # | 차별점 | 설명 | 구현 상태 |
+|---|--------|------|-----------|
+| 1 | **컴포넌트 단위 AI 변경 승인** | Agent Proposal → 컴포넌트별 diff 확인 → 선택 accept/reject → `merge_component_changes()` 적용. 슬라이드 전체 수락/거절 아님. | ✅ 구현됨 |
+| 2 | **AI 작업 감사 로그** | AgentRun(task_description, result_summary) + LLMLog(prompt) 저장. HistoryPanel에서 Agent별 변경 이력 조회·롤백 가능. | ✅ 부분 구현 |
+| 3 | **역할별 Agent 분리** | Content/Design/Layout Agent가 독립적으로 Proposal 제출. 사용자가 Agent별로 검토·적용 순서 결정. | ✅ 구현됨 |
+
+> "AI가 PPT 만들어준다"는 차별점이 아님. **AI가 제안하고 사람이 컴포넌트 단위로 관리한다**가 핵심.

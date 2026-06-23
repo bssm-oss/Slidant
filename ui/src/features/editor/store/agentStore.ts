@@ -206,6 +206,10 @@ export const useAgentStore = create<AgentState>((set, get) => ({
 
   connectWs: (projectId) => {
     wsClient.connect(projectId)
+    let resumeWatchdog: ReturnType<typeof setTimeout> | null = null
+    const clearResumeWatchdog = () => {
+      if (resumeWatchdog) { clearTimeout(resumeWatchdog); resumeWatchdog = null }
+    }
     const unsubscribe = wsClient.onMessage((msg) => {
       const type = msg.type as string
       const isReplayed = !!(msg.replayed)  // Redis에서 replay된 이벤트
@@ -449,6 +453,24 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             }))
           }
           setTimeout(promoteFirstPending, 600)
+
+          // 재연결 복구 watchdog: 30s 내 agent_done/agent_error 없으면 isRunning 강제 초기화
+          // (DB에 status="running"으로 고착된 agent_run이 있을 때 영구 "처리 중..." 방지)
+          clearResumeWatchdog()
+          resumeWatchdog = setTimeout(() => {
+            resumeWatchdog = null
+            set((s) => {
+              if (s.overallStatus !== 'running') return s
+              return {
+                overallStatus: 'idle',
+                agentStartTime: null,
+                agentSteps: [],
+                agents: s.agents.map((a) =>
+                  a.status === 'running' ? { ...a, status: 'error', currentTask: undefined } : a
+                ),
+              }
+            })
+          }, 30_000)
         }
       }
 
@@ -760,6 +782,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       }
 
       if (type === 'agent_done') {
+        clearResumeWatchdog()
         // 다른 유저의 완료: 슬라이드만 갱신 (패널/채팅/제안 건드리지 않음)
         if (!isMyEvent) {
           const pptOther = useSlideStore.getState().presentation
@@ -962,6 +985,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       }
 
       if (type === 'agent_error') {
+        clearResumeWatchdog()
         const { agents } = get()
         const errAgentName = (msg.agent_name as string) ?? ''
         const errAgent = agents.find((a) => a.name === errAgentName || a.status === 'running')

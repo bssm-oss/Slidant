@@ -51,10 +51,13 @@ class AgentRunRepository(BaseRepository[AgentRun]):
 
     async def list_running_by_project(self, project_id: UUID) -> list[AgentRun]:
         from uuid import UUID as _UUID
+        from datetime import datetime, timedelta, timezone
+        stale_cutoff = datetime.now(timezone.utc) - timedelta(hours=2)
         result = await self.session.execute(
             select(AgentRun)
             .where(AgentRun.project_id == _UUID(str(project_id)),
-                   AgentRun.status == "running")
+                   AgentRun.status == "running",
+                   AgentRun.started_at >= stale_cutoff)
             .order_by(AgentRun.started_at.desc())
         )
         return list(result.scalars().all())
